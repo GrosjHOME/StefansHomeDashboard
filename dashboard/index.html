@@ -120,7 +120,7 @@ function api(ch,path,withKey){ var u="https://api.thingspeak.com/channels/"+ch+p
 function lineChart(holder, series, opts){
   opts=opts||{}; var all=[]; series.forEach(function(s){ all=all.concat(s.pts); });
   if(all.length<2){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
-  var W=1000,H=300,padL=46,padR=12,padT=12,padB=26;
+  var W=1000,H=300,padL=46,padR=12,padT=24,padB=26;
   var tMin=Math.min.apply(null,all.map(function(p){return p.t.getTime();}));
   var tMax=Math.max.apply(null,all.map(function(p){return p.t.getTime();})); if(tMax===tMin)tMax=tMin+1;
   var vMin=Math.min.apply(null,all.map(function(p){return p.v;}));
@@ -150,12 +150,12 @@ function lineChart(holder, series, opts){
     var lab = span> 26*3600*1000 ? dd.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"}) : dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
     xl+='<text x="'+x+'" y="'+(H-8)+'" text-anchor="middle" font-size="12" fill="var(--muted)">'+lab+'</text>'; }
   holder.innerHTML='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+fill+grid+paths+yl+xl+
-    '<text x="'+(padL-6)+'" y="'+(padT+2)+'" text-anchor="end" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text></svg>';
+    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text></svg>';
 }
 /* Balkendiagramm */
 function barChart(holder, bars, opts){
   opts=opts||{}; if(!bars.length){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
-  var W=1000,H=300,padL=46,padR=12,padT=16,padB=40,n=bars.length;
+  var W=1000,H=300,padL=46,padR=12,padT=24,padB=40,n=bars.length;
   var vMax=niceMax(Math.max.apply(null,bars.map(function(b){return b.v;})));
   function Y(v){ return padT+(H-padT-padB)*(1-v/vMax); }
   var slot=(W-padL-padR)/n, bw=slot*0.6, grid="",yl="";
@@ -168,7 +168,7 @@ function barChart(holder, bars, opts){
     r+='<text x="'+(x+bw/2)+'" y="'+(y-4)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+fmt(b.v,0)+'</text>';
     r+='<text x="'+(x+bw/2)+'" y="'+(H-24)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+b.label+'</text>'; });
   holder.innerHTML='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
-    '<text x="'+(padL-6)+'" y="'+(padT+2)+'" text-anchor="end" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text></svg>';
+    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text></svg>';
 }
 function parseStatus(s){ var o={},re=/([UI])([56])=([\d.]+)\/([\d.]+)\/([\d.]+)/g,m; while((m=re.exec(s))){ o[m[1]+m[2]]=[parseFloat(m[3]),parseFloat(m[4]),parseFloat(m[5])]; } return o; }
 function downsample(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)), out=[]; for(var i=0;i<arr.length;i+=st) out.push(arr[i]); if(arr.length && out[out.length-1]!==arr[arr.length-1]) out.push(arr[arr.length-1]); return out; }
@@ -257,7 +257,9 @@ function simpleView(cfg){
     render:function(main){
       var kp=cfg.kpis.map(function(k,i){ return kpiCard(k.label,"kpi_"+i,k.unit||""); }).join("");
       var charts=cfg.charts.map(function(c,i){
-        var leg = c.legend ? '<div class="legend">'+c.legend.map(function(L,li){return '<span class="it"><span class="sw" style="border-color:'+c.lines[li].color+'"></span>'+L+'</span>';}).join("")+'</div>' : "";
+        var items=(c.lines||[]).map(function(ln){ return '<span class="it"><span class="sw" style="border-color:'+ln.color+(ln.dash?';border-top-style:dashed':'')+'"></span>'+(ln.label||'')+'</span>'; });
+        if(c.minmaxField) items.push('<span class="it"><span class="sw" style="border-color:var(--muted);border-top-style:dashed"></span>Min/Max</span>');
+        var leg = (c.lines && (c.lines.length>1 || c.minmaxField)) ? '<div class="legend">'+items.join("")+'</div>' : "";
         return '<div class="panel"><h2>'+c.title+' <span class="tag" id="ct_'+i+'"></span></h2>'+leg+'<div id="chart_'+i+'"><div class="chart-empty">wird geladen…</div></div></div>';
       }).join("");
       main.innerHTML='<div class="wrap"><div class="view-head"><h1>'+cfg.icon+" "+cfg.title+'</h1><div class="meta" id="head-meta">wird geladen…</div></div>'+
@@ -270,17 +272,33 @@ function simpleView(cfg){
         var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
         var last=f[f.length-1];
         function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
-        cfg.kpis.forEach(function(k,i){ var v=L(k.field); if(!g("kpi_"+i))return;
+        cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(!g("kpi_"+i))return;
           g("kpi_"+i).textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0); });
         if(g("head-meta")&&last.created_at) g("head-meta").textContent="Aktualisiert "+relTime(new Date(last.created_at));
         // Charts bauen
         cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
-          var series=c.lines.map(function(ln){ var pts=[]; f.forEach(function(x){ var v=num(x[ln.field]); if(v!==null) pts.push({t:new Date(x.created_at), v: ln.scale? v*ln.scale : v}); }); return {color:ln.color, pts:downsample(pts,200)}; }).filter(function(s){return s.pts.length>1;});
+          var series=c.lines.map(function(ln){ var pts=[]; f.forEach(function(x){ var v=num(x[ln.field]); if(v!==null) pts.push({t:new Date(x.created_at), v: ln.scale? v*ln.scale : v}); }); return {color:ln.color, dash:ln.dash, pts:downsample(pts,200)}; }).filter(function(s){return s.pts.length>1;});
+          if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null){ vv.push(v); ct.push(new Date(x.created_at)); } });
+            if(vv.length>1){ var mn=Math.min.apply(null,vv), mx=Math.max.apply(null,vv), t0=ct[0], t1=ct[ct.length-1];
+              series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
+              series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mx},{t:t1,v:mx}]}); } }
           if(g("ct_"+i)&&last.created_at) g("ct_"+i).textContent="Stand "+relTime(new Date(last.created_at));
           lineChart(holder, series, {unit:c.unit, zero:c.zero});
         });
         if(g("err2"))g("err2").textContent="";
       }).catch(function(){ if(g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
+
+      // KPIs aus anderen Kanaelen (z. B. HSH-Auslastung liegt im Wallbox-Kanal 172228)
+      var extra={};
+      cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel){ (extra[k.channel]=extra[k.channel]||[]).push({k:k,i:i}); } });
+      Object.keys(extra).forEach(function(ch){
+        j(api(ch,"/feeds.json?results=300",false)).then(function(d){
+          var f=(d&&d.feeds)?d.feeds:[];
+          function L2(fd){ for(var i=f.length-1;i>=0;i--){ var v=num(f[i][fd]); if(v!==null)return v; } return null; }
+          extra[ch].forEach(function(o){ var g2=document.getElementById("kpi_"+o.i); if(!g2)return; var v=L2(o.k.field);
+            g2.textContent = o.k.map ? (v===null?"–":o.k.map(v)) : fmt(v,o.k.dec||0); });
+        }).catch(function(){});
+      });
     }
   };
 }
@@ -290,12 +308,11 @@ var WALLBOX=simpleView({ channel:172228, icon:"🔌", title:"Wallbox",
     {field:"field4",label:"Aktuelle Ladeleistung",unit:"W",dec:0},
     {field:"field7",label:"Ladeleistung geglättet",unit:"W",dec:0},
     {field:"field6",label:"Ladestrom-Begrenzung",unit:"A",dec:1},
-    {field:"field1",label:"HSH-Auslastung",unit:"%",dec:0},
     {field:"field8",label:"Verbindung",map:function(v){return v>=1?"verbunden":"getrennt";}}
   ],
   charts:[
-    {title:"Ladeleistung", unit:"W", legend:["Aktuell","Geglättet"], lines:[{field:"field4",color:"var(--green)"},{field:"field7",color:"var(--blue)"}]},
-    {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",color:"var(--amber)"}]}
+    {title:"Ladeleistung", unit:"W", lines:[{field:"field4",label:"Aktuell",color:"var(--green)"},{field:"field7",label:"Geglättet",color:"var(--blue)"}]},
+    {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]}
   ]});
 
 var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
@@ -304,11 +321,13 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
     {field:"field2",label:"Kessel mitte",unit:"°C",dec:1},
     {field:"field8",label:"Abgas",unit:"°C",dec:0},
     {field:"field4",label:"Schnitzel-Füllstand",unit:"%",dec:0},
-    {field:"field3",label:"Raumtemperatur",unit:"°C",dec:1}
+    {field:"field3",label:"Raumtemperatur",unit:"°C",dec:1},
+    {channel:172228,field:"field1",label:"HSH-Auslastung",unit:"%",dec:0}
   ],
   charts:[
-    {title:"Kesseltemperaturen", unit:"°C", zero:false, legend:["oben","mitte","Abgas"], lines:[{field:"field1",color:"var(--amber)"},{field:"field2",color:"var(--blue)"},{field:"field8",color:"var(--red)"}]},
-    {title:"Holzschnitzel-Füllstand", unit:"%", lines:[{field:"field4",color:"var(--green)"}]}
+    {title:"Kesseltemperaturen", unit:"°C", zero:false, minmaxField:"field1", lines:[{field:"field1",label:"oben",color:"var(--amber)"},{field:"field2",label:"mitte",color:"var(--blue)"}]},
+    {title:"Abgastemperatur", unit:"°C", zero:false, lines:[{field:"field8",label:"Abgas",color:"var(--red)"}]},
+    {title:"Holzschnitzel-Füllstand", unit:"%", lines:[{field:"field4",label:"Füllstand",color:"var(--green)"}]}
   ]});
 
 var BOILER=simpleView({ channel:502977, icon:"♨️", title:"Boiler",
@@ -319,8 +338,8 @@ var BOILER=simpleView({ channel:502977, icon:"♨️", title:"Boiler",
     {field:"field4",label:"Einschaltschwelle",unit:"W",dec:0}
   ],
   charts:[
-    {title:"Boiler-Temperaturen", unit:"°C", zero:false, legend:["mitte","unten"], lines:[{field:"field1",color:"var(--amber)"},{field:"field2",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", lines:[{field:"field3",color:"var(--green)"}]}
+    {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
+    {title:"Ladeleistung", unit:"W", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)"}]}
   ]});
 
 /* ================= Routing ================= */
