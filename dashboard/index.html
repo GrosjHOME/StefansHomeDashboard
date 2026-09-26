@@ -80,6 +80,18 @@
   .wr-head{font-weight:700; color:var(--blue);}
   .note{font-size:.8rem; color:var(--muted); margin-top:10px;}
   footer{font-size:.78rem; color:var(--muted); text-align:center; margin-top:8px;}
+  @media (max-width:560px){
+    .wrap{padding:12px 12px 24px;}
+    .nav{gap:8px 12px; padding:8px 12px;}
+    .brand{font-size:.95rem; order:1;}
+    .navright{order:2; margin-left:auto;}
+    .tabs{order:3; flex:1 1 100%; flex-wrap:nowrap; overflow-x:auto;}
+    .tabs a{padding:6px 10px; font-size:.85rem; white-space:nowrap;}
+    .hero .val{font-size:2.2rem;}
+    .panel{padding:12px 12px;}
+    .kpis{gap:8px; grid-template-columns:repeat(auto-fit,minmax(130px,1fr));}
+    .view-head h1{font-size:1.15rem;}
+  }
 </style>
 </head>
 <body>
@@ -347,7 +359,7 @@ function simpleView(cfg){
         var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
         var last=f[f.length-1];
         function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
-        cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(!g("kpi_"+i))return;
+        cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(v!==null&&k.scale)v=v*k.scale; if(!g("kpi_"+i))return;
           g("kpi_"+i).textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0); });
         if(g("head-meta")&&last.created_at) g("head-meta").textContent="Aktualisiert "+relTime(new Date(last.created_at));
         // Charts bauen
@@ -370,7 +382,7 @@ function simpleView(cfg){
         j(api(ch,"/feeds.json?results=300",false)).then(function(d){
           var f=(d&&d.feeds)?d.feeds:[];
           function L2(fd){ for(var i=f.length-1;i>=0;i--){ var v=num(f[i][fd]); if(v!==null)return v; } return null; }
-          extra[ch].forEach(function(o){ var g2=document.getElementById("kpi_"+o.i); if(!g2)return; var v=L2(o.k.field);
+          extra[ch].forEach(function(o){ var g2=document.getElementById("kpi_"+o.i); if(!g2)return; var v=L2(o.k.field); if(v!==null&&o.k.scale)v=v*o.k.scale;
             g2.textContent = o.k.map ? (v===null?"–":o.k.map(v)) : fmt(v,o.k.dec||0); });
         }).catch(function(){});
       });
@@ -380,13 +392,13 @@ function simpleView(cfg){
 
 var WALLBOX=simpleView({ channel:172228, icon:"🔌", title:"Wallbox",
   kpis:[
-    {field:"field4",label:"Aktuelle Ladeleistung",unit:"W",dec:0},
-    {field:"field7",label:"Ladeleistung geglättet",unit:"W",dec:0},
+    {field:"field4",label:"Aktuelle Ladeleistung",unit:"kW",dec:1,scale:0.001},
+    {field:"field7",label:"Ladeleistung geglättet",unit:"kW",dec:1,scale:0.001},
     {field:"field6",label:"Ladestrom-Begrenzung",unit:"A",dec:1},
     {field:"field8",label:"Verbindung",map:function(v){return v>=1?"verbunden":"getrennt";}}
   ],
   charts:[
-    {title:"Ladeleistung", unit:"W", lines:[{field:"field4",label:"Aktuell",color:"var(--green)"},{field:"field7",label:"Geglättet",color:"var(--blue)"}]},
+    {title:"Ladeleistung", unit:"kW", lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.001},{field:"field7",label:"Geglättet",color:"var(--blue)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]}
   ]});
 
