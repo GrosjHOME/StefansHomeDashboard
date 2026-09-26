@@ -60,6 +60,11 @@
   .panel{background:var(--card); border-radius:14px; box-shadow:var(--shadow); padding:16px 18px; margin-bottom:16px;}
   .panel h2{font-size:1rem; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
   .panel h2 .tag{font-size:.7rem; font-weight:600; color:var(--muted); background:var(--bg); padding:2px 8px; border-radius:20px;}
+  .seg{display:inline-flex; gap:2px; background:var(--bg); border-radius:8px; padding:2px; flex-wrap:wrap; margin-left:auto;}
+  .seg button{cursor:pointer; border:0; background:transparent; color:var(--muted); font-family:inherit; font-size:.76rem; font-weight:600; padding:4px 10px; border-radius:6px;}
+  .seg button.active{background:var(--card); color:var(--ink); box-shadow:var(--shadow);}
+  .chart-wrap{position:relative;}
+  .tip{position:absolute; pointer-events:none; background:var(--card); color:var(--ink); border:1px solid var(--line); box-shadow:var(--shadow); border-radius:8px; padding:6px 9px; font-size:.78rem; line-height:1.35; white-space:nowrap; opacity:0; transition:opacity .08s; z-index:5;}
   svg.chart{width:100%; height:auto; display:block;}
   .chart-empty{color:var(--muted); font-size:.9rem; padding:20px 0; text-align:center;}
   .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:.8rem; color:var(--muted); margin:2px 0 10px;}
@@ -75,6 +80,18 @@
   .wr-head{font-weight:700; color:var(--blue);}
   .note{font-size:.8rem; color:var(--muted); margin-top:10px;}
   footer{font-size:.78rem; color:var(--muted); text-align:center; margin-top:8px;}
+  @media (max-width:560px){
+    .wrap{padding:12px 12px 24px;}
+    .nav{gap:8px 12px; padding:8px 12px;}
+    .brand{font-size:.95rem; order:1;}
+    .navright{order:2; margin-left:auto;}
+    .tabs{order:3; flex:1 1 100%; flex-wrap:nowrap; overflow-x:auto;}
+    .tabs a{padding:6px 10px; font-size:.85rem; white-space:nowrap;}
+    .hero .val{font-size:2.2rem;}
+    .panel{padding:12px 12px;}
+    .kpis{gap:8px; grid-template-columns:repeat(auto-fit,minmax(130px,1fr));}
+    .view-head h1{font-size:1.15rem;}
+  }
 </style>
 </head>
 <body>
@@ -149,8 +166,28 @@ function lineChart(holder, series, opts){
     var span=tMax-tMin, dd=new Date(tt);
     var lab = span> 26*3600*1000 ? dd.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"}) : dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
     xl+='<text x="'+x+'" y="'+(H-8)+'" text-anchor="middle" font-size="12" fill="var(--muted)">'+lab+'</text>'; }
-  holder.innerHTML='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+fill+grid+paths+yl+xl+
-    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text></svg>';
+  var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+fill+grid+paths+yl+xl+
+    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
+  holder.innerHTML='<div class="chart-wrap">'+svgStr+'<div class="tip"></div></div>';
+  var wrap=holder.firstChild, svg=wrap.querySelector("svg"), ov=wrap.querySelector(".ov"), tip=wrap.querySelector(".tip");
+  var dec=(opts.dec!=null)?opts.dec:1;
+  svg.addEventListener("mousemove",function(ev){
+    var rect=svg.getBoundingClientRect(), mx=(ev.clientX-rect.left)/rect.width*W;
+    if(mx<padL||mx>W-padR){ ov.style.display="none"; tip.style.opacity=0; return; }
+    var t=tMin+(mx-padL)/(W-padL-padR)*(tMax-tMin), dots="", rows="", anyX=null;
+    series.forEach(function(s){ if(!s.pts.length)return; var best=null,bd=Infinity;
+      s.pts.forEach(function(p){ var dd=Math.abs(p.t.getTime()-t); if(dd<bd){bd=dd;best=p;} });
+      if(best){ var px=X(best.t.getTime()),py=Y(best.v); anyX=px;
+        dots+='<circle cx="'+px+'" cy="'+py+'" r="3.5" fill="'+s.color+'"/>';
+        rows+='<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+s.color+';margin-right:5px"></span>'+fmt(best.v,dec)+' '+(opts.unit||"")+'</div>'; } });
+    if(anyX===null){ ov.style.display="none"; tip.style.opacity=0; return; }
+    ov.innerHTML='<line x1="'+anyX+'" x2="'+anyX+'" y1="'+padT+'" y2="'+(H-padB)+'" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"/>'+dots; ov.style.display="";
+    var dd=new Date(t), span=tMax-tMin;
+    var hdr= span>26*3600*1000 ? dd.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"})+" "+dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"}) : dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
+    tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+hdr+'</div>'+rows;
+    var px=anyX/W*rect.width; tip.style.left=Math.max(0,Math.min(rect.width-tip.offsetWidth-4, px+10))+"px"; tip.style.top=Math.max(0,(ev.clientY-rect.top)-10)+"px"; tip.style.opacity=1;
+  });
+  svg.addEventListener("mouseleave",function(){ ov.style.display="none"; tip.style.opacity=0; });
 }
 /* Balkendiagramm */
 function barChart(holder, bars, opts){
@@ -167,14 +204,26 @@ function barChart(holder, bars, opts){
     r+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+h+'" rx="3" fill="'+(opts.color||"var(--green)")+'"/>';
     r+='<text x="'+(x+bw/2)+'" y="'+(y-4)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+fmt(b.v,0)+'</text>';
     r+='<text x="'+(x+bw/2)+'" y="'+(H-24)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+b.label+'</text>'; });
-  holder.innerHTML='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
-    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text></svg>';
+  var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
+    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
+  holder.innerHTML='<div class="chart-wrap">'+svgStr+'<div class="tip"></div></div>';
+  var wrap=holder.firstChild, svg=wrap.querySelector("svg"), ov=wrap.querySelector(".ov"), tip=wrap.querySelector(".tip");
+  svg.addEventListener("mousemove",function(ev){
+    var rect=svg.getBoundingClientRect(), mx=(ev.clientX-rect.left)/rect.width*W, idx=Math.floor((mx-padL)/slot);
+    if(mx<padL||idx<0||idx>=n){ ov.style.display="none"; tip.style.opacity=0; return; }
+    var b=bars[idx], bx=padL+slot*idx+(slot-bw)/2;
+    ov.innerHTML='<rect x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+(H-padT-padB)+'" fill="var(--ink)" opacity="0.06"/>'; ov.style.display="";
+    tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+b.label+'</div><div>'+fmt(b.v,0)+' '+(opts.unit||"")+'</div>';
+    var px=(bx+bw/2)/W*rect.width; tip.style.left=Math.max(0,Math.min(rect.width-tip.offsetWidth-4, px+8))+"px"; tip.style.top="6px"; tip.style.opacity=1;
+  });
+  svg.addEventListener("mouseleave",function(){ ov.style.display="none"; tip.style.opacity=0; });
 }
 function parseStatus(s){ var o={},re=/([UI])([56])=([\d.]+)\/([\d.]+)\/([\d.]+)/g,m; while((m=re.exec(s))){ o[m[1]+m[2]]=[parseFloat(m[3]),parseFloat(m[4]),parseFloat(m[5])]; } return o; }
 function downsample(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)), out=[]; for(var i=0;i<arr.length;i+=st) out.push(arr[i]); if(arr.length && out[out.length-1]!==arr[arr.length-1]) out.push(arr[arr.length-1]); return out; }
 
 /* ================= View: PV ================= */
-var PV={ CH:172430 };
+var PV={ CH:172430, powerMode:"heute", energyMode:"tage" };
+function segActive(container, btn){ Array.prototype.forEach.call(container.querySelectorAll("button"), function(b){ b.classList.toggle("active", b===btn); }); }
 PV.render=function(main){
   main.innerHTML='<div class="wrap">'+
     '<div class="view-head"><h1>☀️ PV-Anlage</h1><div class="meta"><div id="sd-status"><span class="dot na"></span>SD-Karte</div><div id="updated">wird geladen…</div></div></div>'+
@@ -182,9 +231,10 @@ PV.render=function(main){
       '<div class="bar"><span id="power-bar" style="width:0%"></span></div><div class="bar-scale"><span>0</span><span>15 kW</span><span>30 kW</span></div></div>'+
     '<div class="kpis">'+
       kpiCard("Heute","e-today","kWh")+kpiCard("Gestern","e-yesterday","kWh")+kpiCard("Aktueller Monat","e-month","kWh")+
-      kpiCard("Letzter Monat","e-lastmonth","kWh")+kpiCard("Dieses Jahr","e-year","kWh")+kpiCard("Ø DC-Spannung","dc-mean","V")+'</div>'+
-    panel("Leistung heute",'<span class="tag">Ø 10 min</span>',"chart-power")+
-    panel("Energie letzte Tage",'<span class="tag">Tagesertrag</span>',"chart-days")+
+      kpiCard("Letzter Monat","e-lastmonth","kWh")+kpiCard("Dieses Jahr","e-year","kWh")+kpiCard("Ø DC-Spannung","dc-mean","V")+
+      kpiCard("Tages-Peak","e-peak","kW")+kpiCard("Sonnenstunden","e-sun","h")+'</div>'+
+    '<div class="panel"><h2>Leistung <span class="seg" id="seg-power"><button data-m="heute" class="active">Heute</button><button data-m="7tage">7 Tage</button></span></h2><div id="chart-power"><div class="chart-empty">wird geladen…</div></div></div>'+
+    '<div class="panel"><h2>Energie <span class="seg" id="seg-energy"><button data-m="tage" class="active">Tage</button><button data-m="monate">Monate</button><button data-m="jahre">Jahre</button></span></h2><div id="chart-days"><div class="chart-empty">wird geladen…</div></div></div>'+
     '<div class="panel"><h2>Strom je MPP-Tracker heute <span class="tag" id="strom-tag"></span></h2>'+
       '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
@@ -197,7 +247,15 @@ PV.render=function(main){
       '<span class="it">— WR 5 · - - - WR 6</span></div><div id="chart-spannung"><div class="chart-empty">wird geladen…</div></div></div>'+
     '<div class="panel"><h2>DC je MPP-Tracker <span class="tag" id="status-time"></span></h2><div id="tracker-holder"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Tracker 1 &amp; 2 = je 2 Strings parallel, Tracker 3 = 1 String (halb so viele Module – so ausgelegt, daher ~halber Strom).</div></div>'+
+    '<div class="panel"><h2>Tracker-Strom mittags (11–13 h) <span class="tag">Verlust-Diagnose</span></h2>'+
+      '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
+      '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
+      '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
+      '<span class="it">— WR 5 · - - - WR 6</span></div><div id="chart-verlust"><div class="chart-empty">wird geladen…</div></div>'+
+      '<div class="note">Tages-Mittel des Tracker-Stroms im Mittagsfenster – zum Erkennen eines schleichenden Rückgangs über Wochen/Monate. Baut sich mit der Zeit auf (der ThingSpeak-Status deckt die jeweils letzten Tage ab).</div></div>'+
     '<footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
+  var sp=document.getElementById("seg-power"); if(sp) sp.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.powerMode=b.getAttribute("data-m"); segActive(sp,b); PV.loadPower(); });
+  var se=document.getElementById("seg-energy"); if(se) se.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.energyMode=b.getAttribute("data-m"); segActive(se,b); PV.loadEnergy(); });
 };
 function kpiCard(k,id,unit){ return '<div class="kpi"><div class="k">'+k+'</div><div class="v"><span id="'+id+'">–</span> <small>'+unit+'</small></div></div>'; }
 function panel(title,tag,id){ return '<div class="panel"><h2>'+title+' '+tag+'</h2><div id="'+id+'"><div class="chart-empty">wird geladen…</div></div></div>'; }
@@ -215,18 +273,7 @@ PV.load=function(){
     var sd=L("field7"); g("sd-status").innerHTML= sd===1?'<span class="dot ok"></span>SD-Karte OK':(sd===0?'<span class="dot bad"></span>SD-Karte Fehler':'<span class="dot na"></span>SD-Karte');
     if(last.created_at) g("updated").textContent="Aktualisiert "+relTime(new Date(last.created_at));
   });
-  var p2=j(api(PV.CH,"/feeds.json?days=1&average=10",true)).then(function(d){
-    var f=(d&&d.feeds)?d.feeds:[],pts=[]; f.forEach(function(x){var v=num(x.field1); if(v!==null)pts.push({t:new Date(x.created_at),v:v/1000});});
-    if(g("chart-power")) lineChart(g("chart-power"),[{color:"var(--green)",pts:pts}],{unit:"kW"});
-  });
-  var p3=j(api(PV.CH,"/feeds.json?days=8&average=15",true)).then(function(d){
-    var f=(d&&d.feeds)?d.feeds:[],byDay={}; f.forEach(function(x){var v=num(x.field2); if(v===null)return; var dt=new Date(x.created_at);
-      var key=dt.getFullYear()+"-"+(dt.getMonth()+1)+"-"+dt.getDate(); if(!byDay[key]||v>byDay[key].v)byDay[key]={v:v,dt:dt};});
-    var arr=Object.keys(byDay).map(function(k){return byDay[k];}).sort(function(a,b){return a.dt-b.dt;}).slice(-7);
-    var wd=["So","Mo","Di","Mi","Do","Fr","Sa"];
-    var bars=arr.map(function(o){return {label:wd[o.dt.getDay()]+" "+o.dt.getDate()+"."+(o.dt.getMonth()+1)+".",v:o.v};});
-    if(g("chart-days")) barChart(g("chart-days"),bars,{unit:"kWh",color:"var(--amber)"});
-  });
+  PV.loadPower(); PV.loadEnergy();
   var p4=j(api(PV.CH,"/status.json?days=1",true)).then(function(d){
     var f=(d&&d.feeds)?d.feeds:[]; var last=f.length?f[f.length-1]:null; var holder=g("tracker-holder"); if(!holder)return;
     if(last&&last.status){ g("status-time").textContent=relTime(new Date(last.created_at)); var p=parseStatus(last.status);
@@ -248,7 +295,69 @@ PV.load=function(){
     if(g("chart-spannung")) lineChart(g("chart-spannung"),mk(SU),{unit:"V",zero:false});
     if(g("spannung-tag")&&last&&last.created_at) g("spannung-tag").textContent="Stand "+relTime(new Date(last.created_at));
   });
-  Promise.all([p1,p2,p3,p4]).then(function(){ if(errEl())errEl().textContent=""; }).catch(function(){ if(errEl())errEl().textContent="Daten konnten nicht geladen werden – nächster Versuch in 60 s."; });
+  var p5=j(api(PV.CH,"/feeds.json?days=1",true)).then(function(d){
+    var f=(d&&d.feeds)?d.feeds:[], pts=[], peak=0;
+    f.forEach(function(x){ var v=num(x.field1); if(v===null)return; if(v>peak)peak=v; pts.push({t:new Date(x.created_at).getTime(),v:v}); });
+    pts.sort(function(a,b){return a.t-b.t;});
+    var sunMs=0; for(var i=0;i<pts.length-1;i++){ if(pts[i].v>500){ var dt=pts[i+1].t-pts[i].t; if(dt>0&&dt<1800000) sunMs+=dt; } }
+    if(g("e-peak")) g("e-peak").textContent=fmt(peak/1000,1);
+    if(g("e-sun")) g("e-sun").textContent=fmt(sunMs/3600000,1);
+  });
+  var p6=j(api(PV.CH,"/status.json?days=30",true)).then(function(d){
+    var f=(d&&d.feeds)?d.feeds:[]; var holder=g("chart-verlust"); if(!holder)return;
+    var byDay={};
+    f.forEach(function(e){ if(!e.status)return; var dt=new Date(e.created_at), h=dt.getHours(); if(h<11||h>=13)return;
+      var pp=parseStatus(e.status), key=dt.getFullYear()+"-"+dt.getMonth()+"-"+dt.getDate();
+      if(!byDay[key])byDay[key]={dt:new Date(dt.getFullYear(),dt.getMonth(),dt.getDate(),12), s:[[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]};
+      if(pp.I5)for(var a=0;a<3;a++){ byDay[key].s[a][0]+=pp.I5[a]; byDay[key].s[a][1]++; }
+      if(pp.I6)for(var b=0;b<3;b++){ byDay[key].s[3+b][0]+=pp.I6[b]; byDay[key].s[3+b][1]++; } });
+    var days=Object.keys(byDay).map(function(k){return byDay[k];}).sort(function(a,b){return a.dt-b.dt;});
+    var cols=["var(--green)","var(--blue)","var(--amber)"], S=[[],[],[],[],[],[]];
+    days.forEach(function(o){ for(var i=0;i<6;i++){ if(o.s[i][1]>0) S[i].push({t:o.dt,v:o.s[i][0]/o.s[i][1]}); } });
+    var series=[{color:cols[0],pts:S[0]},{color:cols[1],pts:S[1]},{color:cols[2],pts:S[2]},
+      {color:cols[0],dash:true,pts:S[3]},{color:cols[1],dash:true,pts:S[4]},{color:cols[2],dash:true,pts:S[5]}].filter(function(s){return s.pts.length>=1;});
+    if(!series.some(function(s){return s.pts.length>=2;})){ holder.innerHTML='<div class="chart-empty">Sammelt Daten – aussagekräftig ab einigen Tagen.</div>'; return; }
+    lineChart(holder, series, {unit:"A", zero:false});
+  });
+  Promise.all([p1,p4,p5,p6]).then(function(){ if(errEl())errEl().textContent=""; }).catch(function(){ if(errEl())errEl().textContent="Daten konnten nicht geladen werden – nächster Versuch in 60 s."; });
+};
+
+PV.loadPower=function(){
+  var holder=document.getElementById("chart-power"); if(!holder)return;
+  var url = PV.powerMode==="7tage" ? "/feeds.json?days=7&average=60" : "/feeds.json?days=1&average=10";
+  j(api(PV.CH,url,true)).then(function(d){
+    var f=(d&&d.feeds)?d.feeds:[],pts=[]; f.forEach(function(x){ var v=num(x.field1); if(v!==null)pts.push({t:new Date(x.created_at),v:v/1000}); });
+    lineChart(holder,[{color:"var(--green)",pts:pts}],{unit:"kW"});
+  });
+};
+PV.loadEnergy=function(){
+  var holder=document.getElementById("chart-days"); if(!holder)return;
+  var mo=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+  if(PV.energyMode==="monate"){
+    j(api(PV.CH,"/feeds.json?days=365&average=1440",true)).then(function(d){
+      var f=(d&&d.feeds)?d.feeds:[],byM={};
+      f.forEach(function(x){ var v=num(x.field5); if(v===null)return; var dt=new Date(x.created_at); var key=dt.getFullYear()+"-"+dt.getMonth();
+        if(!byM[key])byM[key]={v:0,dt:new Date(dt.getFullYear(),dt.getMonth(),1)}; byM[key].v+=v; });
+      var arr=Object.keys(byM).map(function(k){return byM[k];}).sort(function(a,b){return a.dt-b.dt;}).slice(-12);
+      barChart(holder,arr.map(function(o){return {label:mo[o.dt.getMonth()]+" "+String(o.dt.getFullYear()).slice(2),v:o.v};}),{unit:"kWh",color:"var(--amber)"});
+    });
+  } else if(PV.energyMode==="jahre"){
+    var yr=new Date().getFullYear(), reqs=[];
+    for(var y=yr-5;y<=yr;y++){ (function(y){
+      var u = y===yr ? "/feeds.json?results=1" : "/feeds.json?results=1&end="+y+"-12-31%2023:59:59";
+      reqs.push(j(api(PV.CH,u,true)).then(function(d){ var f=d&&d.feeds?d.feeds:[]; return {y:y, v:f.length?num(f[f.length-1].field4):null}; }));
+    })(y); }
+    Promise.all(reqs).then(function(res){
+      barChart(holder, res.filter(function(o){return o.v!==null&&o.v>0;}).map(function(o){return {label:String(o.y),v:o.v};}), {unit:"kWh",color:"var(--amber)"});
+    });
+  } else {
+    j(api(PV.CH,"/feeds.json?days=15&average=15",true)).then(function(d){
+      var f=(d&&d.feeds)?d.feeds:[],byDay={}; f.forEach(function(x){ var v=num(x.field2); if(v===null)return; var dt=new Date(x.created_at);
+        var key=dt.getFullYear()+"-"+dt.getMonth()+"-"+dt.getDate(); if(!byDay[key]||v>byDay[key].v)byDay[key]={v:v,dt:dt}; });
+      var arr=Object.keys(byDay).map(function(k){return byDay[k];}).sort(function(a,b){return a.dt-b.dt;}).slice(-14);
+      barChart(holder,arr.map(function(o){return {label:o.dt.getDate()+"."+(o.dt.getMonth()+1)+".",v:o.v};}),{unit:"kWh",color:"var(--amber)"});
+    });
+  }
 };
 
 /* ========== Generische Ansicht (Wallbox/Heizung/Boiler) ========== */
@@ -272,7 +381,7 @@ function simpleView(cfg){
         var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
         var last=f[f.length-1];
         function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
-        cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(!g("kpi_"+i))return;
+        cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(v!==null&&k.scale)v=v*k.scale; if(!g("kpi_"+i))return;
           g("kpi_"+i).textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0); });
         if(g("head-meta")&&last.created_at) g("head-meta").textContent="Aktualisiert "+relTime(new Date(last.created_at));
         // Charts bauen
@@ -295,7 +404,7 @@ function simpleView(cfg){
         j(api(ch,"/feeds.json?results=300",false)).then(function(d){
           var f=(d&&d.feeds)?d.feeds:[];
           function L2(fd){ for(var i=f.length-1;i>=0;i--){ var v=num(f[i][fd]); if(v!==null)return v; } return null; }
-          extra[ch].forEach(function(o){ var g2=document.getElementById("kpi_"+o.i); if(!g2)return; var v=L2(o.k.field);
+          extra[ch].forEach(function(o){ var g2=document.getElementById("kpi_"+o.i); if(!g2)return; var v=L2(o.k.field); if(v!==null&&o.k.scale)v=v*o.k.scale;
             g2.textContent = o.k.map ? (v===null?"–":o.k.map(v)) : fmt(v,o.k.dec||0); });
         }).catch(function(){});
       });
@@ -305,13 +414,13 @@ function simpleView(cfg){
 
 var WALLBOX=simpleView({ channel:172228, icon:"🔌", title:"Wallbox",
   kpis:[
-    {field:"field4",label:"Aktuelle Ladeleistung",unit:"W",dec:0},
-    {field:"field7",label:"Ladeleistung geglättet",unit:"W",dec:0},
+    {field:"field4",label:"Aktuelle Ladeleistung",unit:"kW",dec:1,scale:0.001},
+    {field:"field7",label:"Ladeleistung geglättet",unit:"kW",dec:1,scale:0.001},
     {field:"field6",label:"Ladestrom-Begrenzung",unit:"A",dec:1},
     {field:"field8",label:"Verbindung",map:function(v){return v>=1?"verbunden":"getrennt";}}
   ],
   charts:[
-    {title:"Ladeleistung", unit:"W", lines:[{field:"field4",label:"Aktuell",color:"var(--green)"},{field:"field7",label:"Geglättet",color:"var(--blue)"}]},
+    {title:"Ladeleistung", unit:"kW", lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.001},{field:"field7",label:"Geglättet",color:"var(--blue)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]}
   ]});
 
