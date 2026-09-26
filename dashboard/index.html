@@ -146,7 +146,7 @@ function lineChart(holder, series, opts){
   series.forEach(function(s){ if(s.bandFrac!=null)return; var tgt=(s.axis==="right")?allR:allL; s.pts.forEach(function(p){ if(p.v!=null) tgt.push(p); }); });
   var all=allL.concat(allR);
   if(all.length<2){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
-  var W=1000,H=300,padL=(opts.padL||46),padR=(hasRight?54:12),padT=24,padB=26;
+  var W=1000,H=300,padL=(opts.padL||58),padR=(hasRight?70:16),padT=28,padB=36;
   var tMin=Math.min.apply(null,all.map(function(p){return p.t.getTime();}));
   var tMax=Math.max.apply(null,all.map(function(p){return p.t.getTime();})); if(tMax===tMin)tMax=tMin+1;
   function scaleFor(arr, zeroOpt, yMinOpt, yMaxOpt){
@@ -173,9 +173,9 @@ function lineChart(holder, series, opts){
   var ticks = opts.yTicks || [{v:L.base},{v:(L.base+L.top)/2},{v:L.top}];
   ticks.forEach(function(tk){ var y=Y(tk.v);
     grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
-    yl+='<text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end" font-size="11" fill="var(--muted)">'+(tk.label!=null?tk.label:ylab(tk.v))+'</text>';
+    yl+='<text x="'+(padL-8)+'" y="'+(y+7)+'" text-anchor="end" font-size="21" fill="var(--muted)">'+(tk.label!=null?tk.label:ylab(tk.v))+'</text>';
     if(hasRight){ var frac=1-(y-padT)/(H-padT-padB), rv=R.base+(R.top-R.base)*frac;
-      yl+='<text x="'+(W-padR+6)+'" y="'+(y+4)+'" text-anchor="start" font-size="11" fill="'+rColor+'">'+ylab(rv)+'</text>'; } });
+      yl+='<text x="'+(W-padR+8)+'" y="'+(y+7)+'" text-anchor="start" font-size="21" fill="'+rColor+'">'+ylab(rv)+'</text>'; } });
   var paths="";
   series.forEach(function(s){ if(s.pts.length<2)return; var YS=YF(s);
     if(s.segColor){ // segmentweise Faerbung nach Wert
@@ -194,10 +194,10 @@ function lineChart(holder, series, opts){
   for(var k=0;k<=5;k++){ var tt=tMin+(tMax-tMin)*k/5, x=padL+(W-padL-padR)*k/5;
     var span=tMax-tMin, dd=new Date(tt);
     var lab = span> 26*3600*1000 ? dd.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"}) : dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
-    xl+='<text x="'+x+'" y="'+(H-8)+'" text-anchor="middle" font-size="12" fill="var(--muted)">'+lab+'</text>'; }
-  var unit2Lab = hasRight ? '<text x="'+(W-padR+6)+'" y="14" text-anchor="start" font-size="11" fill="'+rColor+'">'+(opts.unit2||"")+'</text>' : "";
+    xl+='<text x="'+x+'" y="'+(H-9)+'" text-anchor="middle" font-size="21" fill="var(--muted)">'+lab+'</text>'; }
+  var unit2Lab = hasRight ? '<text x="'+(W-padR+8)+'" y="18" text-anchor="start" font-size="18" fill="'+rColor+'">'+(opts.unit2||"")+'</text>' : "";
   var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+fill+grid+paths+yl+xl+
-    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text>'+unit2Lab+'<g class="ov" style="display:none"></g></svg>';
+    '<text x="6" y="18" font-size="18" fill="var(--muted)">'+(opts.unit||"")+'</text>'+unit2Lab+'<g class="ov" style="display:none"></g></svg>';
   holder.innerHTML='<div class="chart-wrap">'+svgStr+'<div class="tip"></div></div>';
   var wrap=holder.firstChild, svg=wrap.querySelector("svg"), ov=wrap.querySelector(".ov"), tip=wrap.querySelector(".tip");
   var dec=(opts.dec!=null)?opts.dec:1;
@@ -223,20 +223,20 @@ function lineChart(holder, series, opts){
 /* Balkendiagramm */
 function barChart(holder, bars, opts){
   opts=opts||{}; if(!bars.length){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
-  var W=1000,H=300,padL=46,padR=12,padT=24,padB=40,n=bars.length;
+  var W=1000,H=300,padL=58,padR=16,padT=28,padB=48,n=bars.length;
   var vMax=niceMax(Math.max.apply(null,bars.map(function(b){return b.v;})));
   function Y(v){ return padT+(H-padT-padB)*(1-v/vMax); }
   var slot=(W-padL-padR)/n, bw=slot*0.6, grid="",yl="";
   [0,vMax/2,vMax].forEach(function(v){ var y=Y(v);
     grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
-    yl+='<text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end" font-size="12" fill="var(--muted)">'+ylab(v)+'</text>'; });
+    yl+='<text x="'+(padL-8)+'" y="'+(y+7)+'" text-anchor="end" font-size="21" fill="var(--muted)">'+ylab(v)+'</text>'; });
   var r="";
   bars.forEach(function(b,i){ var x=padL+slot*i+(slot-bw)/2, y=Y(b.v), h=Y(0)-y;
     r+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+h+'" rx="3" fill="'+(opts.color||"var(--green)")+'"/>';
-    r+='<text x="'+(x+bw/2)+'" y="'+(y-4)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+fmt(b.v,0)+'</text>';
-    r+='<text x="'+(x+bw/2)+'" y="'+(H-24)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+b.label+'</text>'; });
+    r+='<text x="'+(x+bw/2)+'" y="'+(y-6)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+fmt(b.v,0)+'</text>';
+    r+='<text x="'+(x+bw/2)+'" y="'+(H-22)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+b.label+'</text>'; });
   var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
-    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
+    '<text x="6" y="18" font-size="18" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
   holder.innerHTML='<div class="chart-wrap">'+svgStr+'<div class="tip"></div></div>';
   var wrap=holder.firstChild, svg=wrap.querySelector("svg"), ov=wrap.querySelector(".ov"), tip=wrap.querySelector(".tip");
   svg.addEventListener("mousemove",function(ev){
