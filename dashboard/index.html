@@ -140,36 +140,51 @@ function api(ch,path,withKey){ var u="https://api.thingspeak.com/channels/"+ch+p
 
 /* Zeit-Liniendiagramm (1..n Serien) */
 function lineChart(holder, series, opts){
-  opts=opts||{}; var all=[]; series.forEach(function(s){ if(s.bandFrac!=null)return; s.pts.forEach(function(p){ if(p.v!=null) all.push(p); }); });
+  opts=opts||{};
+  var hasRight = series.some(function(s){ return s.axis==="right"; });
+  var allL=[], allR=[];
+  series.forEach(function(s){ if(s.bandFrac!=null)return; var tgt=(s.axis==="right")?allR:allL; s.pts.forEach(function(p){ if(p.v!=null) tgt.push(p); }); });
+  var all=allL.concat(allR);
   if(all.length<2){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
-  var W=1000,H=300,padL=(opts.padL||46),padR=12,padT=24,padB=26;
+  var W=1000,H=300,padL=(opts.padL||46),padR=(hasRight?54:12),padT=24,padB=26;
   var tMin=Math.min.apply(null,all.map(function(p){return p.t.getTime();}));
   var tMax=Math.max.apply(null,all.map(function(p){return p.t.getTime();})); if(tMax===tMin)tMax=tMin+1;
-  var vMin=Math.min.apply(null,all.map(function(p){return p.v;}));
-  var vMax=Math.max.apply(null,all.map(function(p){return p.v;}));
-  var base,top;
-  if(opts.zero===false){ var pad=(vMax-vMin)*0.1||1; base=Math.floor(vMin-pad); top=Math.ceil(vMax+pad); }
-  else { base=0; top=niceMax(vMax); }
-  if(opts.yMin!=null) base=opts.yMin;
-  if(opts.yMax!=null) top=opts.yMax;
-  if(top<=base) top=base+1;
+  function scaleFor(arr, zeroOpt, yMinOpt, yMaxOpt){
+    if(!arr.length) return {base:0, top:1};
+    var vMin=Math.min.apply(null,arr.map(function(p){return p.v;}));
+    var vMax=Math.max.apply(null,arr.map(function(p){return p.v;}));
+    var base,top;
+    if(zeroOpt===false){ var pad=(vMax-vMin)*0.1||1; base=Math.floor(vMin-pad); top=Math.ceil(vMax+pad); }
+    else { base=0; top=niceMax(vMax); }
+    if(yMinOpt!=null) base=yMinOpt;
+    if(yMaxOpt!=null) top=yMaxOpt;
+    if(top<=base) top=base+1;
+    return {base:base, top:top};
+  }
+  var L=scaleFor(allL, opts.zero, opts.yMin, opts.yMax);
+  var R=scaleFor(allR, opts.zero2, opts.yMin2, opts.yMax2);
   function X(t){ return padL+(W-padL-padR)*((t-tMin)/(tMax-tMin)); }
-  function Y(v){ return padT+(H-padT-padB)*(1-(v-base)/(top-base)); }
+  function Y(v){ return padT+(H-padT-padB)*(1-(v-L.base)/(L.top-L.base)); }
+  function Y2(v){ return padT+(H-padT-padB)*(1-(v-R.base)/(R.top-R.base)); }
+  function YF(s){ return (s.axis==="right")?Y2:Y; }
+  var rColor="var(--amber)"; series.forEach(function(s){ if(s.axis==="right") rColor=s.color; });
   var grid="",yl="";
-  var ticks = opts.yTicks || [{v:base},{v:(base+top)/2},{v:top}];
+  var ticks = opts.yTicks || [{v:L.base},{v:(L.base+L.top)/2},{v:L.top}];
   ticks.forEach(function(tk){ var y=Y(tk.v);
     grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
-    yl+='<text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end" font-size="11" fill="var(--muted)">'+(tk.label!=null?tk.label:ylab(tk.v))+'</text>'; });
+    yl+='<text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end" font-size="11" fill="var(--muted)">'+(tk.label!=null?tk.label:ylab(tk.v))+'</text>';
+    if(hasRight){ var frac=1-(y-padT)/(H-padT-padB), rv=R.base+(R.top-R.base)*frac;
+      yl+='<text x="'+(W-padR+6)+'" y="'+(y+4)+'" text-anchor="start" font-size="11" fill="'+rColor+'">'+ylab(rv)+'</text>'; } });
   var paths="";
-  series.forEach(function(s){ if(s.pts.length<2)return;
+  series.forEach(function(s){ if(s.pts.length<2)return; var YS=YF(s);
     if(s.segColor){ // segmentweise Faerbung nach Wert
       for(var q=0;q<s.pts.length-1;q++){ var p0=s.pts[q],p1=s.pts[q+1]; if(p0.v==null||p1.v==null)continue;
-        paths+='<path d="M '+X(p0.t.getTime())+' '+Y(p0.v)+' L '+X(p1.t.getTime())+' '+Y(p1.v)+'" fill="none" stroke="'+s.segColor(p0.v)+'" stroke-width="2" stroke-linejoin="round"/>'; }
+        paths+='<path d="M '+X(p0.t.getTime())+' '+YS(p0.v)+' L '+X(p1.t.getTime())+' '+YS(p1.v)+'" fill="none" stroke="'+s.segColor(p0.v)+'" stroke-width="2" stroke-linejoin="round"/>'; }
     } else { var yb = s.bandFrac!=null ? (padT+(H-padT-padB)*(1-s.bandFrac)) : null;
-      var d="", pen=false; s.pts.forEach(function(p){ if(p.v==null){ pen=false; return; } d+=(pen?" L ":"M ")+X(p.t.getTime())+" "+(yb!=null?yb:Y(p.v)); pen=true; });
+      var d="", pen=false; s.pts.forEach(function(p){ if(p.v==null){ pen=false; return; } d+=(pen?" L ":"M ")+X(p.t.getTime())+" "+(yb!=null?yb:YS(p.v)); pen=true; });
       paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="'+(s.width||2)+'" stroke-linejoin="round" stroke-linecap="round"'+(s.dash?' stroke-dasharray="5 4"':'')+'/>'; } });
   var fill="";
-  if(series.length===1 && base<=0 && series[0].pts.every(function(p){return p.v!=null;})){ var s0=series[0], a="M "+X(s0.pts[0].t.getTime())+" "+Y(0);
+  if(series.length===1 && L.base<=0 && series[0].pts.every(function(p){return p.v!=null;})){ var s0=series[0], a="M "+X(s0.pts[0].t.getTime())+" "+Y(0);
     s0.pts.forEach(function(p){ a+=" L "+X(p.t.getTime())+" "+Y(p.v); });
     a+=" L "+X(s0.pts[s0.pts.length-1].t.getTime())+" "+Y(0)+" Z";
     var gid="g"+Math.random().toString(36).slice(2);
@@ -179,8 +194,9 @@ function lineChart(holder, series, opts){
     var span=tMax-tMin, dd=new Date(tt);
     var lab = span> 26*3600*1000 ? dd.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"}) : dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
     xl+='<text x="'+x+'" y="'+(H-8)+'" text-anchor="middle" font-size="12" fill="var(--muted)">'+lab+'</text>'; }
+  var unit2Lab = hasRight ? '<text x="'+(W-padR+6)+'" y="14" text-anchor="start" font-size="11" fill="'+rColor+'">'+(opts.unit2||"")+'</text>' : "";
   var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+fill+grid+paths+yl+xl+
-    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
+    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text>'+unit2Lab+'<g class="ov" style="display:none"></g></svg>';
   holder.innerHTML='<div class="chart-wrap">'+svgStr+'<div class="tip"></div></div>';
   var wrap=holder.firstChild, svg=wrap.querySelector("svg"), ov=wrap.querySelector(".ov"), tip=wrap.querySelector(".tip");
   var dec=(opts.dec!=null)?opts.dec:1;
@@ -190,9 +206,10 @@ function lineChart(holder, series, opts){
     var t=tMin+(mx-padL)/(W-padL-padR)*(tMax-tMin), dots="", rows="", anyX=null;
     series.forEach(function(s){ if(!s.pts.length||s.bandFrac!=null)return; var best=null,bd=Infinity;
       s.pts.forEach(function(p){ if(p.v==null)return; var dd=Math.abs(p.t.getTime()-t); if(dd<bd){bd=dd;best=p;} });
-      if(best){ var px=X(best.t.getTime()),py=Y(best.v); anyX=px;
+      if(best){ var px=X(best.t.getTime()),py=YF(s)(best.v); anyX=px;
+        var su=(s.axis==="right")?(opts.unit2||""):(opts.unit||""); var sd=(s.dec!=null)?s.dec:dec;
         dots+='<circle cx="'+px+'" cy="'+py+'" r="3.5" fill="'+s.color+'"/>';
-        rows+='<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+s.color+';margin-right:5px"></span>'+fmt(best.v,dec)+' '+(opts.unit||"")+'</div>'; } });
+        rows+='<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+s.color+';margin-right:5px"></span>'+fmt(best.v,sd)+' '+su+'</div>'; } });
     if(anyX===null){ ov.style.display="none"; tip.style.opacity=0; return; }
     ov.innerHTML='<line x1="'+anyX+'" x2="'+anyX+'" y1="'+padT+'" y2="'+(H-padB)+'" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"/>'+dots; ov.style.display="";
     var dd=new Date(t), span=tMax-tMin;
@@ -426,7 +443,7 @@ function simpleView(cfg){
         var series=c.lines.map(function(ln){ var pts=[]; var ff=byChan[String(ln.channel||cfg.channel)]||[]; ff.forEach(function(x){ var raw=num(x[ln.field]);
             var v = ln.derive ? ln.derive(raw) : (raw===null?null:(ln.scale? raw*ln.scale : raw));
             pts.push({t:new Date(x.created_at), v:v}); });
-          return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, bandFrac:ln.bandFrac, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
+          return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, bandFrac:ln.bandFrac, axis:ln.axis, dec:ln.dec, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
         if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null){ vv.push(v); ct.push(new Date(x.created_at)); } });
           if(vv.length>1){ var mn=Math.min.apply(null,vv), mx=Math.max.apply(null,vv), t0=ct[0], t1=ct[ct.length-1];
             series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
@@ -434,7 +451,7 @@ function simpleView(cfg){
         if(c.threshold!=null && f.length){ var t0=new Date(f[0].created_at), t1=new Date(f[f.length-1].created_at);
           series.push({color:"var(--red)",dash:true,pts:[{t:t0,v:c.threshold},{t:t1,v:c.threshold}]}); }
         if(g("ct_"+i)) g("ct_"+i).textContent = lastTs ? "Stand "+relTime(lastTs) : "";
-        lineChart(holder, series, {unit:c.unit, zero:c.zero, padL:c.padL, yMin:c.yMin, yMax:c.yMax, yTicks:c.yTicks});
+        lineChart(holder, series, {unit:c.unit, zero:c.zero, padL:c.padL, yMin:c.yMin, yMax:c.yMax, yTicks:c.yTicks, unit2:c.unit2, zero2:c.zero2, yMin2:c.yMin2, yMax2:c.yMax2});
       });
       if(g("err2"))g("err2").textContent="";
     }).catch(function(){ if(g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
@@ -501,7 +518,7 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", note:"roter Marker = Laden verlangen (< 11 W), zu wenig PV-Überschuss", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)"},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?20:null;}}]}
+    {title:"Ladeleistung", unit:"W", unit2:"kW", note:"roter Marker = Laden verlangen (< 11 W), zu wenig PV-Überschuss · gelb = PV-Leistung (rechte Achse)", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?20:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001,axis:"right",dec:1}]}
   ]});
 
 /* ================= Routing ================= */
