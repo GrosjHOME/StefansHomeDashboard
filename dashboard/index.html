@@ -142,7 +142,7 @@ function api(ch,path,withKey){ var u="https://api.thingspeak.com/channels/"+ch+p
 function lineChart(holder, series, opts){
   opts=opts||{}; var all=[]; series.forEach(function(s){ if(s.bandFrac!=null)return; s.pts.forEach(function(p){ if(p.v!=null) all.push(p); }); });
   if(all.length<2){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
-  var W=1000,H=300,padL=46,padR=12,padT=24,padB=26;
+  var W=1000,H=300,padL=(opts.padL||46),padR=12,padT=24,padB=26;
   var tMin=Math.min.apply(null,all.map(function(p){return p.t.getTime();}));
   var tMax=Math.max.apply(null,all.map(function(p){return p.t.getTime();})); if(tMax===tMin)tMax=tMin+1;
   var vMin=Math.min.apply(null,all.map(function(p){return p.v;}));
@@ -150,13 +150,16 @@ function lineChart(holder, series, opts){
   var base,top;
   if(opts.zero===false){ var pad=(vMax-vMin)*0.1||1; base=Math.floor(vMin-pad); top=Math.ceil(vMax+pad); }
   else { base=0; top=niceMax(vMax); }
+  if(opts.yMin!=null) base=opts.yMin;
+  if(opts.yMax!=null) top=opts.yMax;
   if(top<=base) top=base+1;
   function X(t){ return padL+(W-padL-padR)*((t-tMin)/(tMax-tMin)); }
   function Y(v){ return padT+(H-padT-padB)*(1-(v-base)/(top-base)); }
   var grid="",yl="";
-  [base,(base+top)/2,top].forEach(function(v){ var y=Y(v);
+  var ticks = opts.yTicks || [{v:base},{v:(base+top)/2},{v:top}];
+  ticks.forEach(function(tk){ var y=Y(tk.v);
     grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
-    yl+='<text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end" font-size="12" fill="var(--muted)">'+ylab(v)+'</text>'; });
+    yl+='<text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end" font-size="11" fill="var(--muted)">'+(tk.label!=null?tk.label:ylab(tk.v))+'</text>'; });
   var paths="";
   series.forEach(function(s){ if(s.pts.length<2)return;
     if(s.segColor){ // segmentweise Faerbung nach Wert
@@ -424,7 +427,7 @@ function simpleView(cfg){
         if(c.threshold!=null && f.length){ var t0=new Date(f[0].created_at), t1=new Date(f[f.length-1].created_at);
           series.push({color:"var(--red)",dash:true,pts:[{t:t0,v:c.threshold},{t:t1,v:c.threshold}]}); }
         if(g("ct_"+i)) g("ct_"+i).textContent = lastTs ? "Stand "+relTime(lastTs) : "";
-        lineChart(holder, series, {unit:c.unit, zero:c.zero});
+        lineChart(holder, series, {unit:c.unit, zero:c.zero, padL:c.padL, yMin:c.yMin, yMax:c.yMax, yTicks:c.yTicks});
       });
       if(g("err2"))g("err2").textContent="";
     }).catch(function(){ if(g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
@@ -463,7 +466,7 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
   charts:[
     {title:"Ladeleistung", unit:"kW", lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001},{field:"field7",label:"Geglättet",color:"var(--blue)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
-    {title:"Verbindungsstatus", zero:false, note:"65 = nicht verbunden · 66 = verbunden, lädt nicht · 67 = verbunden, lädt", lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
+    {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, padL:150, yTicks:[{v:65,label:"nicht verbunden"},{v:66,label:"verbunden, lädt nicht"},{v:67,label:"verbunden, lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
   ]});
 
 var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
