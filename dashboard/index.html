@@ -252,7 +252,7 @@ PV.render=function(main){
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
       '<span class="it">— WR 5 · - - - WR 6</span></div><div id="chart-verlust"><div class="chart-empty">wird geladen…</div></div>'+
-      '<div class="note">Tages-Mittel des Tracker-Stroms im Mittagsfenster – zum Erkennen eines schleichenden Rückgangs über Wochen/Monate. Baut sich mit der Zeit auf (der ThingSpeak-Status deckt die jeweils letzten Tage ab).</div></div>'+
+      '<div class="note">Tages-Mittel des Tracker-Stroms im Mittagsfenster (11–13 h) – ein Punkt pro Tag aus dem dedizierten Log-Kanal (volle Historie). Zum Erkennen eines schleichenden Rückgangs über Wochen/Monate; Feld „Mittags-PAC" dient später der Normierung gegen die Einstrahlung.</div></div>'+
     '<footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
   var sp=document.getElementById("seg-power"); if(sp) sp.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.powerMode=b.getAttribute("data-m"); segActive(sp,b); PV.loadPower(); });
   var se=document.getElementById("seg-energy"); if(se) se.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.energyMode=b.getAttribute("data-m"); segActive(se,b); PV.loadEnergy(); });
@@ -303,20 +303,18 @@ PV.load=function(){
     if(g("e-peak")) g("e-peak").textContent=fmt(peak/1000,1);
     if(g("e-sun")) g("e-sun").textContent=fmt(sunMs/3600000,1);
   });
-  var p6=j(api(PV.CH,"/status.json?days=30",true)).then(function(d){
+  // Verlust-Diagnose aus dem dedizierten Log-Kanal (2. Account): pro Tag ein
+  // fertiger Mittags-Mittelwert je Tracker (von der Firmware berechnet).
+  var CH2=3510388, KEY2="0Q2JFTJU0B4NNYQU";
+  var p6=j("https://api.thingspeak.com/channels/"+CH2+"/feeds.json?api_key="+KEY2+"&results=1000").then(function(d){
     var f=(d&&d.feeds)?d.feeds:[]; var holder=g("chart-verlust"); if(!holder)return;
-    var byDay={};
-    f.forEach(function(e){ if(!e.status)return; var dt=new Date(e.created_at), h=dt.getHours(); if(h<11||h>=13)return;
-      var pp=parseStatus(e.status), key=dt.getFullYear()+"-"+dt.getMonth()+"-"+dt.getDate();
-      if(!byDay[key])byDay[key]={dt:new Date(dt.getFullYear(),dt.getMonth(),dt.getDate(),12), s:[[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]};
-      if(pp.I5)for(var a=0;a<3;a++){ byDay[key].s[a][0]+=pp.I5[a]; byDay[key].s[a][1]++; }
-      if(pp.I6)for(var b=0;b<3;b++){ byDay[key].s[3+b][0]+=pp.I6[b]; byDay[key].s[3+b][1]++; } });
-    var days=Object.keys(byDay).map(function(k){return byDay[k];}).sort(function(a,b){return a.dt-b.dt;});
     var cols=["var(--green)","var(--blue)","var(--amber)"], S=[[],[],[],[],[],[]];
-    days.forEach(function(o){ for(var i=0;i<6;i++){ if(o.s[i][1]>0) S[i].push({t:o.dt,v:o.s[i][0]/o.s[i][1]}); } });
+    var flds=["field1","field2","field3","field4","field5","field6"];
+    f.forEach(function(x){ var t=new Date(x.created_at);
+      for(var i=0;i<6;i++){ var v=num(x[flds[i]]); if(v!==null) S[i].push({t:t,v:v}); } });
     var series=[{color:cols[0],pts:S[0]},{color:cols[1],pts:S[1]},{color:cols[2],pts:S[2]},
       {color:cols[0],dash:true,pts:S[3]},{color:cols[1],dash:true,pts:S[4]},{color:cols[2],dash:true,pts:S[5]}].filter(function(s){return s.pts.length>=1;});
-    if(!series.some(function(s){return s.pts.length>=2;})){ holder.innerHTML='<div class="chart-empty">Sammelt Daten – aussagekräftig ab einigen Tagen.</div>'; return; }
+    if(!series.some(function(s){return s.pts.length>=2;})){ holder.innerHTML='<div class="chart-empty">Sammelt Daten – ein Punkt pro Tag (nach 13:00).</div>'; return; }
     lineChart(holder, series, {unit:"A", zero:false});
   });
   Promise.all([p1,p4,p5,p6]).then(function(){ if(errEl())errEl().textContent=""; }).catch(function(){ if(errEl())errEl().textContent="Daten konnten nicht geladen werden – nächster Versuch in 60 s."; });
