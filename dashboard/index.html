@@ -101,7 +101,7 @@
       <a data-view="pv">☀️ PV</a>
       <a data-view="wallbox">🚗 Wallbox</a>
       <a data-view="heizung">🔥 Heizung</a>
-      <a data-view="boiler">♨️ Boiler</a>
+      <a data-view="boiler"><svg viewBox="0 0 24 24" width="17" height="17" style="vertical-align:-4px"><rect x="5.5" y="4" width="13" height="17" rx="5" fill="#2b83c7"/><rect x="10.5" y="1.5" width="3" height="3" rx="1" fill="#7fb2dd"/><path d="M12 9.5c1.7 2.1 2.6 3.4 2.6 4.7a2.6 2.6 0 1 1-5.2 0c0-1.3 .9-2.6 2.6-4.7z" fill="#eaf4fb"/></svg> Boiler</a>
     </nav>
     <div class="navright">
       <a class="link-old" href="../thingspeak-dashboard/index.html" title="Original mit ThingSpeak-iframes">ThingSpeak</a>
@@ -482,7 +482,7 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
     {title:"Holzschnitzel-Füllstand", unit:"%", lines:[{field:"field4",label:"Füllstand",color:"var(--green)"}]}
   ]});
 
-var BOILER=simpleView({ channel:502977, icon:"♨️", title:"Boiler",
+var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22" height="22" style="vertical-align:-4px"><rect x="5.5" y="4" width="13" height="17" rx="5" fill="#2b83c7"/><rect x="10.5" y="1.5" width="3" height="3" rx="1" fill="#7fb2dd"/><path d="M12 9.5c1.7 2.1 2.6 3.4 2.6 4.7a2.6 2.6 0 1 1-5.2 0c0-1.3 .9-2.6 2.6-4.7z" fill="#eaf4fb"/></svg>', title:"Boiler",
   kpis:[
     {field:"field1",label:"Temperatur mitte",unit:"°C",dec:1},
     {field:"field2",label:"Temperatur unten",unit:"°C",dec:1},
@@ -491,7 +491,7 @@ var BOILER=simpleView({ channel:502977, icon:"♨️", title:"Boiler",
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", note:"roter Marker (20 W) = Laden verlangen (< 11 W, zu wenig Sonne)", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)"},{field:"field3",label:"Laden verlangen",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?20:null;}}]}
+    {title:"Ladeleistung", unit:"W", note:"roter Marker = Laden verlangen (< 11 W), zu wenig PV-Überschuss", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)"},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?20:null;}}]}
   ]});
 
 /* ================= Routing ================= */
