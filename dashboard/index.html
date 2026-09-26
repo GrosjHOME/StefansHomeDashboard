@@ -412,11 +412,18 @@ function simpleView(cfg){
 
   // Charts gemaess Zeitraum (Heute: days=1 / 7 Tage: days=7)
   function loadCharts(){
-    j(api(cfg.channel, periodUrl(), false)).then(function(d){
-      var f=(d&&d.feeds)?d.feeds:[];
+    // Alle Kanaele sammeln, die von Chart-Linien gebraucht werden (Standard: cfg.channel).
+    var chans={}; chans[String(cfg.channel)]=cfg.channel;
+    cfg.charts.forEach(function(c){ (c.lines||[]).forEach(function(ln){ if(ln.channel) chans[String(ln.channel)]=ln.channel; }); });
+    var keys=Object.keys(chans);
+    Promise.all(keys.map(function(k){ var ch=chans[k];
+      return j(api(ch, periodUrl(), String(ch)==="172430")).then(function(d){ return {k:k, feeds:(d&&d.feeds)?d.feeds:[]}; }); }))
+    .then(function(results){
+      var byChan={}; results.forEach(function(r){ byChan[r.k]=r.feeds; });
+      var f=byChan[String(cfg.channel)]||[];
       var lastTs = f.length ? new Date(f[f.length-1].created_at) : null;
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
-        var series=c.lines.map(function(ln){ var pts=[]; f.forEach(function(x){ var raw=num(x[ln.field]);
+        var series=c.lines.map(function(ln){ var pts=[]; var ff=byChan[String(ln.channel||cfg.channel)]||[]; ff.forEach(function(x){ var raw=num(x[ln.field]);
             var v = ln.derive ? ln.derive(raw) : (raw===null?null:(ln.scale? raw*ln.scale : raw));
             pts.push({t:new Date(x.created_at), v:v}); });
           return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, bandFrac:ln.bandFrac, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
@@ -464,7 +471,7 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
     {field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"verbunden, lädt":s===66?"verbunden, lädt nicht":s===65?"nicht verbunden":("Status "+s);}}
   ],
   charts:[
-    {title:"Ladeleistung", unit:"kW", lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001},{field:"field7",label:"Geglättet",color:"var(--blue)",scale:0.001}]},
+    {title:"Ladeleistung", unit:"kW", lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001},{field:"field7",label:"Geglättet",color:"var(--blue)",scale:0.001},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
     {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, padL:150, yTicks:[{v:65,label:"nicht verbunden"},{v:66,label:"verbunden, lädt nicht"},{v:67,label:"verbunden, lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
   ]});
