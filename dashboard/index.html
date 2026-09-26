@@ -487,7 +487,7 @@ var BOILER=simpleView({ channel:502977, icon:"♨️", title:"Boiler",
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", note:"rot = Trickle-Laden (≤ 50 W, zu wenig Sonne) · grün = echtes Laden", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",segColor:function(v){return (v>0 && v<=50)?"var(--red)":"var(--green)";}}]}
+    {title:"Ladeleistung", unit:"W", note:"rot = Trickle-Laden (< 11 W, zu wenig Sonne) · grün = echtes Laden", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",segColor:function(v){return (v>0 && v<11)?"var(--red)":"var(--green)";}}]}
   ]});
 
 /* ================= Routing ================= */
