@@ -140,7 +140,7 @@ function api(ch,path,withKey){ var u="https://api.thingspeak.com/channels/"+ch+p
 
 /* Zeit-Liniendiagramm (1..n Serien) */
 function lineChart(holder, series, opts){
-  opts=opts||{}; var all=[]; series.forEach(function(s){ all=all.concat(s.pts); });
+  opts=opts||{}; var all=[]; series.forEach(function(s){ if(s.bandFrac!=null)return; s.pts.forEach(function(p){ if(p.v!=null) all.push(p); }); });
   if(all.length<2){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
   var W=1000,H=300,padL=46,padR=12,padT=24,padB=26;
   var tMin=Math.min.apply(null,all.map(function(p){return p.t.getTime();}));
@@ -159,13 +159,14 @@ function lineChart(holder, series, opts){
     yl+='<text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end" font-size="12" fill="var(--muted)">'+ylab(v)+'</text>'; });
   var paths="";
   series.forEach(function(s){ if(s.pts.length<2)return;
-    if(s.segColor){ // segmentweise Faerbung nach Wert (z. B. Trickle-Laden rot)
-      for(var q=0;q<s.pts.length-1;q++){ var p0=s.pts[q],p1=s.pts[q+1];
+    if(s.segColor){ // segmentweise Faerbung nach Wert
+      for(var q=0;q<s.pts.length-1;q++){ var p0=s.pts[q],p1=s.pts[q+1]; if(p0.v==null||p1.v==null)continue;
         paths+='<path d="M '+X(p0.t.getTime())+' '+Y(p0.v)+' L '+X(p1.t.getTime())+' '+Y(p1.v)+'" fill="none" stroke="'+s.segColor(p0.v)+'" stroke-width="2" stroke-linejoin="round"/>'; }
-    } else { var d=""; s.pts.forEach(function(p,i){ d+=(i?" L ":"M ")+X(p.t.getTime())+" "+Y(p.v); });
-      paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linejoin="round"'+(s.dash?' stroke-dasharray="5 4"':'')+'/>'; } });
+    } else { var yb = s.bandFrac!=null ? (padT+(H-padT-padB)*(1-s.bandFrac)) : null;
+      var d="", pen=false; s.pts.forEach(function(p){ if(p.v==null){ pen=false; return; } d+=(pen?" L ":"M ")+X(p.t.getTime())+" "+(yb!=null?yb:Y(p.v)); pen=true; });
+      paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="'+(s.width||2)+'" stroke-linejoin="round" stroke-linecap="round"'+(s.dash?' stroke-dasharray="5 4"':'')+'/>'; } });
   var fill="";
-  if(series.length===1 && base<=0){ var s0=series[0], a="M "+X(s0.pts[0].t.getTime())+" "+Y(0);
+  if(series.length===1 && base<=0 && series[0].pts.every(function(p){return p.v!=null;})){ var s0=series[0], a="M "+X(s0.pts[0].t.getTime())+" "+Y(0);
     s0.pts.forEach(function(p){ a+=" L "+X(p.t.getTime())+" "+Y(p.v); });
     a+=" L "+X(s0.pts[s0.pts.length-1].t.getTime())+" "+Y(0)+" Z";
     var gid="g"+Math.random().toString(36).slice(2);
@@ -184,8 +185,8 @@ function lineChart(holder, series, opts){
     var rect=svg.getBoundingClientRect(), mx=(ev.clientX-rect.left)/rect.width*W;
     if(mx<padL||mx>W-padR){ ov.style.display="none"; tip.style.opacity=0; return; }
     var t=tMin+(mx-padL)/(W-padL-padR)*(tMax-tMin), dots="", rows="", anyX=null;
-    series.forEach(function(s){ if(!s.pts.length)return; var best=null,bd=Infinity;
-      s.pts.forEach(function(p){ var dd=Math.abs(p.t.getTime()-t); if(dd<bd){bd=dd;best=p;} });
+    series.forEach(function(s){ if(!s.pts.length||s.bandFrac!=null)return; var best=null,bd=Infinity;
+      s.pts.forEach(function(p){ if(p.v==null)return; var dd=Math.abs(p.t.getTime()-t); if(dd<bd){bd=dd;best=p;} });
       if(best){ var px=X(best.t.getTime()),py=Y(best.v); anyX=px;
         dots+='<circle cx="'+px+'" cy="'+py+'" r="3.5" fill="'+s.color+'"/>';
         rows+='<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+s.color+';margin-right:5px"></span>'+fmt(best.v,dec)+' '+(opts.unit||"")+'</div>'; } });
@@ -412,7 +413,10 @@ function simpleView(cfg){
       var f=(d&&d.feeds)?d.feeds:[];
       var lastTs = f.length ? new Date(f[f.length-1].created_at) : null;
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
-        var series=c.lines.map(function(ln){ var pts=[]; f.forEach(function(x){ var v=num(x[ln.field]); if(v!==null) pts.push({t:new Date(x.created_at), v: ln.scale? v*ln.scale : v}); }); return {color:ln.color, dash:ln.dash, segColor:ln.segColor, pts:downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
+        var series=c.lines.map(function(ln){ var pts=[]; f.forEach(function(x){ var raw=num(x[ln.field]);
+            var v = ln.derive ? ln.derive(raw) : (raw===null?null:(ln.scale? raw*ln.scale : raw));
+            pts.push({t:new Date(x.created_at), v:v}); });
+          return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, bandFrac:ln.bandFrac, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
         if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null){ vv.push(v); ct.push(new Date(x.created_at)); } });
           if(vv.length>1){ var mn=Math.min.apply(null,vv), mx=Math.max.apply(null,vv), t0=ct[0], t1=ct[ct.length-1];
             series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
@@ -487,7 +491,7 @@ var BOILER=simpleView({ channel:502977, icon:"♨️", title:"Boiler",
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", note:"rot = Trickle-Laden (< 11 W, zu wenig Sonne) · grün = echtes Laden", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",segColor:function(v){return (v>0 && v<11)?"var(--red)":"var(--green)";}}]}
+    {title:"Ladeleistung", unit:"W", note:"roter Streifen (oben) = Trickle-Laden (< 11 W, zu wenig Sonne)", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)"},{field:"field3",label:"Trickle (< 11 W)",color:"var(--red)",width:5,bandFrac:0.9,derive:function(v){return (v>0 && v<11)?1:null;}}]}
   ]});
 
 /* ================= Routing ================= */
