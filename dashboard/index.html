@@ -519,7 +519,7 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", unit2:"kW", yMax2:7, note:"roter Marker = Laden verlangen (< 11 W), zu wenig PV-Überschuss · gelb = PV-Leistung (rechte Achse, bis 7 kW)", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?20:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001,axis:"right",dec:1}]}
+    {title:"Ladeleistung", unit:"W", yMax:7000, note:"roter Marker = Laden verlangen (< 11 W), zu wenig PV-Überschuss · gelb = PV-Leistung (gleiche Achse, bis 7000 W gekappt)", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?150:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0}]}
   ]});
 
 /* ================= Routing ================= */
