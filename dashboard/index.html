@@ -99,7 +99,7 @@
     <div class="brand">⚡ SHO Energie</div>
     <nav class="tabs" id="tabs">
       <a data-view="pv">☀️ PV</a>
-      <a data-view="wallbox">🔌 Wallbox</a>
+      <a data-view="wallbox">🚗 Wallbox</a>
       <a data-view="heizung">🔥 Heizung</a>
       <a data-view="boiler">♨️ Boiler</a>
     </nav>
@@ -130,6 +130,11 @@ function fmt(v,d){ return v===null?"–":v.toLocaleString("de-CH",{minimumFracti
 function relTime(dt){ var s=Math.round((Date.now()-dt.getTime())/1000); if(s<90)return "vor "+s+" s"; var m=Math.round(s/60); if(m<90)return "vor "+m+" min"; var h=Math.round(m/60); if(h<48)return "vor "+h+" h"; return "vor "+Math.round(h/24)+" T"; }
 function niceMax(m){ if(m<=0)return 1; var p=Math.pow(10,Math.floor(Math.log10(m))); var c=[1,1.5,2,2.5,3,4,5,6,8,10]; for(var i=0;i<c.length;i++){ if(c[i]*p>=m) return c[i]*p; } return 10*p; }
 function ylab(v){ return (Math.abs(v-Math.round(v))<1e-9)?String(Math.round(v)):v.toFixed(1); }
+// Ampelfarbe fuer ein Verhaeltnis 0..1: rot -> gelb/amber -> gruen
+function ratioColor(r){ r=Math.max(0,Math.min(1,isFinite(r)?r:0));
+  var stops=[[214,69,69],[245,166,35],[46,158,91]]; // rot, amber, gruen
+  var x=r*2, i=Math.min(1,Math.floor(x)), f=x-i, a=stops[i], b=stops[i+1];
+  return "rgb("+Math.round(a[0]+(b[0]-a[0])*f)+","+Math.round(a[1]+(b[1]-a[1])*f)+","+Math.round(a[2]+(b[2]-a[2])*f)+")"; }
 function el(html){ var d=document.createElement("div"); d.innerHTML=html; return d.firstElementChild; }
 function api(ch,path,withKey){ var u="https://api.thingspeak.com/channels/"+ch+path; if(withKey) u+=(path.indexOf("?")>=0?"&":"?")+"api_key=6GIAGINL9VN4CTL8"; return u; }
 
@@ -153,8 +158,12 @@ function lineChart(holder, series, opts){
     grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
     yl+='<text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end" font-size="12" fill="var(--muted)">'+ylab(v)+'</text>'; });
   var paths="";
-  series.forEach(function(s){ if(s.pts.length<2)return; var d=""; s.pts.forEach(function(p,i){ d+=(i?" L ":"M ")+X(p.t.getTime())+" "+Y(p.v); });
-    paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linejoin="round"'+(s.dash?' stroke-dasharray="5 4"':'')+'/>'; });
+  series.forEach(function(s){ if(s.pts.length<2)return;
+    if(s.segColor){ // segmentweise Faerbung nach Wert (z. B. Trickle-Laden rot)
+      for(var q=0;q<s.pts.length-1;q++){ var p0=s.pts[q],p1=s.pts[q+1];
+        paths+='<path d="M '+X(p0.t.getTime())+' '+Y(p0.v)+' L '+X(p1.t.getTime())+' '+Y(p1.v)+'" fill="none" stroke="'+s.segColor(p0.v)+'" stroke-width="2" stroke-linejoin="round"/>'; }
+    } else { var d=""; s.pts.forEach(function(p,i){ d+=(i?" L ":"M ")+X(p.t.getTime())+" "+Y(p.v); });
+      paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linejoin="round"'+(s.dash?' stroke-dasharray="5 4"':'')+'/>'; } });
   var fill="";
   if(series.length===1 && base<=0){ var s0=series[0], a="M "+X(s0.pts[0].t.getTime())+" "+Y(0);
     s0.pts.forEach(function(p){ a+=" L "+X(p.t.getTime())+" "+Y(p.v); });
@@ -374,6 +383,15 @@ function simpleView(cfg){
         el.textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0);
         if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : ""; });
       if(g("head-meta")&&last.created_at) g("head-meta").textContent="Aktualisiert "+relTime(new Date(last.created_at));
+      // Ampel-Faerbung: KPI-Wert nach Verhaeltnis aktuelle PV-Leistung / Schwelle
+      // (rot = keine PV-Leistung, gruen = Schwelle erreicht)
+      if(cfg.kpis.some(function(k){return k.colorPv;})){
+        j(api(172430,"/feeds.json?results=5",true)).then(function(pd){
+          var pf=(pd&&pd.feeds)?pd.feeds:[], pv=null; for(var i=pf.length-1;i>=0;i--){ var vv=num(pf[i].field1); if(vv!==null){pv=vv;break;} }
+          cfg.kpis.forEach(function(k,ix){ if(!k.colorPv)return; var thr=L(k.field), el=g("kpi_"+ix); if(!el||thr===null||!thr||pv===null)return;
+            el.style.color=ratioColor(pv/thr); });
+        }).catch(function(){});
+      }
     }).catch(function(){});
     // KPIs aus anderen Kanaelen (z. B. HSH-Auslastung liegt im Wallbox-Kanal 172228)
     var extra={};
@@ -394,7 +412,7 @@ function simpleView(cfg){
       var f=(d&&d.feeds)?d.feeds:[];
       var lastTs = f.length ? new Date(f[f.length-1].created_at) : null;
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
-        var series=c.lines.map(function(ln){ var pts=[]; f.forEach(function(x){ var v=num(x[ln.field]); if(v!==null) pts.push({t:new Date(x.created_at), v: ln.scale? v*ln.scale : v}); }); return {color:ln.color, dash:ln.dash, pts:downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
+        var series=c.lines.map(function(ln){ var pts=[]; f.forEach(function(x){ var v=num(x[ln.field]); if(v!==null) pts.push({t:new Date(x.created_at), v: ln.scale? v*ln.scale : v}); }); return {color:ln.color, dash:ln.dash, segColor:ln.segColor, pts:downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
         if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null){ vv.push(v); ct.push(new Date(x.created_at)); } });
           if(vv.length>1){ var mn=Math.min.apply(null,vv), mx=Math.max.apply(null,vv), t0=ct[0], t1=ct[ct.length-1];
             series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
@@ -416,7 +434,7 @@ function simpleView(cfg){
         var items=(c.lines||[]).map(function(ln){ return '<span class="it"><span class="sw" style="border-color:'+ln.color+(ln.dash?';border-top-style:dashed':'')+'"></span>'+(ln.label||'')+'</span>'; });
         if(c.minmaxField) items.push('<span class="it"><span class="sw" style="border-color:var(--muted);border-top-style:dashed"></span>Min/Max</span>');
         var leg = (c.lines && (c.lines.length>1 || c.minmaxField)) ? '<div class="legend">'+items.join("")+'</div>' : "";
-        return '<div class="panel"><h2>'+c.title+' <span class="tag" id="ct_'+i+'"></span></h2>'+leg+'<div id="chart_'+i+'"><div class="chart-empty">wird geladen…</div></div></div>';
+        return '<div class="panel"><h2>'+c.title+' <span class="tag" id="ct_'+i+'"></span></h2>'+leg+'<div id="chart_'+i+'"><div class="chart-empty">wird geladen…</div></div>'+(c.note?'<div class="note">'+c.note+'</div>':'')+'</div>';
       }).join("");
       main.innerHTML='<div class="wrap"><div class="view-head"><h1>'+cfg.icon+" "+cfg.title+'</h1>'+
         '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
@@ -431,16 +449,17 @@ function simpleView(cfg){
   };
 }
 
-var WALLBOX=simpleView({ channel:172228, icon:"🔌", title:"Wallbox",
+var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
   kpis:[
     {field:"field4",label:"Aktuelle Ladeleistung",unit:"kW",dec:1,scale:0.001},
     {field:"field7",label:"Ladeleistung geglättet",unit:"kW",dec:1,scale:0.001},
     {field:"field6",label:"Ladestrom-Begrenzung",unit:"A",dec:1},
-    {field:"field8",label:"Verbindung",map:function(v){return v>=1?"verbunden":"getrennt";}}
+    {field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"verbunden, lädt":s===66?"verbunden, lädt nicht":s===65?"nicht verbunden":("Status "+s);}}
   ],
   charts:[
     {title:"Ladeleistung", unit:"kW", lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.001},{field:"field7",label:"Geglättet",color:"var(--blue)",scale:0.001}]},
-    {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]}
+    {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
+    {title:"Verbindungsstatus", zero:false, note:"65 = nicht verbunden · 66 = verbunden, lädt nicht · 67 = verbunden, lädt", lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
   ]});
 
 var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
@@ -464,11 +483,11 @@ var BOILER=simpleView({ channel:502977, icon:"♨️", title:"Boiler",
     {field:"field1",label:"Temperatur mitte",unit:"°C",dec:1},
     {field:"field2",label:"Temperatur unten",unit:"°C",dec:1},
     {field:"field3",label:"Ladeleistung",unit:"W",dec:0},
-    {field:"field4",label:"Einschaltschwelle",unit:"W",dec:0}
+    {field:"field4",label:"Einschaltschwelle",unit:"W",dec:0,colorPv:true}
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)"}]}
+    {title:"Ladeleistung", unit:"W", note:"rot = Trickle-Laden (≤ 50 W, zu wenig Sonne) · grün = echtes Laden", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",segColor:function(v){return (v>0 && v<=50)?"var(--red)":"var(--green)";}}]}
   ]});
 
 /* ================= Routing ================= */
