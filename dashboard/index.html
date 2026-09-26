@@ -154,8 +154,28 @@ function lineChart(holder, series, opts){
     var span=tMax-tMin, dd=new Date(tt);
     var lab = span> 26*3600*1000 ? dd.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"}) : dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
     xl+='<text x="'+x+'" y="'+(H-8)+'" text-anchor="middle" font-size="12" fill="var(--muted)">'+lab+'</text>'; }
-  holder.innerHTML='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+fill+grid+paths+yl+xl+
-    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text></svg>';
+  var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+fill+grid+paths+yl+xl+
+    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
+  holder.innerHTML='<div class="chart-wrap">'+svgStr+'<div class="tip"></div></div>';
+  var wrap=holder.firstChild, svg=wrap.querySelector("svg"), ov=wrap.querySelector(".ov"), tip=wrap.querySelector(".tip");
+  var dec=(opts.dec!=null)?opts.dec:1;
+  svg.addEventListener("mousemove",function(ev){
+    var rect=svg.getBoundingClientRect(), mx=(ev.clientX-rect.left)/rect.width*W;
+    if(mx<padL||mx>W-padR){ ov.style.display="none"; tip.style.opacity=0; return; }
+    var t=tMin+(mx-padL)/(W-padL-padR)*(tMax-tMin), dots="", rows="", anyX=null;
+    series.forEach(function(s){ if(!s.pts.length)return; var best=null,bd=Infinity;
+      s.pts.forEach(function(p){ var dd=Math.abs(p.t.getTime()-t); if(dd<bd){bd=dd;best=p;} });
+      if(best){ var px=X(best.t.getTime()),py=Y(best.v); anyX=px;
+        dots+='<circle cx="'+px+'" cy="'+py+'" r="3.5" fill="'+s.color+'"/>';
+        rows+='<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+s.color+';margin-right:5px"></span>'+fmt(best.v,dec)+' '+(opts.unit||"")+'</div>'; } });
+    if(anyX===null){ ov.style.display="none"; tip.style.opacity=0; return; }
+    ov.innerHTML='<line x1="'+anyX+'" x2="'+anyX+'" y1="'+padT+'" y2="'+(H-padB)+'" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"/>'+dots; ov.style.display="";
+    var dd=new Date(t), span=tMax-tMin;
+    var hdr= span>26*3600*1000 ? dd.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"})+" "+dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"}) : dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
+    tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+hdr+'</div>'+rows;
+    var px=anyX/W*rect.width; tip.style.left=Math.max(0,Math.min(rect.width-tip.offsetWidth-4, px+10))+"px"; tip.style.top=Math.max(0,(ev.clientY-rect.top)-10)+"px"; tip.style.opacity=1;
+  });
+  svg.addEventListener("mouseleave",function(){ ov.style.display="none"; tip.style.opacity=0; });
 }
 /* Balkendiagramm */
 function barChart(holder, bars, opts){
@@ -172,8 +192,19 @@ function barChart(holder, bars, opts){
     r+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+h+'" rx="3" fill="'+(opts.color||"var(--green)")+'"/>';
     r+='<text x="'+(x+bw/2)+'" y="'+(y-4)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+fmt(b.v,0)+'</text>';
     r+='<text x="'+(x+bw/2)+'" y="'+(H-24)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+b.label+'</text>'; });
-  holder.innerHTML='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
-    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text></svg>';
+  var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
+    '<text x="6" y="14" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
+  holder.innerHTML='<div class="chart-wrap">'+svgStr+'<div class="tip"></div></div>';
+  var wrap=holder.firstChild, svg=wrap.querySelector("svg"), ov=wrap.querySelector(".ov"), tip=wrap.querySelector(".tip");
+  svg.addEventListener("mousemove",function(ev){
+    var rect=svg.getBoundingClientRect(), mx=(ev.clientX-rect.left)/rect.width*W, idx=Math.floor((mx-padL)/slot);
+    if(mx<padL||idx<0||idx>=n){ ov.style.display="none"; tip.style.opacity=0; return; }
+    var b=bars[idx], bx=padL+slot*idx+(slot-bw)/2;
+    ov.innerHTML='<rect x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+(H-padT-padB)+'" fill="var(--ink)" opacity="0.06"/>'; ov.style.display="";
+    tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+b.label+'</div><div>'+fmt(b.v,0)+' '+(opts.unit||"")+'</div>';
+    var px=(bx+bw/2)/W*rect.width; tip.style.left=Math.max(0,Math.min(rect.width-tip.offsetWidth-4, px+8))+"px"; tip.style.top="6px"; tip.style.opacity=1;
+  });
+  svg.addEventListener("mouseleave",function(){ ov.style.display="none"; tip.style.opacity=0; });
 }
 function parseStatus(s){ var o={},re=/([UI])([56])=([\d.]+)\/([\d.]+)\/([\d.]+)/g,m; while((m=re.exec(s))){ o[m[1]+m[2]]=[parseFloat(m[3]),parseFloat(m[4]),parseFloat(m[5])]; } return o; }
 function downsample(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)), out=[]; for(var i=0;i<arr.length;i+=st) out.push(arr[i]); if(arr.length && out[out.length-1]!==arr[arr.length-1]) out.push(arr[arr.length-1]); return out; }
