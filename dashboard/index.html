@@ -164,8 +164,9 @@ function lineChart(holder, series, opts){
   var L=scaleFor(allL, opts.zero, opts.yMin, opts.yMax);
   var R=scaleFor(allR, opts.zero2, opts.yMin2, opts.yMax2);
   function X(t){ return padL+(W-padL-padR)*((t-tMin)/(tMax-tMin)); }
-  function Y(v){ return padT+(H-padT-padB)*(1-(v-L.base)/(L.top-L.base)); }
-  function Y2(v){ return padT+(H-padT-padB)*(1-(v-R.base)/(R.top-R.base)); }
+  function clampF(f){ return f<0?0:(f>1?1:f); }
+  function Y(v){ return padT+(H-padT-padB)*(1-clampF((v-L.base)/(L.top-L.base))); }
+  function Y2(v){ return padT+(H-padT-padB)*(1-clampF((v-R.base)/(R.top-R.base))); }
   function YF(s){ return (s.axis==="right")?Y2:Y; }
   var rColor="var(--amber)"; series.forEach(function(s){ if(s.axis==="right") rColor=s.color; });
   var grid="",yl="";
@@ -488,7 +489,7 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
     {field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"verbunden, lädt":s===66?"verbunden, lädt nicht":s===65?"nicht verbunden":("Status "+s);}}
   ],
   charts:[
-    {title:"Ladeleistung", unit:"kW", lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001},{field:"field7",label:"Geglättet",color:"var(--blue)",scale:0.001},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
+    {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001},{field:"field7",label:"Geglättet",color:"var(--blue)",scale:0.001},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
     {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, padL:150, yTicks:[{v:65,label:"nicht verbunden"},{v:66,label:"verbunden, lädt nicht"},{v:67,label:"verbunden, lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
   ]});
@@ -518,7 +519,7 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", unit2:"kW", note:"roter Marker = Laden verlangen (< 11 W), zu wenig PV-Überschuss · gelb = PV-Leistung (rechte Achse)", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?20:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001,axis:"right",dec:1}]}
+    {title:"Ladeleistung", unit:"W", unit2:"kW", yMax2:7, note:"roter Marker = Laden verlangen (< 11 W), zu wenig PV-Überschuss · gelb = PV-Leistung (rechte Achse, bis 7 kW)", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?20:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001,axis:"right",dec:1}]}
   ]});
 
 /* ================= Routing ================= */
