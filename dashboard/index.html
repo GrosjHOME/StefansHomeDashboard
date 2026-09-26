@@ -99,7 +99,7 @@
     <div class="brand">⚡ SHO Energie</div>
     <nav class="tabs" id="tabs">
       <a data-view="pv">☀️ PV</a>
-      <a data-view="wallbox">🔌 Wallbox</a>
+      <a data-view="wallbox">🚗 Wallbox</a>
       <a data-view="heizung">🔥 Heizung</a>
       <a data-view="boiler">♨️ Boiler</a>
     </nav>
@@ -158,8 +158,12 @@ function lineChart(holder, series, opts){
     grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
     yl+='<text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end" font-size="12" fill="var(--muted)">'+ylab(v)+'</text>'; });
   var paths="";
-  series.forEach(function(s){ if(s.pts.length<2)return; var d=""; s.pts.forEach(function(p,i){ d+=(i?" L ":"M ")+X(p.t.getTime())+" "+Y(p.v); });
-    paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linejoin="round"'+(s.dash?' stroke-dasharray="5 4"':'')+'/>'; });
+  series.forEach(function(s){ if(s.pts.length<2)return;
+    if(s.segColor){ // segmentweise Faerbung nach Wert (z. B. Trickle-Laden rot)
+      for(var q=0;q<s.pts.length-1;q++){ var p0=s.pts[q],p1=s.pts[q+1];
+        paths+='<path d="M '+X(p0.t.getTime())+' '+Y(p0.v)+' L '+X(p1.t.getTime())+' '+Y(p1.v)+'" fill="none" stroke="'+s.segColor(p0.v)+'" stroke-width="2" stroke-linejoin="round"/>'; }
+    } else { var d=""; s.pts.forEach(function(p,i){ d+=(i?" L ":"M ")+X(p.t.getTime())+" "+Y(p.v); });
+      paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linejoin="round"'+(s.dash?' stroke-dasharray="5 4"':'')+'/>'; } });
   var fill="";
   if(series.length===1 && base<=0){ var s0=series[0], a="M "+X(s0.pts[0].t.getTime())+" "+Y(0);
     s0.pts.forEach(function(p){ a+=" L "+X(p.t.getTime())+" "+Y(p.v); });
@@ -408,7 +412,7 @@ function simpleView(cfg){
       var f=(d&&d.feeds)?d.feeds:[];
       var lastTs = f.length ? new Date(f[f.length-1].created_at) : null;
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
-        var series=c.lines.map(function(ln){ var pts=[]; f.forEach(function(x){ var v=num(x[ln.field]); if(v!==null) pts.push({t:new Date(x.created_at), v: ln.scale? v*ln.scale : v}); }); return {color:ln.color, dash:ln.dash, pts:downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
+        var series=c.lines.map(function(ln){ var pts=[]; f.forEach(function(x){ var v=num(x[ln.field]); if(v!==null) pts.push({t:new Date(x.created_at), v: ln.scale? v*ln.scale : v}); }); return {color:ln.color, dash:ln.dash, segColor:ln.segColor, pts:downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
         if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null){ vv.push(v); ct.push(new Date(x.created_at)); } });
           if(vv.length>1){ var mn=Math.min.apply(null,vv), mx=Math.max.apply(null,vv), t0=ct[0], t1=ct[ct.length-1];
             series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
@@ -445,7 +449,7 @@ function simpleView(cfg){
   };
 }
 
-var WALLBOX=simpleView({ channel:172228, icon:"🔌", title:"Wallbox",
+var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
   kpis:[
     {field:"field4",label:"Aktuelle Ladeleistung",unit:"kW",dec:1,scale:0.001},
     {field:"field7",label:"Ladeleistung geglättet",unit:"kW",dec:1,scale:0.001},
@@ -483,7 +487,7 @@ var BOILER=simpleView({ channel:502977, icon:"♨️", title:"Boiler",
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)"}]}
+    {title:"Ladeleistung", unit:"W", note:"rot = Trickle-Laden (≤ 50 W, zu wenig Sonne) · grün = echtes Laden", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",segColor:function(v){return (v>0 && v<=50)?"var(--red)":"var(--green)";}}]}
   ]});
 
 /* ================= Routing ================= */
