@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PV-Anlage Wittenbach</title>
+<style>
+  :root{
+    --bg:#eef2f5; --card:#ffffff; --ink:#1f2933; --muted:#6b7280;
+    --line:#e3e8ee; --amber:#f5a623; --green:#2e9e5b; --blue:#2b83c7;
+    --shadow:0 1px 3px rgba(20,30,40,.10), 0 1px 2px rgba(20,30,40,.06);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    font-size:15px; line-height:1.4;
+  }
+  .wrap{max-width:1100px; margin:0 auto; padding:14px 16px 28px;}
+  header.top{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    flex-wrap:wrap; margin-bottom:16px;
+  }
+  header.top h1{font-size:1.35rem; margin:0; display:flex; align-items:center; gap:8px;}
+  .sun{font-size:1.4rem;}
+  .meta{font-size:.82rem; color:var(--muted); text-align:right;}
+  .dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle;}
+  .dot.ok{background:var(--green);} .dot.bad{background:#d64545;} .dot.na{background:#b0b8c0;}
+
+  /* Hero – aktuelle Leistung */
+  .hero{
+    background:var(--card); border-radius:14px; box-shadow:var(--shadow);
+    padding:18px 20px; margin-bottom:16px;
+  }
+  .hero .lbl{color:var(--muted); font-size:.85rem; text-transform:uppercase; letter-spacing:.04em;}
+  .hero .val{font-size:2.8rem; font-weight:700; line-height:1.1; margin:2px 0 6px;}
+  .hero .val small{font-size:1.1rem; font-weight:600; color:var(--muted);}
+  .bar{height:12px; border-radius:6px; background:var(--line); overflow:hidden;}
+  .bar > span{display:block; height:100%; border-radius:6px;
+    background:linear-gradient(90deg,var(--green),var(--amber)); transition:width .6s ease;}
+  .bar-scale{display:flex; justify-content:space-between; font-size:.72rem; color:var(--muted); margin-top:3px;}
+
+  /* KPI-Kacheln */
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:16px;}
+  .kpi{background:var(--card); border-radius:12px; box-shadow:var(--shadow); padding:14px 16px;}
+  .kpi .k{color:var(--muted); font-size:.8rem; margin-bottom:4px;}
+  .kpi .v{font-size:1.45rem; font-weight:700;}
+  .kpi .v small{font-size:.8rem; font-weight:600; color:var(--muted);}
+
+  /* Panel */
+  .panel{background:var(--card); border-radius:14px; box-shadow:var(--shadow); padding:16px 18px; margin-bottom:16px;}
+  .panel h2{font-size:1rem; margin:0 0 12px; display:flex; align-items:center; gap:8px;}
+  .panel h2 .tag{font-size:.7rem; font-weight:600; color:var(--muted); background:var(--bg); padding:2px 8px; border-radius:20px;}
+
+  svg.chart{width:100%; height:auto; display:block;}
+  .chart-empty{color:var(--muted); font-size:.9rem; padding:20px 0; text-align:center;}
+
+  /* Tracker-Tabelle */
+  table{width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums;}
+  th,td{padding:8px 10px; text-align:right; border-bottom:1px solid var(--line);}
+  th:first-child,td:first-child{text-align:left;}
+  thead th{font-size:.78rem; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em;}
+  tbody tr:last-child td{border-bottom:none;}
+  tr.sum td{font-weight:700; border-top:2px solid var(--line);}
+  .wr-head{font-weight:700; color:var(--blue);}
+  .note{font-size:.8rem; color:var(--muted); margin-top:10px;}
+
+  footer{font-size:.78rem; color:var(--muted); text-align:center; margin-top:8px;}
+  a{color:var(--blue);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1><span class="sun">☀️</span> PV-Anlage Wittenbach</h1>
+    <div class="meta">
+      <div id="sd-status"><span class="dot na"></span>SD-Karte</div>
+      <div id="updated">wird geladen…</div>
+    </div>
+  </header>
+
+  <!-- Aktuelle Leistung -->
+  <div class="hero">
+    <div class="lbl">Aktuelle Leistung</div>
+    <div class="val"><span id="power">–</span> <small>kW</small></div>
+    <div class="bar"><span id="power-bar" style="width:0%"></span></div>
+    <div class="bar-scale"><span>0</span><span>15 kW</span><span>30 kW</span></div>
+  </div>
+
+  <!-- Energie-Kacheln -->
+  <div class="kpis">
+    <div class="kpi"><div class="k">Heute</div><div class="v"><span id="e-today">–</span> <small>kWh</small></div></div>
+    <div class="kpi"><div class="k">Gestern</div><div class="v"><span id="e-yesterday">–</span> <small>kWh</small></div></div>
+    <div class="kpi"><div class="k">Aktueller Monat</div><div class="v"><span id="e-month">–</span> <small>kWh</small></div></div>
+    <div class="kpi"><div class="k">Letzter Monat</div><div class="v"><span id="e-lastmonth">–</span> <small>kWh</small></div></div>
+    <div class="kpi"><div class="k">Dieses Jahr</div><div class="v"><span id="e-year">–</span> <small>kWh</small></div></div>
+    <div class="kpi"><div class="k">Ø DC-Spannung</div><div class="v"><span id="dc-mean">–</span> <small>V</small></div></div>
+  </div>
+
+  <!-- Tagesverlauf -->
+  <div class="panel">
+    <h2>Leistung heute <span class="tag" id="chart-tag">Ø 10 min</span></h2>
+    <div id="chart-holder"><div class="chart-empty">wird geladen…</div></div>
+  </div>
+
+  <!-- DC je Tracker -->
+  <div class="panel">
+    <h2>DC je MPP-Tracker <span class="tag" id="status-time"></span></h2>
+    <div id="tracker-holder"><div class="chart-empty">wird geladen…</div></div>
+    <div class="note">Tracker 1 &amp; 2 = je 2 Strings parallel, Tracker 3 = 1 String (halb so viele Module – so ausgelegt, daher ~halber Strom).</div>
+  </div>
+
+  <footer>
+    Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s ·
+    <span id="err" style="color:#d64545;"></span>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var CHANNEL = 172430;
+  var KEY = "6GIAGINL9VN4CTL8";
+  var API = "https://api.thingspeak.com/channels/" + CHANNEL;
+
+  function j(url){ return fetch(url, {cache:"no-store"}).then(function(r){ return r.json(); }); }
+  function num(x){ return (x===null||x===undefined||x==="") ? null : parseFloat(x); }
+  function fmt(v, dec){ return v===null ? "–" : v.toLocaleString("de-CH", {minimumFractionDigits:dec, maximumFractionDigits:dec}); }
+  function relTime(d){
+    var s = Math.round((Date.now()-d.getTime())/1000);
+    if(s < 90) return "vor " + s + " s";
+    var m = Math.round(s/60);
+    if(m < 90) return "vor " + m + " min";
+    return "vor " + Math.round(m/60) + " h";
+  }
+  function setErr(msg){ document.getElementById("err").textContent = msg || ""; }
+
+  // --- Aktuelle Werte + Energie-Kacheln ---
+  function ladeAktuell(){
+    // results=20: neuester Eintrag = Leistung; Energiefelder ggf. leer (Reboot-
+    // Unterdrueckung) -> vom neuesten rueckwaerts den letzten Wert je Feld suchen.
+    return j(API + "/feeds.json?api_key=" + KEY + "&results=20").then(function(d){
+      var feeds = (d && d.feeds) ? d.feeds : [];
+      if(!feeds.length) return;
+      var last = feeds[feeds.length-1];
+
+      var pW = num(last.field1);
+      var pKW = pW===null ? null : pW/1000;
+      document.getElementById("power").textContent = fmt(pKW, 2);
+      var pct = pKW===null ? 0 : Math.max(0, Math.min(100, pKW/30*100));
+      document.getElementById("power-bar").style.width = pct + "%";
+
+      function latest(field){
+        for(var i=feeds.length-1;i>=0;i--){ var v=num(feeds[i][field]); if(v!==null) return v; }
+        return null;
+      }
+      document.getElementById("e-today").textContent     = fmt(latest("field2"), 1);
+      document.getElementById("e-yesterday").textContent = fmt(latest("field5"), 1);
+      document.getElementById("e-month").textContent     = fmt(latest("field3"), 0);
+      document.getElementById("e-lastmonth").textContent = fmt(latest("field6"), 0);
+      document.getElementById("e-year").textContent      = fmt(latest("field4"), 0);
+      document.getElementById("dc-mean").textContent     = fmt(latest("field8"), 0);
+
+      // SD-Status (Feld 7): 1 = OK
+      var sd = latest("field7");
+      var sdEl = document.getElementById("sd-status");
+      if(sd===1){ sdEl.innerHTML = '<span class="dot ok"></span>SD-Karte OK'; }
+      else if(sd===0){ sdEl.innerHTML = '<span class="dot bad"></span>SD-Karte Fehler'; }
+      else { sdEl.innerHTML = '<span class="dot na"></span>SD-Karte'; }
+
+      if(last.created_at){
+        document.getElementById("updated").textContent = "Aktualisiert " + relTime(new Date(last.created_at));
+      }
+    });
+  }
+
+  // --- Tagesverlauf (SVG-Flaechenchart) ---
+  function ladeChart(){
+    return j(API + "/feeds.json?api_key=" + KEY + "&days=1&average=10").then(function(d){
+      var feeds = (d && d.feeds) ? d.feeds : [];
+      var pts = [];
+      feeds.forEach(function(f){ var v=num(f.field1); if(v!==null) pts.push({t:new Date(f.created_at), p:v/1000}); });
+      var holder = document.getElementById("chart-holder");
+      if(pts.length < 2){ holder.innerHTML = '<div class="chart-empty">noch keine Tagesdaten</div>'; return; }
+
+      var W=1000, H=300, padL=42, padR=12, padT=12, padB=26;
+      var maxP = Math.max.apply(null, pts.map(function(o){return o.p;}));
+      maxP = Math.max(5, Math.ceil(maxP/5)*5);
+      var n = pts.length;
+      function X(i){ return padL + (W-padL-padR) * (i/(n-1)); }
+      function Y(p){ return padT + (H-padT-padB) * (1 - p/maxP); }
+
+      var line="", area="M "+X(0)+" "+Y(0);
+      pts.forEach(function(o,i){ var x=X(i),y=Y(o.p); line += (i?" L ":"M ")+x+" "+y; area += " L "+x+" "+y; });
+      area += " L "+X(n-1)+" "+Y(0)+" Z";
+
+      // Gitter + Y-Beschriftung (0, halb, max)
+      var grid="", ylab="";
+      [0,maxP/2,maxP].forEach(function(val){
+        var y=Y(val);
+        grid += '<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="#e3e8ee" stroke-width="1"/>';
+        ylab += '<text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end" font-size="12" fill="#6b7280">'+val+'</text>';
+      });
+      // X-Beschriftung: ca. 5 Zeitpunkte
+      var xlab="", steps=5;
+      for(var s=0;s<=steps;s++){
+        var i=Math.round((n-1)*s/steps), x=X(i);
+        var hh=pts[i].t.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
+        xlab += '<text x="'+x+'" y="'+(H-8)+'" text-anchor="middle" font-size="12" fill="#6b7280">'+hh+'</text>';
+      }
+
+      holder.innerHTML =
+        '<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+
+        '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">'+
+        '<stop offset="0%" stop-color="#2e9e5b" stop-opacity="0.35"/>'+
+        '<stop offset="100%" stop-color="#2e9e5b" stop-opacity="0.02"/></linearGradient></defs>'+
+        grid+
+        '<path d="'+area+'" fill="url(#g)"/>'+
+        '<path d="'+line+'" fill="none" stroke="#2e9e5b" stroke-width="2" stroke-linejoin="round"/>'+
+        ylab+xlab+
+        '<text x="'+(padL-6)+'" y="'+(padT+2)+'" text-anchor="end" font-size="11" fill="#9aa4af">kW</text>'+
+        '</svg>';
+    });
+  }
+
+  // --- DC je Tracker (aus Statustext) ---
+  function parseStatus(s){
+    var out={}, re=/([UI])([56])=([\d.]+)\/([\d.]+)\/([\d.]+)/g, m;
+    while((m=re.exec(s))){ out[m[1]+m[2]]=[parseFloat(m[3]),parseFloat(m[4]),parseFloat(m[5])]; }
+    return out;
+  }
+  function ladeTracker(){
+    return j(API + "/status.json?api_key=" + KEY + "&results=1").then(function(d){
+      var feeds=(d&&d.feeds)?d.feeds:[];
+      var f = feeds.length ? feeds[feeds.length-1] : null;
+      var holder=document.getElementById("tracker-holder");
+      if(!f || !f.status){ holder.innerHTML='<div class="chart-empty">kein Status verfügbar</div>'; return; }
+      document.getElementById("status-time").textContent = relTime(new Date(f.created_at));
+      var p=parseStatus(f.status);
+
+      function wrBlock(wr){
+        var U=p["U"+wr], I=p["I"+wr];
+        if(!U || !I) return '<tr><td class="wr-head">WR '+wr+'</td><td colspan="3" style="text-align:left;color:#6b7280;">keine Daten</td></tr>';
+        var rows="", sumP=0;
+        for(var t=0;t<3;t++){
+          var pw=U[t]*I[t]; sumP+=pw;
+          rows+='<tr><td>Tracker '+(t+1)+(t===2?' <span style="color:#9aa4af">(1 String)</span>':'')+'</td>'+
+                '<td>'+U[t].toFixed(0)+' V</td>'+
+                '<td>'+I[t].toFixed(1)+' A</td>'+
+                '<td>'+(pw/1000).toFixed(2)+' kW</td></tr>';
+        }
+        return '<tr><td class="wr-head" colspan="4">Wechselrichter '+wr+'</td></tr>'+rows+
+               '<tr class="sum"><td>Summe WR '+wr+'</td><td></td><td></td><td>'+(sumP/1000).toFixed(2)+' kW</td></tr>';
+      }
+
+      holder.innerHTML =
+        '<table><thead><tr><th>Tracker</th><th>Spannung</th><th>Strom</th><th>Leistung</th></tr></thead>'+
+        '<tbody>'+wrBlock(5)+wrBlock(6)+'</tbody></table>';
+    });
+  }
+
+  function ladeAlles(){
+    setErr("");
+    Promise.all([ladeAktuell(), ladeChart(), ladeTracker()]).catch(function(){
+      setErr("Daten konnten nicht geladen werden – nächster Versuch in 60 s.");
+    });
+  }
+  ladeAlles();
+  setInterval(ladeAlles, 60000);
+})();
+</script>
+</body>
+</html>
