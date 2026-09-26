@@ -184,6 +184,7 @@ PV.render=function(main){
       kpiCard("Heute","e-today","kWh")+kpiCard("Gestern","e-yesterday","kWh")+kpiCard("Aktueller Monat","e-month","kWh")+
       kpiCard("Letzter Monat","e-lastmonth","kWh")+kpiCard("Dieses Jahr","e-year","kWh")+kpiCard("Ø DC-Spannung","dc-mean","V")+'</div>'+
     panel("Leistung heute",'<span class="tag">Ø 10 min</span>',"chart-power")+
+    panel("Energie letzte Tage",'<span class="tag">Tagesertrag</span>',"chart-days")+
     '<div class="panel"><h2>Strom je MPP-Tracker heute <span class="tag" id="strom-tag"></span></h2>'+
       '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
@@ -194,7 +195,6 @@ PV.render=function(main){
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
       '<span class="it">— WR 5 · - - - WR 6</span></div><div id="chart-spannung"><div class="chart-empty">wird geladen…</div></div></div>'+
-    panel("Energie letzte Tage",'<span class="tag">Tagesertrag</span>',"chart-days")+
     '<div class="panel"><h2>DC je MPP-Tracker <span class="tag" id="status-time"></span></h2><div id="tracker-holder"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Tracker 1 &amp; 2 = je 2 Strings parallel, Tracker 3 = 1 String (halb so viele Module – so ausgelegt, daher ~halber Strom).</div></div>'+
     '<footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
