@@ -455,13 +455,13 @@ function simpleView(cfg){
 
 var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
   kpis:[
-    {field:"field4",label:"Aktuelle Ladeleistung",unit:"kW",dec:1,scale:0.001},
+    {field:"field4",label:"Aktuelle Ladeleistung",unit:"kW",dec:1,scale:0.000001},
     {field:"field7",label:"Ladeleistung geglättet",unit:"kW",dec:1,scale:0.001},
     {field:"field6",label:"Ladestrom-Begrenzung",unit:"A",dec:1},
     {field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"verbunden, lädt":s===66?"verbunden, lädt nicht":s===65?"nicht verbunden":("Status "+s);}}
   ],
   charts:[
-    {title:"Ladeleistung", unit:"kW", lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.001},{field:"field7",label:"Geglättet",color:"var(--blue)",scale:0.001}]},
+    {title:"Ladeleistung", unit:"kW", lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001},{field:"field7",label:"Geglättet",color:"var(--blue)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
     {title:"Verbindungsstatus", zero:false, note:"65 = nicht verbunden · 66 = verbunden, lädt nicht · 67 = verbunden, lädt", lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
   ]});
@@ -491,7 +491,7 @@ var BOILER=simpleView({ channel:502977, icon:"♨️", title:"Boiler",
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", note:"roter Streifen (oben) = Trickle-Laden (< 11 W, zu wenig Sonne)", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)"},{field:"field3",label:"Trickle (< 11 W)",color:"var(--red)",width:5,bandFrac:0.9,derive:function(v){return (v>0 && v<11)?1:null;}}]}
+    {title:"Ladeleistung", unit:"W", note:"roter Marker (20 W) = Laden verlangen (< 11 W, zu wenig Sonne)", lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)"},{field:"field3",label:"Laden verlangen",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?20:null;}}]}
   ]});
 
 /* ================= Routing ================= */
