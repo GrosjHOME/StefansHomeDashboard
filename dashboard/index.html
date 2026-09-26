@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHO Energie – Dashboard</title>
+<style>
+  :root{
+    --bg:#eef2f5; --card:#ffffff; --ink:#1f2933; --muted:#6b7280; --line:#e3e8ee;
+    --amber:#f5a623; --green:#2e9e5b; --blue:#2b83c7; --red:#d64545;
+    --nav:#ffffff; --shadow:0 1px 3px rgba(20,30,40,.10), 0 1px 2px rgba(20,30,40,.06);
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1720; --card:#18212b; --ink:#e6edf3; --muted:#95a1ad; --line:#2a3540;
+    --nav:#131b24; --shadow:0 1px 3px rgba(0,0,0,.4);
+  }
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+    --bg:#0f1720; --card:#18212b; --ink:#e6edf3; --muted:#95a1ad; --line:#2a3540; --nav:#131b24; --shadow:0 1px 3px rgba(0,0,0,.4);
+  }}
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; font-size:15px; line-height:1.4;}
+
+  /* Moderne Top-Navigation */
+  .nav{position:sticky; top:0; z-index:10; background:var(--nav); border-bottom:1px solid var(--line);
+    box-shadow:var(--shadow); display:flex; align-items:center; gap:14px; padding:10px 16px; flex-wrap:wrap;}
+  .brand{font-weight:700; font-size:1.05rem; display:flex; align-items:center; gap:7px; white-space:nowrap;}
+  .tabs{display:flex; gap:6px; flex-wrap:wrap; flex:1;}
+  .tabs a{cursor:pointer; text-decoration:none; color:var(--muted); font-weight:600; font-size:.92rem;
+    padding:7px 14px; border-radius:999px; display:flex; align-items:center; gap:6px; transition:all .15s ease;}
+  .tabs a:hover{background:var(--bg); color:var(--ink);}
+  .tabs a.active{background:var(--green); color:#fff;}
+  .navright{display:flex; align-items:center; gap:10px;}
+  .link-old{font-size:.8rem; color:var(--muted); text-decoration:none; padding:6px 10px; border:1px solid var(--line); border-radius:8px;}
+  .link-old:hover{color:var(--ink);}
+  .theme-btn{cursor:pointer; border:1px solid var(--line); background:var(--card); color:var(--ink);
+    border-radius:10px; width:36px; height:36px; font-size:1.05rem;}
+
+  .wrap{max-width:1100px; margin:0 auto; padding:16px 16px 30px;}
+  .view-head{display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px;}
+  .view-head h1{font-size:1.3rem; margin:0; display:flex; align-items:center; gap:8px;}
+  .meta{font-size:.82rem; color:var(--muted); text-align:right;}
+  .dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle;}
+  .dot.ok{background:var(--green);} .dot.bad{background:var(--red);} .dot.na{background:#b0b8c0;}
+
+  .hero{background:var(--card); border-radius:14px; box-shadow:var(--shadow); padding:18px 20px; margin-bottom:16px;}
+  .hero .lbl{color:var(--muted); font-size:.85rem; text-transform:uppercase; letter-spacing:.04em;}
+  .hero .val{font-size:2.8rem; font-weight:700; line-height:1.1; margin:2px 0 6px;}
+  .hero .val small{font-size:1.1rem; font-weight:600; color:var(--muted);}
+  .bar{height:12px; border-radius:6px; background:var(--line); overflow:hidden;}
+  .bar > span{display:block; height:100%; border-radius:6px; background:linear-gradient(90deg,var(--green),var(--amber)); transition:width .6s ease;}
+  .bar-scale{display:flex; justify-content:space-between; font-size:.72rem; color:var(--muted); margin-top:3px;}
+
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:16px;}
+  .kpi{background:var(--card); border-radius:12px; box-shadow:var(--shadow); padding:14px 16px;}
+  .kpi .k{color:var(--muted); font-size:.8rem; margin-bottom:4px;}
+  .kpi .v{font-size:1.45rem; font-weight:700;}
+  .kpi .v small{font-size:.8rem; font-weight:600; color:var(--muted);}
+
+  .panel{background:var(--card); border-radius:14px; box-shadow:var(--shadow); padding:16px 18px; margin-bottom:16px;}
+  .panel h2{font-size:1rem; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .panel h2 .tag{font-size:.7rem; font-weight:600; color:var(--muted); background:var(--bg); padding:2px 8px; border-radius:20px;}
+  svg.chart{width:100%; height:auto; display:block;}
+  .chart-empty{color:var(--muted); font-size:.9rem; padding:20px 0; text-align:center;}
+  .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:.8rem; color:var(--muted); margin:2px 0 10px;}
+  .legend .it{display:flex; align-items:center; gap:6px;}
+  .legend .sw{width:16px; height:0; border-top:3px solid;}
+
+  table{width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums;}
+  th,td{padding:8px 10px; text-align:right; border-bottom:1px solid var(--line);}
+  th:first-child,td:first-child{text-align:left;}
+  thead th{font-size:.78rem; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em;}
+  tbody tr:last-child td{border-bottom:none;}
+  tr.sum td{font-weight:700; border-top:2px solid var(--line);}
+  .wr-head{font-weight:700; color:var(--blue);}
+  .note{font-size:.8rem; color:var(--muted); margin-top:10px;}
+  footer{font-size:.78rem; color:var(--muted); text-align:center; margin-top:8px;}
+</style>
+</head>
+<body>
+  <header class="nav">
+    <div class="brand">⚡ SHO Energie</div>
+    <nav class="tabs" id="tabs">
+      <a data-view="pv">☀️ PV</a>
+      <a data-view="wallbox">🔌 Wallbox</a>
+      <a data-view="heizung">🔥 Heizung</a>
+      <a data-view="boiler">♨️ Boiler</a>
+    </nav>
+    <div class="navright">
+      <a class="link-old" href="../thingspeak-dashboard/index.html" title="Original mit ThingSpeak-iframes">ThingSpeak</a>
+      <button id="theme-toggle" class="theme-btn" title="Hell/Dunkel">🌙</button>
+    </div>
+  </header>
+  <main id="view"></main>
+
+<script>
+/* ================= Theme ================= */
+(function(){
+  var root=document.documentElement, t=null;
+  try{ t=localStorage.getItem("shoTheme"); }catch(e){}
+  if(t) root.setAttribute("data-theme",t);
+  function cur(){ return root.getAttribute("data-theme") || ((window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light"); }
+  var btn=document.getElementById("theme-toggle");
+  function upd(){ btn.textContent = cur()==="dark"?"☀️":"🌙"; }
+  btn.addEventListener("click",function(){ var n=cur()==="dark"?"light":"dark"; root.setAttribute("data-theme",n); try{localStorage.setItem("shoTheme",n);}catch(e){} upd(); });
+  upd();
+})();
+
+/* ================= Helfer ================= */
+function j(u){ return fetch(u,{cache:"no-store"}).then(function(r){return r.json();}); }
+function num(x){ return (x===null||x===undefined||x==="")?null:parseFloat(x); }
+function fmt(v,d){ return v===null?"–":v.toLocaleString("de-CH",{minimumFractionDigits:d,maximumFractionDigits:d}); }
+function relTime(dt){ var s=Math.round((Date.now()-dt.getTime())/1000); if(s<90)return "vor "+s+" s"; var m=Math.round(s/60); if(m<90)return "vor "+m+" min"; var h=Math.round(m/60); if(h<48)return "vor "+h+" h"; return "vor "+Math.round(h/24)+" T"; }
+function niceMax(m){ if(m<=0)return 1; var p=Math.pow(10,Math.floor(Math.log10(m))); var c=[1,1.5,2,2.5,3,4,5,6,8,10]; for(var i=0;i<c.length;i++){ if(c[i]*p>=m) return c[i]*p; } return 10*p; }
+function ylab(v){ return (Math.abs(v-Math.round(v))<1e-9)?String(Math.round(v)):v.toFixed(1); }
+function el(html){ var d=document.createElement("div"); d.innerHTML=html; return d.firstElementChild; }
+function api(ch,path,withKey){ var u="https://api.thingspeak.com/channels/"+ch+path; if(withKey) u+=(path.indexOf("?")>=0?"&":"?")+"api_key=6GIAGINL9VN4CTL8"; return u; }
+
+/* Zeit-Liniendiagramm (1..n Serien) */
+function lineChart(holder, series, opts){
+  opts=opts||{}; var all=[]; series.forEach(function(s){ all=all.concat(s.pts); });
+  if(all.length<2){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
+  var W=1000,H=300,padL=46,padR=12,padT=12,padB=26;
+  var tMin=Math.min.apply(null,all.map(function(p){return p.t.getTime();}));
+  var tMax=Math.max.apply(null,all.map(function(p){return p.t.getTime();})); if(tMax===tMin)tMax=tMin+1;
+  var vMin=Math.min.apply(null,all.map(function(p){return p.v;}));
+  var vMax=Math.max.apply(null,all.map(function(p){return p.v;}));
+  var base,top;
+  if(opts.zero===false){ var pad=(vMax-vMin)*0.1||1; base=Math.floor(vMin-pad); top=Math.ceil(vMax+pad); }
+  else { base=0; top=niceMax(vMax); }
+  if(top<=base) top=base+1;
+  function X(t){ return padL+(W-padL-padR)*((t-tMin)/(tMax-tMin)); }
+  function Y(v){ return padT+(H-padT-padB)*(1-(v-base)/(top-base)); }
+  var grid="",yl="";
+  [base,(base+top)/2,top].forEach(function(v){ var y=Y(v);
+    grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
+    yl+='<text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end" font-size="12" fill="var(--muted)">'+ylab(v)+'</text>'; });
+  var paths="";
+  series.forEach(function(s){ if(s.pts.length<2)return; var d=""; s.pts.forEach(function(p,i){ d+=(i?" L ":"M ")+X(p.t.getTime())+" "+Y(p.v); });
+    paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linejoin="round"'+(s.dash?' stroke-dasharray="5 4"':'')+'/>'; });
+  var fill="";
+  if(series.length===1 && base<=0){ var s0=series[0], a="M "+X(s0.pts[0].t.getTime())+" "+Y(0);
+    s0.pts.forEach(function(p){ a+=" L "+X(p.t.getTime())+" "+Y(p.v); });
+    a+=" L "+X(s0.pts[s0.pts.length-1].t.getTime())+" "+Y(0)+" Z";
+    var gid="g"+Math.random().toString(36).slice(2);
+    fill='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+s0.color+'" stop-opacity="0.30"/><stop offset="100%" stop-color="'+s0.color+'" stop-opacity="0.02"/></linearGradient></defs><path d="'+a+'" fill="url(#'+gid+')"/>'; }
+  var xl="";
+  for(var k=0;k<=5;k++){ var tt=tMin+(tMax-tMin)*k/5, x=padL+(W-padL-padR)*k/5;
+    var span=tMax-tMin, dd=new Date(tt);
+    var lab = span> 26*3600*1000 ? dd.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"}) : dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
+    xl+='<text x="'+x+'" y="'+(H-8)+'" text-anchor="middle" font-size="12" fill="var(--muted)">'+lab+'</text>'; }
+  holder.innerHTML='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+fill+grid+paths+yl+xl+
+    '<text x="'+(padL-6)+'" y="'+(padT+2)+'" text-anchor="end" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text></svg>';
+}
+/* Balkendiagramm */
+function barChart(holder, bars, opts){
+  opts=opts||{}; if(!bars.length){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
+  var W=1000,H=300,padL=46,padR=12,padT=16,padB=40,n=bars.length;
+  var vMax=niceMax(Math.max.apply(null,bars.map(function(b){return b.v;})));
+  function Y(v){ return padT+(H-padT-padB)*(1-v/vMax); }
+  var slot=(W-padL-padR)/n, bw=slot*0.6, grid="",yl="";
+  [0,vMax/2,vMax].forEach(function(v){ var y=Y(v);
+    grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
+    yl+='<text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end" font-size="12" fill="var(--muted)">'+ylab(v)+'</text>'; });
+  var r="";
+  bars.forEach(function(b,i){ var x=padL+slot*i+(slot-bw)/2, y=Y(b.v), h=Y(0)-y;
+    r+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+h+'" rx="3" fill="'+(opts.color||"var(--green)")+'"/>';
+    r+='<text x="'+(x+bw/2)+'" y="'+(y-4)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+fmt(b.v,0)+'</text>';
+    r+='<text x="'+(x+bw/2)+'" y="'+(H-24)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+b.label+'</text>'; });
+  holder.innerHTML='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
+    '<text x="'+(padL-6)+'" y="'+(padT+2)+'" text-anchor="end" font-size="11" fill="var(--muted)">'+(opts.unit||"")+'</text></svg>';
+}
+function parseStatus(s){ var o={},re=/([UI])([56])=([\d.]+)\/([\d.]+)\/([\d.]+)/g,m; while((m=re.exec(s))){ o[m[1]+m[2]]=[parseFloat(m[3]),parseFloat(m[4]),parseFloat(m[5])]; } return o; }
+function downsample(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)), out=[]; for(var i=0;i<arr.length;i+=st) out.push(arr[i]); if(arr.length && out[out.length-1]!==arr[arr.length-1]) out.push(arr[arr.length-1]); return out; }
+
+/* ================= View: PV ================= */
+var PV={ CH:172430 };
+PV.render=function(main){
+  main.innerHTML='<div class="wrap">'+
+    '<div class="view-head"><h1>☀️ PV-Anlage</h1><div class="meta"><div id="sd-status"><span class="dot na"></span>SD-Karte</div><div id="updated">wird geladen…</div></div></div>'+
+    '<div class="hero"><div class="lbl">Aktuelle Leistung</div><div class="val"><span id="power">–</span> <small>kW</small></div>'+
+      '<div class="bar"><span id="power-bar" style="width:0%"></span></div><div class="bar-scale"><span>0</span><span>15 kW</span><span>30 kW</span></div></div>'+
+    '<div class="kpis">'+
+      kpiCard("Heute","e-today","kWh")+kpiCard("Gestern","e-yesterday","kWh")+kpiCard("Aktueller Monat","e-month","kWh")+
+      kpiCard("Letzter Monat","e-lastmonth","kWh")+kpiCard("Dieses Jahr","e-year","kWh")+kpiCard("Ø DC-Spannung","dc-mean","V")+'</div>'+
+    panel("Leistung heute",'<span class="tag">Ø 10 min</span>',"chart-power")+
+    '<div class="panel"><h2>Strom je MPP-Tracker heute <span class="tag" id="strom-tag"></span></h2>'+
+      '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
+      '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
+      '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
+      '<span class="it">— WR 5 · - - - WR 6</span></div><div id="chart-strom"><div class="chart-empty">wird geladen…</div></div></div>'+
+    '<div class="panel"><h2>Spannung je MPP-Tracker heute <span class="tag" id="spannung-tag"></span></h2>'+
+      '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
+      '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
+      '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
+      '<span class="it">— WR 5 · - - - WR 6</span></div><div id="chart-spannung"><div class="chart-empty">wird geladen…</div></div></div>'+
+    panel("Energie letzte Tage",'<span class="tag">Tagesertrag</span>',"chart-days")+
+    '<div class="panel"><h2>DC je MPP-Tracker <span class="tag" id="status-time"></span></h2><div id="tracker-holder"><div class="chart-empty">wird geladen…</div></div>'+
+      '<div class="note">Tracker 1 &amp; 2 = je 2 Strings parallel, Tracker 3 = 1 String (halb so viele Module – so ausgelegt, daher ~halber Strom).</div></div>'+
+    '<footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
+};
+function kpiCard(k,id,unit){ return '<div class="kpi"><div class="k">'+k+'</div><div class="v"><span id="'+id+'">–</span> <small>'+unit+'</small></div></div>'; }
+function panel(title,tag,id){ return '<div class="panel"><h2>'+title+' '+tag+'</h2><div id="'+id+'"><div class="chart-empty">wird geladen…</div></div></div>'; }
+PV.load=function(){
+  var errEl=function(){return document.getElementById("err");};
+  function g(id){return document.getElementById(id);}
+  var p1=j(api(PV.CH,"/feeds.json?results=20",true)).then(function(d){
+    var f=(d&&d.feeds)?d.feeds:[]; if(!f.length||!g("power"))return; var last=f[f.length-1];
+    var pW=num(last.field1),pKW=pW===null?null:pW/1000;
+    g("power").textContent=fmt(pKW,2); g("power-bar").style.width=(pKW===null?0:Math.max(0,Math.min(100,pKW/30*100)))+"%";
+    function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
+    g("e-today").textContent=fmt(L("field2"),1); g("e-yesterday").textContent=fmt(L("field5"),1);
+    g("e-month").textContent=fmt(L("field3"),0); g("e-lastmonth").textContent=fmt(L("field6"),0);
+    g("e-year").textContent=fmt(L("field4"),0); g("dc-mean").textContent=fmt(L("field8"),0);
+    var sd=L("field7"); g("sd-status").innerHTML= sd===1?'<span class="dot ok"></span>SD-Karte OK':(sd===0?'<span class="dot bad"></span>SD-Karte Fehler':'<span class="dot na"></span>SD-Karte');
+    if(last.created_at) g("updated").textContent="Aktualisiert "+relTime(new Date(last.created_at));
+  });
+  var p2=j(api(PV.CH,"/feeds.json?days=1&average=10",true)).then(function(d){
+    var f=(d&&d.feeds)?d.feeds:[],pts=[]; f.forEach(function(x){var v=num(x.field1); if(v!==null)pts.push({t:new Date(x.created_at),v:v/1000});});
+    if(g("chart-power")) lineChart(g("chart-power"),[{color:"var(--green)",pts:pts}],{unit:"kW"});
+  });
+  var p3=j(api(PV.CH,"/feeds.json?days=8&average=15",true)).then(function(d){
+    var f=(d&&d.feeds)?d.feeds:[],byDay={}; f.forEach(function(x){var v=num(x.field2); if(v===null)return; var dt=new Date(x.created_at);
+      var key=dt.getFullYear()+"-"+(dt.getMonth()+1)+"-"+dt.getDate(); if(!byDay[key]||v>byDay[key].v)byDay[key]={v:v,dt:dt};});
+    var arr=Object.keys(byDay).map(function(k){return byDay[k];}).sort(function(a,b){return a.dt-b.dt;}).slice(-7);
+    var wd=["So","Mo","Di","Mi","Do","Fr","Sa"];
+    var bars=arr.map(function(o){return {label:wd[o.dt.getDay()]+" "+o.dt.getDate()+"."+(o.dt.getMonth()+1)+".",v:o.v};});
+    if(g("chart-days")) barChart(g("chart-days"),bars,{unit:"kWh",color:"var(--amber)"});
+  });
+  var p4=j(api(PV.CH,"/status.json?days=1",true)).then(function(d){
+    var f=(d&&d.feeds)?d.feeds:[]; var last=f.length?f[f.length-1]:null; var holder=g("tracker-holder"); if(!holder)return;
+    if(last&&last.status){ g("status-time").textContent=relTime(new Date(last.created_at)); var p=parseStatus(last.status);
+      function wr(w){ var U=p["U"+w],I=p["I"+w]; if(!U||!I)return '<tr><td class="wr-head">WR '+w+'</td><td colspan="3" style="text-align:left;color:var(--muted)">keine Daten</td></tr>';
+        var rows="",sum=0; for(var t=0;t<3;t++){var pw=U[t]*I[t];sum+=pw; rows+='<tr><td>Tracker '+(t+1)+(t===2?' <span style="color:var(--muted)">(1 String)</span>':'')+'</td><td>'+U[t].toFixed(0)+' V</td><td>'+I[t].toFixed(1)+' A</td><td>'+(pw/1000).toFixed(2)+' kW</td></tr>';}
+        return '<tr><td class="wr-head" colspan="4">Wechselrichter '+w+'</td></tr>'+rows+'<tr class="sum"><td>Summe WR '+w+'</td><td></td><td></td><td>'+(sum/1000).toFixed(2)+' kW</td></tr>'; }
+      holder.innerHTML='<table><thead><tr><th>Tracker</th><th>Spannung</th><th>Strom</th><th>Leistung</th></tr></thead><tbody>'+wr(5)+wr(6)+'</tbody></table>';
+    } else holder.innerHTML='<div class="chart-empty">kein Status verfügbar</div>';
+    var ds=downsample(f,200), cols=["var(--green)","var(--blue)","var(--amber)"];
+    var SI=[[],[],[],[],[],[]], SU=[[],[],[],[],[],[]];
+    ds.forEach(function(e){ if(!e.status)return; var pp=parseStatus(e.status),tt=new Date(e.created_at);
+      if(pp.I5)for(var a=0;a<3;a++)SI[a].push({t:tt,v:pp.I5[a]});
+      if(pp.I6)for(var b=0;b<3;b++)SI[3+b].push({t:tt,v:pp.I6[b]});
+      if(pp.U5)for(var c1=0;c1<3;c1++)SU[c1].push({t:tt,v:pp.U5[c1]});
+      if(pp.U6)for(var c2=0;c2<3;c2++)SU[3+c2].push({t:tt,v:pp.U6[c2]}); });
+    function mk(A){ return [{color:cols[0],pts:A[0]},{color:cols[1],pts:A[1]},{color:cols[2],pts:A[2]},
+      {color:cols[0],dash:true,pts:A[3]},{color:cols[1],dash:true,pts:A[4]},{color:cols[2],dash:true,pts:A[5]}].filter(function(s){return s.pts.length>1;}); }
+    if(g("chart-strom")) lineChart(g("chart-strom"),mk(SI),{unit:"A"});
+    if(g("chart-spannung")) lineChart(g("chart-spannung"),mk(SU),{unit:"V",zero:false});
+    if(g("spannung-tag")&&last&&last.created_at) g("spannung-tag").textContent="Stand "+relTime(new Date(last.created_at));
+  });
+  Promise.all([p1,p2,p3,p4]).then(function(){ if(errEl())errEl().textContent=""; }).catch(function(){ if(errEl())errEl().textContent="Daten konnten nicht geladen werden – nächster Versuch in 60 s."; });
+};
+
+/* ========== Generische Ansicht (Wallbox/Heizung/Boiler) ========== */
+function simpleView(cfg){
+  return {
+    render:function(main){
+      var kp=cfg.kpis.map(function(k,i){ return kpiCard(k.label,"kpi_"+i,k.unit||""); }).join("");
+      var charts=cfg.charts.map(function(c,i){
+        var leg = c.legend ? '<div class="legend">'+c.legend.map(function(L,li){return '<span class="it"><span class="sw" style="border-color:'+c.lines[li].color+'"></span>'+L+'</span>';}).join("")+'</div>' : "";
+        return '<div class="panel"><h2>'+c.title+' <span class="tag" id="ct_'+i+'"></span></h2>'+leg+'<div id="chart_'+i+'"><div class="chart-empty">wird geladen…</div></div></div>';
+      }).join("");
+      main.innerHTML='<div class="wrap"><div class="view-head"><h1>'+cfg.icon+" "+cfg.title+'</h1><div class="meta" id="head-meta">wird geladen…</div></div>'+
+        '<div class="kpis">'+kp+'</div>'+charts+
+        '<footer>Datenquelle: ThingSpeak Kanal '+cfg.channel+' · Aktualisierung alle 60 s · <span id="err2" style="color:var(--red)"></span></footer></div>';
+    },
+    load:function(){
+      function g(id){return document.getElementById(id);}
+      j(api(cfg.channel,"/feeds.json?results=300",false)).then(function(d){
+        var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
+        var last=f[f.length-1];
+        function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
+        cfg.kpis.forEach(function(k,i){ var v=L(k.field); if(!g("kpi_"+i))return;
+          g("kpi_"+i).textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0); });
+        if(g("head-meta")&&last.created_at) g("head-meta").textContent="Aktualisiert "+relTime(new Date(last.created_at));
+        // Charts bauen
+        cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
+          var series=c.lines.map(function(ln){ var pts=[]; f.forEach(function(x){ var v=num(x[ln.field]); if(v!==null) pts.push({t:new Date(x.created_at), v: ln.scale? v*ln.scale : v}); }); return {color:ln.color, pts:downsample(pts,200)}; }).filter(function(s){return s.pts.length>1;});
+          if(g("ct_"+i)&&last.created_at) g("ct_"+i).textContent="Stand "+relTime(new Date(last.created_at));
+          lineChart(holder, series, {unit:c.unit, zero:c.zero});
+        });
+        if(g("err2"))g("err2").textContent="";
+      }).catch(function(){ if(g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
+    }
+  };
+}
+
+var WALLBOX=simpleView({ channel:172228, icon:"🔌", title:"Wallbox",
+  kpis:[
+    {field:"field4",label:"Aktuelle Ladeleistung",unit:"W",dec:0},
+    {field:"field7",label:"Ladeleistung geglättet",unit:"W",dec:0},
+    {field:"field6",label:"Ladestrom-Begrenzung",unit:"A",dec:1},
+    {field:"field1",label:"HSH-Auslastung",unit:"%",dec:0},
+    {field:"field8",label:"Verbindung",map:function(v){return v>=1?"verbunden":"getrennt";}}
+  ],
+  charts:[
+    {title:"Ladeleistung", unit:"W", legend:["Aktuell","Geglättet"], lines:[{field:"field4",color:"var(--green)"},{field:"field7",color:"var(--blue)"}]},
+    {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",color:"var(--amber)"}]}
+  ]});
+
+var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
+  kpis:[
+    {field:"field1",label:"Kessel oben",unit:"°C",dec:1},
+    {field:"field2",label:"Kessel mitte",unit:"°C",dec:1},
+    {field:"field8",label:"Abgas",unit:"°C",dec:0},
+    {field:"field4",label:"Schnitzel-Füllstand",unit:"%",dec:0},
+    {field:"field3",label:"Raumtemperatur",unit:"°C",dec:1}
+  ],
+  charts:[
+    {title:"Kesseltemperaturen", unit:"°C", zero:false, legend:["oben","mitte","Abgas"], lines:[{field:"field1",color:"var(--amber)"},{field:"field2",color:"var(--blue)"},{field:"field8",color:"var(--red)"}]},
+    {title:"Holzschnitzel-Füllstand", unit:"%", lines:[{field:"field4",color:"var(--green)"}]}
+  ]});
+
+var BOILER=simpleView({ channel:502977, icon:"♨️", title:"Boiler",
+  kpis:[
+    {field:"field1",label:"Temperatur mitte",unit:"°C",dec:1},
+    {field:"field2",label:"Temperatur unten",unit:"°C",dec:1},
+    {field:"field3",label:"Ladeleistung",unit:"W",dec:0},
+    {field:"field4",label:"Einschaltschwelle",unit:"W",dec:0}
+  ],
+  charts:[
+    {title:"Boiler-Temperaturen", unit:"°C", zero:false, legend:["mitte","unten"], lines:[{field:"field1",color:"var(--amber)"},{field:"field2",color:"var(--blue)"}]},
+    {title:"Ladeleistung", unit:"W", lines:[{field:"field3",color:"var(--green)"}]}
+  ]});
+
+/* ================= Routing ================= */
+var VIEWS={ pv:PV, wallbox:WALLBOX, heizung:HEIZUNG, boiler:BOILER };
+var state={timer:null};
+function switchView(v){
+  if(!VIEWS[v]) v="pv";
+  if(state.timer){ clearInterval(state.timer); state.timer=null; }
+  var tabs=document.querySelectorAll("#tabs a");
+  tabs.forEach(function(a){ a.classList.toggle("active", a.getAttribute("data-view")===v); });
+  var main=document.getElementById("view");
+  VIEWS[v].render(main);
+  VIEWS[v].load();
+  state.timer=setInterval(VIEWS[v].load, 60000);
+  if(location.hash.slice(1)!==v) location.hash=v;
+}
+document.getElementById("tabs").addEventListener("click",function(e){ var a=e.target.closest("a[data-view]"); if(!a)return; e.preventDefault(); switchView(a.getAttribute("data-view")); });
+window.addEventListener("hashchange",function(){ switchView(location.hash.slice(1)); });
+switchView(location.hash.slice(1) || "pv");
+</script>
+</body>
+</html>
