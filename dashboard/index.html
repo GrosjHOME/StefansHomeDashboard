@@ -322,7 +322,7 @@ PV.load=function(){
 
 PV.loadPower=function(){
   var holder=document.getElementById("chart-power"); if(!holder)return;
-  var url = PV.powerMode==="7tage" ? "/feeds.json?days=7&average=60" : "/feeds.json?days=1&average=10";
+  var url = PV.powerMode==="7tage" ? "/feeds.json?days=7" : "/feeds.json?days=1";
   j(api(PV.CH,url,true)).then(function(d){
     var f=(d&&d.feeds)?d.feeds:[],pts=[]; f.forEach(function(x){ var v=num(x.field1); if(v!==null)pts.push({t:new Date(x.created_at),v:v/1000}); });
     lineChart(holder,[{color:"var(--green)",pts:pts}],{unit:"kW"});
@@ -360,8 +360,57 @@ PV.loadEnergy=function(){
 
 /* ========== Generische Ansicht (Wallbox/Heizung/Boiler) ========== */
 function simpleView(cfg){
+  var mode = "heute";  // "heute" | "7tage" (steuert alle Charts der Ansicht)
+  function g(id){ return document.getElementById(id); }
+  function periodUrl(){ return mode === "7tage" ? "/feeds.json?days=7" : "/feeds.json?days=1"; }
+
+  // KPIs immer aktuell (letzter bekannter Wert), unabhaengig vom Zeitraum
+  function loadKpis(){
+    j(api(cfg.channel, "/feeds.json?results=10", false)).then(function(d){
+      var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
+      var last=f[f.length-1];
+      function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
+      cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
+        el.textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0);
+        if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : ""; });
+      if(g("head-meta")&&last.created_at) g("head-meta").textContent="Aktualisiert "+relTime(new Date(last.created_at));
+    }).catch(function(){});
+    // KPIs aus anderen Kanaelen (z. B. HSH-Auslastung liegt im Wallbox-Kanal 172228)
+    var extra={};
+    cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel){ (extra[k.channel]=extra[k.channel]||[]).push({k:k,i:i}); } });
+    Object.keys(extra).forEach(function(ch){
+      j(api(ch, "/feeds.json?results=300", false)).then(function(d){
+        var f=(d&&d.feeds)?d.feeds:[];
+        function L2(fd){ for(var i=f.length-1;i>=0;i--){ var v=num(f[i][fd]); if(v!==null)return v; } return null; }
+        extra[ch].forEach(function(o){ var g2=g("kpi_"+o.i); if(!g2)return; var v=L2(o.k.field); if(v!==null&&o.k.scale)v=v*o.k.scale;
+          g2.textContent = o.k.map ? (v===null?"–":o.k.map(v)) : fmt(v,o.k.dec||0); });
+      }).catch(function(){});
+    });
+  }
+
+  // Charts gemaess Zeitraum (Heute: days=1 / 7 Tage: days=7)
+  function loadCharts(){
+    j(api(cfg.channel, periodUrl(), false)).then(function(d){
+      var f=(d&&d.feeds)?d.feeds:[];
+      var lastTs = f.length ? new Date(f[f.length-1].created_at) : null;
+      cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
+        var series=c.lines.map(function(ln){ var pts=[]; f.forEach(function(x){ var v=num(x[ln.field]); if(v!==null) pts.push({t:new Date(x.created_at), v: ln.scale? v*ln.scale : v}); }); return {color:ln.color, dash:ln.dash, pts:downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
+        if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null){ vv.push(v); ct.push(new Date(x.created_at)); } });
+          if(vv.length>1){ var mn=Math.min.apply(null,vv), mx=Math.max.apply(null,vv), t0=ct[0], t1=ct[ct.length-1];
+            series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
+            series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mx},{t:t1,v:mx}]}); } }
+        if(c.threshold!=null && f.length){ var t0=new Date(f[0].created_at), t1=new Date(f[f.length-1].created_at);
+          series.push({color:"var(--red)",dash:true,pts:[{t:t0,v:c.threshold},{t:t1,v:c.threshold}]}); }
+        if(g("ct_"+i)) g("ct_"+i).textContent = lastTs ? "Stand "+relTime(lastTs) : "";
+        lineChart(holder, series, {unit:c.unit, zero:c.zero});
+      });
+      if(g("err2"))g("err2").textContent="";
+    }).catch(function(){ if(g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
+  }
+
   return {
     render:function(main){
+      mode = "heute";  // bei jedem Mount auf Standard (passt zum aktiven Button)
       var kp=cfg.kpis.map(function(k,i){ return kpiCard(k.label,"kpi_"+i,k.unit||""); }).join("");
       var charts=cfg.charts.map(function(c,i){
         var items=(c.lines||[]).map(function(ln){ return '<span class="it"><span class="sw" style="border-color:'+ln.color+(ln.dash?';border-top-style:dashed':'')+'"></span>'+(ln.label||'')+'</span>'; });
@@ -369,44 +418,16 @@ function simpleView(cfg){
         var leg = (c.lines && (c.lines.length>1 || c.minmaxField)) ? '<div class="legend">'+items.join("")+'</div>' : "";
         return '<div class="panel"><h2>'+c.title+' <span class="tag" id="ct_'+i+'"></span></h2>'+leg+'<div id="chart_'+i+'"><div class="chart-empty">wird geladen…</div></div></div>';
       }).join("");
-      main.innerHTML='<div class="wrap"><div class="view-head"><h1>'+cfg.icon+" "+cfg.title+'</h1><div class="meta" id="head-meta">wird geladen…</div></div>'+
+      main.innerHTML='<div class="wrap"><div class="view-head"><h1>'+cfg.icon+" "+cfg.title+'</h1>'+
+        '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
+          '<span class="seg" id="seg-period"><button data-m="heute" class="active">Heute</button><button data-m="7tage">7 Tage</button></span>'+
+          '<div class="meta" id="head-meta">wird geladen…</div>'+
+        '</div></div>'+
         '<div class="kpis">'+kp+'</div>'+charts+
         '<footer>Datenquelle: ThingSpeak Kanal '+cfg.channel+' · Aktualisierung alle 60 s · <span id="err2" style="color:var(--red)"></span></footer></div>';
+      var sp=g("seg-period"); if(sp) sp.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; mode=b.getAttribute("data-m"); segActive(sp,b); loadCharts(); });
     },
-    load:function(){
-      function g(id){return document.getElementById(id);}
-      j(api(cfg.channel,"/feeds.json?results=300",false)).then(function(d){
-        var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
-        var last=f[f.length-1];
-        function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
-        cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(v!==null&&k.scale)v=v*k.scale; if(!g("kpi_"+i))return;
-          g("kpi_"+i).textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0); });
-        if(g("head-meta")&&last.created_at) g("head-meta").textContent="Aktualisiert "+relTime(new Date(last.created_at));
-        // Charts bauen
-        cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
-          var series=c.lines.map(function(ln){ var pts=[]; f.forEach(function(x){ var v=num(x[ln.field]); if(v!==null) pts.push({t:new Date(x.created_at), v: ln.scale? v*ln.scale : v}); }); return {color:ln.color, dash:ln.dash, pts:downsample(pts,200)}; }).filter(function(s){return s.pts.length>1;});
-          if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null){ vv.push(v); ct.push(new Date(x.created_at)); } });
-            if(vv.length>1){ var mn=Math.min.apply(null,vv), mx=Math.max.apply(null,vv), t0=ct[0], t1=ct[ct.length-1];
-              series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
-              series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mx},{t:t1,v:mx}]}); } }
-          if(g("ct_"+i)&&last.created_at) g("ct_"+i).textContent="Stand "+relTime(new Date(last.created_at));
-          lineChart(holder, series, {unit:c.unit, zero:c.zero});
-        });
-        if(g("err2"))g("err2").textContent="";
-      }).catch(function(){ if(g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
-
-      // KPIs aus anderen Kanaelen (z. B. HSH-Auslastung liegt im Wallbox-Kanal 172228)
-      var extra={};
-      cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel){ (extra[k.channel]=extra[k.channel]||[]).push({k:k,i:i}); } });
-      Object.keys(extra).forEach(function(ch){
-        j(api(ch,"/feeds.json?results=300",false)).then(function(d){
-          var f=(d&&d.feeds)?d.feeds:[];
-          function L2(fd){ for(var i=f.length-1;i>=0;i--){ var v=num(f[i][fd]); if(v!==null)return v; } return null; }
-          extra[ch].forEach(function(o){ var g2=document.getElementById("kpi_"+o.i); if(!g2)return; var v=L2(o.k.field); if(v!==null&&o.k.scale)v=v*o.k.scale;
-            g2.textContent = o.k.map ? (v===null?"–":o.k.map(v)) : fmt(v,o.k.dec||0); });
-        }).catch(function(){});
-      });
-    }
+    load:function(){ loadKpis(); loadCharts(); }
   };
 }
 
@@ -428,12 +449,13 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
     {field:"field2",label:"Kessel mitte",unit:"°C",dec:1},
     {field:"field8",label:"Abgas",unit:"°C",dec:0},
     {field:"field4",label:"Schnitzel-Füllstand",unit:"%",dec:0},
-    {field:"field3",label:"Raumtemperatur",unit:"°C",dec:1},
+    {field:"field3",label:"Temp. vor Schnitzelbunker",unit:"°C",dec:1,warnAbove:25},
     {channel:172228,field:"field1",label:"HSH-Auslastung",unit:"%",dec:0}
   ],
   charts:[
     {title:"Kesseltemperaturen", unit:"°C", zero:false, minmaxField:"field1", lines:[{field:"field1",label:"oben",color:"var(--amber)"},{field:"field2",label:"mitte",color:"var(--blue)"}]},
     {title:"Abgastemperatur", unit:"°C", zero:false, lines:[{field:"field8",label:"Abgas",color:"var(--red)"}]},
+    {title:"Temperatur vor Schnitzelbunker", unit:"°C", zero:false, threshold:25, lines:[{field:"field3",label:"vor Bunker",color:"#b5651d"}]},
     {title:"Holzschnitzel-Füllstand", unit:"%", lines:[{field:"field4",label:"Füllstand",color:"var(--green)"}]}
   ]});
 
