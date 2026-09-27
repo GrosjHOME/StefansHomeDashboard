@@ -93,8 +93,9 @@
     .nav{gap:8px 12px; padding:8px 12px;}
     .brand{font-size:.95rem; order:1;}
     .navright{order:2; margin-left:auto;}
-    .tabs{order:3; flex:1 1 100%; flex-wrap:nowrap; overflow-x:auto;}
-    .tabs a{padding:6px 10px; font-size:.85rem; white-space:nowrap;}
+    .tabs{order:3; flex:1 1 100%; flex-wrap:nowrap; justify-content:space-between;}
+    .tabs a{padding:6px 10px; font-size:1.15rem; white-space:nowrap;}
+    .tabs a .tl{display:none;}  /* wenig Platz -> nur Icons */
     .hero .val{font-size:2.2rem;}
     .panel{padding:12px 12px;}
     .kpis{gap:8px; grid-template-columns:repeat(auto-fit,minmax(130px,1fr));}
@@ -106,11 +107,11 @@
   <header class="nav">
     <div class="brand">⚡ Stefans Zuhause</div>
     <nav class="tabs" id="tabs">
-      <a data-view="pv">☀️ PV</a>
-      <a data-view="wallbox">🚗 WB</a>
-      <a data-view="heizung">🔥 HZ</a>
-      <a data-view="boiler"><svg viewBox="0 0 24 24" width="17" height="17" style="vertical-align:-4px"><rect x="5.5" y="4" width="13" height="17" rx="5" fill="#2b83c7"/><rect x="10.5" y="1.5" width="3" height="3" rx="1" fill="#7fb2dd"/><path d="M12 9.5c1.7 2.1 2.6 3.4 2.6 4.7a2.6 2.6 0 1 1-5.2 0c0-1.3 .9-2.6 2.6-4.7z" fill="#eaf4fb"/></svg> Boiler</a>
-      <a data-view="planer">🗓️ Nutzung</a>
+      <a data-view="pv">☀️<span class="tl"> PV-Anlage</span></a>
+      <a data-view="wallbox">🚗<span class="tl"> Wallbox</span></a>
+      <a data-view="heizung">🔥<span class="tl"> Heizung</span></a>
+      <a data-view="boiler"><svg viewBox="0 0 24 24" width="17" height="17" style="vertical-align:-4px"><rect x="5.5" y="4" width="13" height="17" rx="5" fill="#2b83c7"/><rect x="10.5" y="1.5" width="3" height="3" rx="1" fill="#7fb2dd"/><path d="M12 9.5c1.7 2.1 2.6 3.4 2.6 4.7a2.6 2.6 0 1 1-5.2 0c0-1.3 .9-2.6 2.6-4.7z" fill="#eaf4fb"/></svg><span class="tl"> Boiler</span></a>
+      <a data-view="planer">🗓️<span class="tl"> Nutzung</span></a>
     </nav>
     <div class="navright">
       <a class="link-old" href="../thingspeak-dashboard/index.html" title="Original mit ThingSpeak-iframes">ThingSpeak</a>
@@ -726,7 +727,7 @@ var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
   // Testannahmen Geraete (Leistung/Energie je Lauf)
   // je Geraet: Laufdauer h und Leistung kw (Energie/Lauf = h*kw)
   devices:[ {n:"Waschmaschine", h:1.5, kw:1}, {n:"Geschirrspüler", h:3, kw:1}, {n:"Tumbler", h:3.5, kw:1} ],
-  car:{ n:"Auto (VW ID.3)", cap:58, minKw:1.3, maxKw:11 },
+  car:{ n:"Auto (VW ID.3)", cap:58, minKw:1.3, maxKw:11, kwhPer100:20 },  // Verbrauch 20 kWh/100km
   // Haushalts-Grundlast (kW) je Monat Jan..Dez, tagsueber (von PV gedeckt, daher
   // im Netzbezug ~unsichtbar). Realer Dauerbezug ~0.5 kW (Kuehlung, Standby,
   // Pumpen), Winter etwas hoeher. Wird beim Ueberschuss immer abgezogen.
@@ -739,7 +740,7 @@ PLANNER.render=function(main){
       '<div id="pl-chart"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Erwartete PV-Leistung – Prognose (Open-Meteo, geneigte Einstrahlung '+PLANNER.TILT+'°/Süd), pro Tagesstunde an den letzten 14 Tagen kalibriert (berücksichtigt die lokale Horizont-Verschattung im Tal, v.a. abends).</div></div>'+
     '<div class="panel"><h2>Tagesübersicht &amp; Empfehlungen</h2><div id="pl-days"><div class="chart-empty">wird geladen…</div></div>'+
-      '<div class="note">Ampel je Gerät: 🟢 gut machbar · 🟠 knapp · 🔴 zu spät bzw. zu wenig Überschuss. „Heute" wird ab der aktuellen Uhrzeit gerechnet und mit der aktuellen PV-Leistung nachgeführt (Nowcast); Aktualisierung alle 60 s. Laufzeiten: Waschmaschine 1.5 h, Geschirrspüler 3 h, Tumbler 3.5 h (je 1 kW). Überschuss = Brutto-PV (ab Wechselrichter) − Haushalts-Grundlast (~0.5 kW). Auto: 58 kWh, 1.3–11 kW.</div></div>'+
+      '<div class="note">Ampel je Gerät: 🟢 gut machbar · 🟠 knapp · 🔴 zu spät bzw. zu wenig Überschuss. „Heute" wird ab der aktuellen Uhrzeit gerechnet und mit der aktuellen PV-Leistung nachgeführt (Nowcast); Aktualisierung alle 60 s. Laufzeiten: Waschmaschine 1.5 h, Geschirrspüler 3 h, Tumbler 3.5 h (je 1 kW). Überschuss = Brutto-PV (ab Wechselrichter) − Haushalts-Grundlast (~0.5 kW). Auto: 58 kWh, 1.3–11 kW, 20 kWh/100 km.</div></div>'+
     '<footer>Prognose: Open-Meteo · Kalibrierung: ThingSpeak Kanal '+PLANNER.CH+' · <span id="pl-err" style="color:var(--red)"></span></footer></div>';
 };
 
@@ -805,7 +806,8 @@ PLANNER.load=function(){
       var devRows=PLANNER.devices.map(function(dev){ var c=ampel(dev);
         return '<div style="display:flex;align-items:center;gap:7px;font-size:.85rem;margin:3px 0"><span style="width:11px;height:11px;border-radius:50%;background:'+col[c]+';flex:none"></span>'+dev.n+' <span style="color:var(--muted)">('+String(dev.h).replace(".",",")+' h)</span></div>'; }).join("");
       var carKwh=Math.min(Math.max(0,Math.round(o.surplus-applTotal)), PLANNER.car.cap);
-      var carTxt = carKwh>=3 ? ("🚗 Auto ~"+carKwh+" kWh laden (bis "+chargeKw+" kW)") : "🚗 wenig Überschuss fürs Auto";
+      var carKm=Math.round(carKwh/PLANNER.car.kwhPer100*100);
+      var carTxt = carKwh>=3 ? ("🚗 Auto ~"+carKwh+" kWh (~"+carKm+" km) laden, bis "+chargeKw+" kW") : "🚗 wenig Überschuss fürs Auto";
       var dateTxt=(isToday?"Heute · ":"")+wd[o.date.getDay()]+" "+o.date.getDate()+"."+(o.date.getMonth()+1)+".";
       return '<div class="plday"><div class="pd-date">'+dateTxt+'</div><div class="pd-kwh">'+kwh+' <small>kWh</small></div>'+
         '<div class="pd-sun">'+sun+' <span style="font-size:.8rem;color:var(--muted);font-weight:600">Überschuss ~'+sur+' kWh</span></div>'+
