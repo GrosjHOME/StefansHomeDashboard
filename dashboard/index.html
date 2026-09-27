@@ -725,7 +725,10 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
 var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
   // Testannahmen Geraete (Leistung/Energie je Lauf)
   devices:[ {n:"Waschmaschine", kwh:1.5}, {n:"Tumbler", kwh:1.5}, {n:"Geschirrspüler", kwh:2} ],
-  car:{ n:"Auto (VW ID.3)", cap:58, minKw:1.3, maxKw:11 }, _cache:null };
+  car:{ n:"Auto (VW ID.3)", cap:58, minKw:1.3, maxKw:11 },
+  // Haushalts-Grundlast (kW) je Monat Jan..Dez – tagsueber; Winter etwas hoeher.
+  // (Netzbezug tagsueber ~0, d.h. PV deckt die Grundlast; Rest = Ueberschuss.)
+  baseByMonth:[0.8,0.8,0.6,0.5,0.4,0.4,0.4,0.4,0.5,0.6,0.7,0.8], _cache:null };
 
 PLANNER.render=function(main){
   main.innerHTML='<div class="wrap">'+
@@ -734,7 +737,7 @@ PLANNER.render=function(main){
       '<div id="pl-chart"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Erwartete PV-Leistung – Prognose (Open-Meteo, geneigte Einstrahlung '+PLANNER.TILT+'°/Süd), umgerechnet mit einem an den letzten Tagen kalibrierten Faktor.</div></div>'+
     '<div class="panel"><h2>Tagesübersicht &amp; Empfehlungen</h2><div id="pl-days"><div class="chart-empty">wird geladen…</div></div>'+
-      '<div class="note">Testannahmen: Waschmaschine/Tumbler je 1.5 kWh, Geschirrspüler 2 kWh; Auto 58 kWh, 1.3–11 kW. Empfehlungen zielen auf das Solarfenster (Haushalts-Grundlast noch nicht modelliert).</div></div>'+
+      '<div class="note">Überschuss = Prognose − Haushalts-Grundlast (~0.4 kW Sommer bis ~0.8 kW Winter, tagsüber). Testannahmen: Waschmaschine/Tumbler je 1.5 kWh, Geschirrspüler 2 kWh; Auto 58 kWh, 1.3–11 kW.</div></div>'+
     '<footer>Prognose: Open-Meteo · Kalibrierung: ThingSpeak Kanal '+PLANNER.CH+' · <span id="pl-err" style="color:var(--red)"></span></footer></div>';
 };
 
@@ -762,31 +765,35 @@ PLANNER.load=function(){
     // stuendliche Leistung (kW) + Tageswerte
     var pts=[], days={}, order=[];
     for(var i=0;i<ht.length;i++){ var dt=new Date(ht[i].replace(" ","T")); var kw=(hg[i]||0)*factor/1000;
+      var base=PLANNER.baseByMonth[dt.getMonth()];
       pts.push({t:dt, v:kw});
-      var d=ht[i].slice(0,10); if(!days[d]){ days[d]={kwh:0, peak:0, win:[], date:dt}; order.push(d); }
-      days[d].kwh+=kw; if(kw>days[d].peak)days[d].peak=kw; days[d].win.push({h:dt.getHours(),kw:kw}); }
+      var d=ht[i].slice(0,10); if(!days[d]){ days[d]={kwh:0, surplus:0, peak:0, win:[], date:dt, base:base}; order.push(d); }
+      days[d].kwh+=kw; days[d].surplus+=Math.max(0,kw-base); if(kw>days[d].peak)days[d].peak=kw; days[d].win.push({h:dt.getHours(),kw:kw}); }
     if(g("pl-chart")) lineChart(g("pl-chart"), [{color:"var(--green)", fill:true, pts:pts}], {unit:"kW", dec:1});
     // Tageskarten
     var wd=["So","Mo","Di","Mi","Do","Fr","Sa"], today=new Date().toISOString().slice(0,10);
+    var applTotal=0; PLANNER.devices.forEach(function(dv){applTotal+=dv.kwh;});  // 5 kWh
     var cards=order.map(function(d,idx){ var o=days[d];
-      var kwh=Math.round(o.kwh), peak=o.peak;
+      var kwh=Math.round(o.kwh), sur=Math.round(o.surplus), peak=o.peak;
       var lo=null,hi=null; o.win.forEach(function(w){ if(w.kw>=2){ if(lo===null)lo=w.h; hi=w.h; } });
-      var winTxt = lo!==null ? ("Solarfenster "+(lo<10?"0"+lo:lo)+"–"+(hi+1<10?"0"+(hi+1):(hi+1))+" Uhr") : "kaum Ertrag";
-      var sun = kwh>=120?"☀️☀️☀️":(kwh>=80?"☀️☀️":(kwh>=40?"☀️":"☁️"));
+      var winTxt = lo!==null ? ((lo<10?"0"+lo:lo)+"–"+(hi+1<10?"0"+(hi+1):(hi+1))+" Uhr") : "kaum Ertrag";
+      var sun = sur>=100?"☀️☀️☀️":(sur>=50?"☀️☀️":(sur>=15?"☀️":"☁️"));
+      var chargeKw=Math.max(PLANNER.car.minKw, Math.min(PLANNER.car.maxKw, Math.round(peak-o.base)));
       var rec;
-      if(kwh>=100) rec="Idealer Tag: Auto mittags mit voller Leistung (bis 11 kW) laden; Waschmaschine, Tumbler & Geschirrspüler ins Solarfenster legen.";
-      else if(kwh>=60) rec="Guter Tag: Waschmaschine, Tumbler & Geschirrspüler im Solarfenster; Auto mit reduzierter Leistung (~"+Math.max(PLANNER.car.minKw,Math.min(PLANNER.car.maxKw,Math.round(peak*0.5)))+" kW) laden.";
-      else if(kwh>=40) rec="Durchzogen: 1–2 Geräte ins Solarfenster; Auto nur bei Bedarf (wenig Überschuss).";
-      else rec="Wenig Sonne: Geräte nur nach Bedarf, Auto besser über Nacht/Netz.";
+      if(o.surplus>=applTotal){ var carKwh=Math.min(Math.round(o.surplus-applTotal), PLANNER.car.cap);
+        rec="Waschmaschine, Tumbler &amp; Geschirrspüler (~"+applTotal+" kWh) ins Solarfenster."+(carKwh>=3?(" Auto ~"+carKwh+" kWh laden (bis "+chargeKw+" kW)."):" Fürs Auto bleibt wenig übrig."); }
+      else if(o.surplus>=2){ rec="Nur ~"+sur+" kWh Überschuss: 1–2 Geräte ins Solarfenster legen; Auto besser Netz/Nachts."; }
+      else { rec="Kaum Überschuss – Geräte &amp; Auto besser über Nacht/Netz."; }
       var dateTxt=(d===today?"Heute · ":"")+wd[o.date.getDay()]+" "+o.date.getDate()+"."+(o.date.getMonth()+1)+".";
       return '<div class="plday"><div class="pd-date">'+dateTxt+'</div><div class="pd-kwh">'+kwh+' <small>kWh</small></div>'+
-        '<div class="pd-sun">'+sun+'</div><div class="pd-win">'+winTxt+' · Peak '+peak.toFixed(1)+' kW</div>'+
+        '<div class="pd-sun">'+sun+' <span style="font-size:.8rem;color:var(--muted);font-weight:600">Überschuss ~'+sur+' kWh</span></div>'+
+        '<div class="pd-win">Solarfenster '+winTxt+' · Peak '+peak.toFixed(1)+' kW</div>'+
         '<div class="pd-rec">'+rec+'</div></div>';
     }).join("");
     if(g("pl-days")) g("pl-days").innerHTML='<div class="pldays">'+cards+'</div>';
-    // Wochen-Tipp: sonnigster Tag fuers Auto
-    var best=order.reduce(function(a,b){return days[b].kwh>days[a].kwh?b:a;},order[0]);
-    var bo=days[best]; if(g("pl-meta")) g("pl-meta").textContent="Bester Ladetag: "+wd[bo.date.getDay()]+" "+bo.date.getDate()+"."+(bo.date.getMonth()+1)+". (~"+Math.round(bo.kwh)+" kWh)";
+    // Wochen-Tipp: Tag mit groesstem Ueberschuss fuers Auto
+    var best=order.reduce(function(a,b){return days[b].surplus>days[a].surplus?b:a;},order[0]);
+    var bo=days[best]; if(g("pl-meta")) g("pl-meta").textContent="Bester Ladetag: "+wd[bo.date.getDay()]+" "+bo.date.getDate()+"."+(bo.date.getMonth()+1)+". (~"+Math.round(bo.surplus)+" kWh Überschuss)";
     if(g("pl-err")) g("pl-err").textContent="";
   };
   if(PLANNER._cache && (Date.now()-PLANNER._cache.t)<1800000){ draw(PLANNER._cache); return; }
