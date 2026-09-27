@@ -145,10 +145,11 @@ function lineChart(holder, series, opts){
   var allL=[], allR=[];
   series.forEach(function(s){ if(s.bandFrac!=null)return; var tgt=(s.axis==="right")?allR:allL; s.pts.forEach(function(p){ if(p.v!=null) tgt.push(p); }); });
   var all=allL.concat(allR);
-  if(all.length<2){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
+  if(all.length<1){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
   var W=1000,H=300,padL=(opts.padL||58),padR=(hasRight?70:16),padT=28,padB=36;
   var tMin=Math.min.apply(null,all.map(function(p){return p.t.getTime();}));
-  var tMax=Math.max.apply(null,all.map(function(p){return p.t.getTime();})); if(tMax===tMin)tMax=tMin+1;
+  var tMax=Math.max.apply(null,all.map(function(p){return p.t.getTime();}));
+  var singleT=(tMax===tMin); if(singleT)tMax=tMin+1;  // nur ein Zeitpunkt -> mittig
   function scaleFor(arr, zeroOpt, yMinOpt, yMaxOpt){
     if(!arr.length) return {base:0, top:1};
     var vMin=Math.min.apply(null,arr.map(function(p){return p.v;}));
@@ -163,7 +164,7 @@ function lineChart(holder, series, opts){
   }
   var L=scaleFor(allL, opts.zero, opts.yMin, opts.yMax);
   var R=scaleFor(allR, opts.zero2, opts.yMin2, opts.yMax2);
-  function X(t){ return padL+(W-padL-padR)*((t-tMin)/(tMax-tMin)); }
+  function X(t){ return singleT ? (padL+(W-padR))/2 : padL+(W-padL-padR)*((t-tMin)/(tMax-tMin)); }
   function clampF(f){ return f<0?0:(f>1?1:f); }
   function Y(v){ return padT+(H-padT-padB)*(1-clampF((v-L.base)/(L.top-L.base))); }
   function Y2(v){ return padT+(H-padT-padB)*(1-clampF((v-R.base)/(R.top-R.base))); }
@@ -184,6 +185,11 @@ function lineChart(holder, series, opts){
     } else { var yb = s.bandFrac!=null ? (padT+(H-padT-padB)*(1-s.bandFrac)) : null;
       var d="", pen=false; s.pts.forEach(function(p){ if(p.v==null){ pen=false; return; } d+=(pen?" L ":"M ")+X(p.t.getTime())+" "+(yb!=null?yb:YS(p.v)); pen=true; });
       paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="'+(s.width||2)+'" stroke-linejoin="round" stroke-linecap="round"'+(s.dash?' stroke-dasharray="5 4"':'')+'/>'; } });
+  // Punkt-Marker: bei opts.dots oder wenn eine Serie nur aus einem Punkt besteht
+  // (dann waere sonst keine Linie sichtbar, z.B. erster Tag der Verlust-Diagnose).
+  series.forEach(function(s){ if(s.bandFrac!=null||s.segColor)return; var YS=YF(s);
+    var vis=s.pts.filter(function(p){return p.v!=null;});
+    if(opts.dots || vis.length===1){ vis.forEach(function(p){ paths+='<circle cx="'+X(p.t.getTime())+'" cy="'+YS(p.v)+'" r="'+(vis.length===1?5:3)+'" fill="'+s.color+'"/>'; }); } });
   // Flaeche nur fuer Linien mit fill:true (aktive Leistung); bis zur Achsen-
   // Grundlinie gefuellt, Luecken (null) unterbrechen die Flaeche.
   var fill="";
@@ -342,7 +348,8 @@ PV.render=function(main){
       '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
-      '<span class="it">— WR 5 · - - - WR 6</span></div><div id="chart-verlust"><div class="chart-empty">wird geladen…</div></div>'+
+      '<span class="it">— WR 5 · - - - WR 6</span>'+
+      '<span class="it"><span class="sw" style="border-color:var(--red)"></span>Mittags-PAC (kW, rechts)</span></div><div id="chart-verlust"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Tages-Mittel des Tracker-Stroms im Mittagsfenster (11–13 h) – ein Punkt pro Tag aus dem dedizierten Log-Kanal (volle Historie). Zum Erkennen eines schleichenden Rückgangs über Wochen/Monate; Feld „Mittags-PAC" dient später der Normierung gegen die Einstrahlung.</div></div>'+
     '<footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
   var spd=document.getElementById("seg-period"); if(spd) spd.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.period=b.getAttribute("data-m"); segActive(spd,b); PV.loadPower(); PV.loadTrackers(); PV.loadPeakSun(); });
@@ -416,14 +423,16 @@ PV.load=function(){
   var CH2=3510388, KEY2="0Q2JFTJU0B4NNYQU";
   var p6=j("https://api.thingspeak.com/channels/"+CH2+"/feeds.json?api_key="+KEY2+"&results=1000").then(function(d){
     var f=(d&&d.feeds)?d.feeds:[]; var holder=g("chart-verlust"); if(!holder)return;
-    var cols=["var(--green)","var(--blue)","var(--amber)"], S=[[],[],[],[],[],[]];
+    var cols=["var(--green)","var(--blue)","var(--amber)"], S=[[],[],[],[],[],[]], Spac=[];
     var flds=["field1","field2","field3","field4","field5","field6"];
     f.forEach(function(x){ var t=new Date(x.created_at);
-      for(var i=0;i<6;i++){ var v=num(x[flds[i]]); if(v!==null) S[i].push({t:t,v:v}); } });
+      for(var i=0;i<6;i++){ var v=num(x[flds[i]]); if(v!==null) S[i].push({t:t,v:v}); }
+      var p=num(x.field7); if(p!==null) Spac.push({t:t,v:p/1000}); });  // Mittags-PAC in kW
     var series=[{color:cols[0],pts:S[0]},{color:cols[1],pts:S[1]},{color:cols[2],pts:S[2]},
-      {color:cols[0],dash:true,pts:S[3]},{color:cols[1],dash:true,pts:S[4]},{color:cols[2],dash:true,pts:S[5]}].filter(function(s){return s.pts.length>=1;});
-    if(!series.some(function(s){return s.pts.length>=2;})){ holder.innerHTML='<div class="chart-empty">Sammelt Daten – ein Punkt pro Tag (nach 13:00).</div>'; return; }
-    lineChart(holder, series, {unit:"A", zero:false});
+      {color:cols[0],dash:true,pts:S[3]},{color:cols[1],dash:true,pts:S[4]},{color:cols[2],dash:true,pts:S[5]},
+      {color:"var(--red)",axis:"right",dec:1,pts:Spac}].filter(function(s){return s.pts.length>=1;});
+    if(!series.length){ holder.innerHTML='<div class="chart-empty">Sammelt Daten – ein Punkt pro Tag (nach 13:00).</div>'; return; }
+    lineChart(holder, series, {unit:"A", zero:false, unit2:"kW", zero2:false, dots:true});
   });
   Promise.all([p1,p4,p5,p6]).then(function(){ if(errEl())errEl().textContent=""; }).catch(function(){ if(errEl())errEl().textContent="Daten konnten nicht geladen werden – nächster Versuch in 60 s."; });
 };
