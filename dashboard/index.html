@@ -147,7 +147,7 @@ function lineChart(holder, series, opts){
   series.forEach(function(s){ if(s.bandFrac!=null)return; var tgt=(s.axis==="right")?allR:allL; s.pts.forEach(function(p){ if(p.v!=null) tgt.push(p); }); });
   var all=allL.concat(allR);
   if(all.length<1){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
-  var W=1000,H=300,padL=(opts.padL||58),padR=(hasRight?70:16),padT=28,padB=36;
+  var W=1000,H=(opts.height||300),padL=(opts.padL||58),padR=(hasRight?70:16),padT=28,padB=36;
   var tMin=Math.min.apply(null,all.map(function(p){return p.t.getTime();}));
   var tMax=Math.max.apply(null,all.map(function(p){return p.t.getTime();}));
   var singleT=(tMax===tMin); if(singleT)tMax=tMin+1;  // nur ein Zeitpunkt -> mittig
@@ -415,16 +415,17 @@ PV.loadCumYear=function(){
     var maxM=(yy===now.getFullYear())?now.getMonth():11, ms=[]; for(var m=0;m<=maxM;m++) ms.push(m);
     return Promise.all(ms.map(function(m){ return pvMonthTotal(yy,m).then(function(v){return {m:m,v:v};}); })).then(function(res){
       res.sort(function(a,b){return a.m-b.m;});
-      var cum=0, pts=[]; res.forEach(function(o){ if(o.v!==null){ cum+=o.v; pts.push({t:new Date(2000,o.m,15),v:cum}); } });
+      var cum=0, pts=[]; res.forEach(function(o){ if(o.v!==null){ cum+=o.v; pts.push({t:new Date(2000,o.m,15),v:cum/1000}); } });  // MWh
       if(pts.length>=1) seriesAll.push({year:yy,pts:pts});
     });
   }); });
+  var curY=now.getFullYear();
   return chain.then(function(){
     if(!seriesAll.length){ holder.innerHTML='<div class="chart-empty">keine Daten</div>'; return; }
     var n=seriesAll.length, legend=[];
     seriesAll.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)"; legend.push({color:s.color,label:String(s.year)}); });
     var xt=[]; for(var m=0;m<12;m++) xt.push({t:new Date(2000,m,15),label:mo[m]});
-    lineChart(holder, seriesAll.map(function(s){return {color:s.color,pts:s.pts,width:2};}), {unit:"kWh",xTicks:xt,legend:legend,zero:true,dec:0});
+    lineChart(holder, seriesAll.map(function(s){return {color:s.color,pts:s.pts,width:(s.year===curY?3:2)};}), {unit:"MWh",xTicks:xt,legend:legend,zero:true,dec:1,height:600});
   }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
 };
 PV.load=function(){
