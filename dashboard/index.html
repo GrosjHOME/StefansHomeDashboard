@@ -346,10 +346,11 @@ PV.render=function(main){
       '<div class="note">Tages-Mittel des Tracker-Stroms im Mittagsfenster (11–13 h) – ein Punkt pro Tag aus dem dedizierten Log-Kanal (volle Historie). Zum Erkennen eines schleichenden Rückgangs über Wochen/Monate; Feld „Mittags-PAC" dient später der Normierung gegen die Einstrahlung.</div></div>'+
     '<footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
   var spd=document.getElementById("seg-period"); if(spd) spd.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.period=b.getAttribute("data-m"); segActive(spd,b); PV.loadPower(); PV.loadTrackers(); PV.loadPeakSun(); });
+  function parseEnergyYear(v){ return (v==="alle"||v==="gruppiert") ? v : (v?parseInt(v,10):null); }
   var se=document.getElementById("seg-energy"); if(se) se.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.energyMode=b.getAttribute("data-m"); segActive(se,b);
-    var sy=document.getElementById("energy-year"); if(sy){ sy.style.display=(PV.energyMode==="monate")?"":"none"; if(PV.energyMode!=="monate"){ PV.energyYear=null; sy.value=""; } }
+    var sy=document.getElementById("energy-year"); if(sy){ if(PV.energyMode==="monate"){ sy.style.display=""; PV.energyYear=parseEnergyYear(sy.value); } else { sy.style.display="none"; PV.energyYear=null; } }
     PV.loadEnergy(); });
-  var sy2=document.getElementById("energy-year"); if(sy2) sy2.addEventListener("change",function(){ PV.energyYear=this.value?(this.value==="alle"?"alle":parseInt(this.value,10)):null; PV.loadEnergy(); });
+  var sy2=document.getElementById("energy-year"); if(sy2) sy2.addEventListener("change",function(){ PV.energyYear=parseEnergyYear(this.value); PV.loadEnergy(); });
 };
 function kpiCard(k,id,unit){ return '<div class="kpi"><div class="k">'+k+'</div><div class="v"><span id="'+id+'">–</span> <small>'+unit+'</small></div></div>'; }
 function panel(title,tag,id){ return '<div class="panel"><h2>'+title+' '+tag+'</h2><div id="'+id+'"><div class="chart-empty">wird geladen…</div></div></div>'; }
