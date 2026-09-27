@@ -239,21 +239,24 @@ function barChart(holder, bars, opts){
   [0,vMax/2,vMax].forEach(function(v){ var y=Y(v);
     grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
     yl+='<text x="'+(padL-8)+'" y="'+(y+7)+'" text-anchor="end" font-size="21" fill="var(--muted)">'+ylab(v)+'</text>'; });
+  var many = n>24;  // bei vielen Balken: Werte-Beschriftung weglassen, Ecken flacher
   var r="";
   bars.forEach(function(b,i){ var x=padL+slot*i+(slot-bw)/2, y=Y(b.v), h=Y(0)-y;
-    r+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+h+'" rx="3" fill="'+(opts.color||"var(--green)")+'"/>';
-    r+='<text x="'+(x+bw/2)+'" y="'+(y-6)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+fmt(b.v,0)+'</text>';
-    r+='<text x="'+(x+bw/2)+'" y="'+(H-22)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+b.label+'</text>'; });
+    r+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+h+'" rx="'+(many?1:3)+'" fill="'+(b.color||opts.color||"var(--green)")+'"/>';
+    if(!many) r+='<text x="'+(x+bw/2)+'" y="'+(y-6)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+fmt(b.v,0)+'</text>';
+    if(b.label) r+='<text x="'+(x+bw/2)+'" y="'+(H-22)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+b.label+'</text>'; });
   var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
     '<text x="6" y="18" font-size="18" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
-  holder.innerHTML='<div class="chart-wrap">'+svgStr+'<div class="tip"></div></div>';
-  var wrap=holder.firstChild, svg=wrap.querySelector("svg"), ov=wrap.querySelector(".ov"), tip=wrap.querySelector(".tip");
+  var legHtml="";
+  if(opts.legend&&opts.legend.length){ legHtml='<div class="legend">'+opts.legend.map(function(it){ return '<span class="it"><span class="sw" style="border-color:'+it.color+'"></span>'+it.label+'</span>'; }).join("")+'</div>'; }
+  holder.innerHTML=legHtml+'<div class="chart-wrap">'+svgStr+'<div class="tip"></div></div>';
+  var wrap=holder.querySelector(".chart-wrap"), svg=wrap.querySelector("svg"), ov=wrap.querySelector(".ov"), tip=wrap.querySelector(".tip");
   svg.addEventListener("mousemove",function(ev){
     var rect=svg.getBoundingClientRect(), mx=(ev.clientX-rect.left)/rect.width*W, idx=Math.floor((mx-padL)/slot);
     if(mx<padL||idx<0||idx>=n){ ov.style.display="none"; tip.style.opacity=0; return; }
     var b=bars[idx], bx=padL+slot*idx+(slot-bw)/2;
     ov.innerHTML='<rect x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+(H-padT-padB)+'" fill="var(--ink)" opacity="0.06"/>'; ov.style.display="";
-    tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+b.label+'</div><div>'+fmt(b.v,0)+' '+(opts.unit||"")+'</div>';
+    tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+(b.tip||b.label)+'</div><div>'+fmt(b.v,0)+' '+(opts.unit||"")+'</div>';
     var px=(bx+bw/2)/W*rect.width; tip.style.left=Math.max(0,Math.min(rect.width-tip.offsetWidth-4, px+8))+"px"; tip.style.top="6px"; tip.style.opacity=1;
   });
   svg.addEventListener("mouseleave",function(){ ov.style.display="none"; tip.style.opacity=0; });
@@ -447,23 +450,23 @@ PV.loadEnergy=function(){
   var mo=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
   var now=new Date();
   if(PV.energyMode==="monate" && PV.energyYear==="alle"){
-    // Jahresvergleich: eine Linie pro Jahr, X-Achse Jan-Dez
+    // TEST: alle Monate aller Jahre chronologisch als Balken (Jahre farbig)
     holder.innerHTML='<div class="chart-empty">wird geladen…</div>';
     var yrs=[]; for(var yy=2014; yy<=now.getFullYear(); yy++) yrs.push(yy);
     var seriesAll=[], chain=Promise.resolve();
     yrs.forEach(function(y){ chain=chain.then(function(){
       var maxM=(y===now.getFullYear())?now.getMonth():11, ms=[]; for(var m=0;m<=maxM;m++) ms.push(m);
       return Promise.all(ms.map(function(m){ return pvMonthTotal(y,m).then(function(v){return {m:m,v:v};}); })).then(function(res){
-        var pts=res.filter(function(o){return o.v!==null&&o.v>0;}).map(function(o){return {t:new Date(2000,o.m,15),v:o.v};});
-        if(pts.length>1) seriesAll.push({year:y,pts:pts});
+        var pts=res.filter(function(o){return o.v!==null&&o.v>0;}).map(function(o){return {m:o.m,v:o.v};});
+        if(pts.length>=1) seriesAll.push({year:y,pts:pts});
       });
     }); });
     chain.then(function(){
       if(!seriesAll.length){ holder.innerHTML='<div class="chart-empty">keine Daten</div>'; return; }
-      var n=seriesAll.length, legend=[];
-      seriesAll.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)"; legend.push({color:s.color,label:String(s.year)}); });
-      var xt=[]; for(var m=0;m<12;m++) xt.push({t:new Date(2000,m,15),label:mo[m]});
-      lineChart(holder, seriesAll.map(function(s){return {color:s.color,pts:s.pts,width:2};}), {unit:"kWh",xTicks:xt,legend:legend,zero:true,dec:0});
+      var n=seriesAll.length, legend=[], bars=[];
+      seriesAll.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)"; legend.push({color:s.color,label:String(s.year)});
+        s.pts.forEach(function(p){ bars.push({v:p.v,color:s.color,label:(p.m===0?String(s.year):""),tip:mo[p.m]+" "+s.year}); }); });
+      barChart(holder, bars, {unit:"kWh",legend:legend});
     }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
     return;
   }
