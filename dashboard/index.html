@@ -727,11 +727,10 @@ var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
   // je Geraet: Laufdauer h und Leistung kw (Energie/Lauf = h*kw)
   devices:[ {n:"Waschmaschine", h:1.5, kw:1}, {n:"Geschirrspüler", h:3, kw:1}, {n:"Tumbler", h:3.5, kw:1} ],
   car:{ n:"Auto (VW ID.3)", cap:58, minKw:1.3, maxKw:11 },
-  // Haushalts-Grundlast (kW) je Monat Jan..Dez, aus realem BKW-Monatsbezug 2026
-  // abgeleitet: Ø kW = kWh/Monat / Tage / 24 h. Okt-Dez geschaetzt (noch keine
-  // 2026-Daten). Netzbezug tagsueber ~0 (PV deckt Grundlast); Rest = Ueberschuss.
-  // Jan313 Feb388 Mär279 Apr187 Mai134 Jun94 Jul100 Aug102 Sep90 kWh
-  baseByMonth:[0.42,0.58,0.37,0.26,0.18,0.13,0.13,0.14,0.13,0.28,0.45,0.52], _cache:null };
+  // Haushalts-Grundlast (kW) je Monat Jan..Dez, tagsueber (von PV gedeckt, daher
+  // im Netzbezug ~unsichtbar). Realer Dauerbezug ~0.5 kW (Kuehlung, Standby,
+  // Pumpen), Winter etwas hoeher. Wird beim Ueberschuss immer abgezogen.
+  baseByMonth:[0.7,0.7,0.6,0.5,0.5,0.5,0.5,0.5,0.5,0.6,0.65,0.7], _cache:null, _pNow:null };
 
 PLANNER.render=function(main){
   main.innerHTML='<div class="wrap">'+
@@ -740,7 +739,7 @@ PLANNER.render=function(main){
       '<div id="pl-chart"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Erwartete PV-Leistung – Prognose (Open-Meteo, geneigte Einstrahlung '+PLANNER.TILT+'°/Süd), pro Tagesstunde an den letzten 14 Tagen kalibriert (berücksichtigt die lokale Horizont-Verschattung im Tal, v.a. abends).</div></div>'+
     '<div class="panel"><h2>Tagesübersicht &amp; Empfehlungen</h2><div id="pl-days"><div class="chart-empty">wird geladen…</div></div>'+
-      '<div class="note">Ampel je Gerät: 🟢 im Solarfenster gut machbar · 🟠 knapp (läuft teils in die Dämmerung) · 🔴 zu spät bzw. zu wenig Überschuss. Bei „Heute" ab der aktuellen Uhrzeit gerechnet. Laufzeiten: Waschmaschine 1.5 h, Geschirrspüler 3 h, Tumbler 3.5 h (je 1 kW). Überschuss = Brutto-PV (ab Wechselrichter) − Haushalts-Grundlast (aus BKW-Bezug). Auto: 58 kWh, 1.3–11 kW.</div></div>'+
+      '<div class="note">Ampel je Gerät: 🟢 gut machbar · 🟠 knapp · 🔴 zu spät bzw. zu wenig Überschuss. „Heute" wird ab der aktuellen Uhrzeit gerechnet und mit der aktuellen PV-Leistung nachgeführt (Nowcast); Aktualisierung alle 60 s. Laufzeiten: Waschmaschine 1.5 h, Geschirrspüler 3 h, Tumbler 3.5 h (je 1 kW). Überschuss = Brutto-PV (ab Wechselrichter) − Haushalts-Grundlast (~0.5 kW). Auto: 58 kWh, 1.3–11 kW.</div></div>'+
     '<footer>Prognose: Open-Meteo · Kalibrierung: ThingSpeak Kanal '+PLANNER.CH+' · <span id="pl-err" style="color:var(--red)"></span></footer></div>';
 };
 
@@ -789,10 +788,19 @@ PLANNER.load=function(){
       var winTxt = lo!==null ? ((lo<10?"0"+lo:lo)+"–"+(hi+1<10?"0"+(hi+1):(hi+1))+" Uhr") : "kaum Ertrag";
       var sun = sur>=100?"☀️☀️☀️":(sur>=50?"☀️☀️":(sur>=15?"☀️":"☁️"));
       var chargeKw=Math.max(PLANNER.car.minKw, Math.min(PLANNER.car.maxKw, Math.round(peak-o.base)));
+      // Nowcast: fuer HEUTE die Restprognose an die AKTUELLE PV-Leistung anpassen
+      // (Prognose kennt lokale Wolken/Verschattung nicht; z.B. real 0.6 kW statt 2 kW).
+      var scale=1;
+      if(isToday && PLANNER._pNow!=null){ var fcNow=null; o.win.forEach(function(w){ if(w.h===nowH) fcNow=w.kw; });
+        if(fcNow!=null && fcNow>0.5) scale=Math.min(PLANNER._pNow/fcNow, 1.3); }
       // Geraete-Ampel: Stunden mit Ueberschuss >= 1 kW; reicht die (Rest-)Fensterdauer fuer die Laufzeit?
-      var q=o.win.filter(function(w){return (w.kw-o.base)>=1;});
+      function effKw(w){ return (isToday && w.h>=nowH) ? w.kw*scale : w.kw; }
+      var q=o.win.filter(function(w){return (effKw(w)-o.base)>=1;});
       function ampel(dev){ if(!q.length || o.surplus < dev.h*dev.kw) return "red";
-        var firstH=q[0].h, lastH=q[q.length-1].h, start=isToday?Math.max(firstH,nowH):firstH, avail=(lastH+1)-start;
+        var start=isToday?nowH:q[0].h;
+        var rem=q.filter(function(w){return w.h>=start;});
+        if(!rem.length) return "red";
+        var avail=(rem[rem.length-1].h+1)-start;
         return avail>=dev.h ? "green" : (avail>=dev.h*0.5 ? "orange" : "red"); }
       var devRows=PLANNER.devices.map(function(dev){ var c=ampel(dev);
         return '<div style="display:flex;align-items:center;gap:7px;font-size:.85rem;margin:3px 0"><span style="width:11px;height:11px;border-radius:50%;background:'+col[c]+';flex:none"></span>'+dev.n+' <span style="color:var(--muted)">('+String(dev.h).replace(".",",")+' h)</span></div>'; }).join("");
@@ -810,11 +818,15 @@ PLANNER.load=function(){
     var bo=days[best]; if(g("pl-meta")) g("pl-meta").textContent="Bester Ladetag: "+wd[bo.date.getDay()]+" "+bo.date.getDate()+"."+(bo.date.getMonth()+1)+". (~"+Math.round(bo.surplus)+" kWh Überschuss)";
     if(g("pl-err")) g("pl-err").textContent="";
   };
-  if(PLANNER._cache && (Date.now()-PLANNER._cache.t)<1800000){ draw(PLANNER._cache); return; }
-  var fcUrl="https://api.open-meteo.com/v1/forecast?latitude="+PLANNER.LAT+"&longitude="+PLANNER.LON+"&hourly=global_tilted_irradiance&tilt="+PLANNER.TILT+"&azimuth="+PLANNER.AZ+"&forecast_days=7&timezone=Europe%2FZurich";
-  Promise.all([ PLANNER._calcHourFactors(), j(fcUrl) ]).then(function(res){
-    PLANNER._cache={t:Date.now(), factor:res[0], fc:res[1]}; draw(PLANNER._cache);
-  }).catch(function(){ if(g("pl-err")) g("pl-err").textContent="Prognosedaten konnten nicht geladen werden."; });
+  var afterPnow=function(){
+    if(PLANNER._cache && (Date.now()-PLANNER._cache.t)<1800000){ draw(PLANNER._cache); return; }
+    var fcUrl="https://api.open-meteo.com/v1/forecast?latitude="+PLANNER.LAT+"&longitude="+PLANNER.LON+"&hourly=global_tilted_irradiance&tilt="+PLANNER.TILT+"&azimuth="+PLANNER.AZ+"&forecast_days=7&timezone=Europe%2FZurich";
+    Promise.all([ PLANNER._calcHourFactors(), j(fcUrl) ]).then(function(res){
+      PLANNER._cache={t:Date.now(), factor:res[0], fc:res[1]}; draw(PLANNER._cache);
+    }).catch(function(){ if(g("pl-err")) g("pl-err").textContent="Prognosedaten konnten nicht geladen werden."; });
+  };
+  // aktuelle PV-Leistung jedes Mal frisch holen (Nowcast der Heute-Ampel, ~alle 60 s)
+  j(api(PLANNER.CH,"/feeds.json?results=1",true)).then(function(d){ var f=(d&&d.feeds)?d.feeds:[]; var v=f.length?num(f[f.length-1].field1):null; PLANNER._pNow=(v===null?null:v/1000); afterPnow(); }).catch(function(){ afterPnow(); });
 };
 
 var VIEWS={ pv:PV, wallbox:WALLBOX, heizung:HEIZUNG, boiler:BOILER, planer:PLANNER };
