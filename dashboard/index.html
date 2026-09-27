@@ -107,8 +107,8 @@
     <div class="brand">⚡ Stefans Zuhause</div>
     <nav class="tabs" id="tabs">
       <a data-view="pv">☀️ PV</a>
-      <a data-view="wallbox">🚗 Wallbox</a>
-      <a data-view="heizung">🔥 Heizung</a>
+      <a data-view="wallbox">🚗 WB</a>
+      <a data-view="heizung">🔥 HZ</a>
       <a data-view="boiler"><svg viewBox="0 0 24 24" width="17" height="17" style="vertical-align:-4px"><rect x="5.5" y="4" width="13" height="17" rx="5" fill="#2b83c7"/><rect x="10.5" y="1.5" width="3" height="3" rx="1" fill="#7fb2dd"/><path d="M12 9.5c1.7 2.1 2.6 3.4 2.6 4.7a2.6 2.6 0 1 1-5.2 0c0-1.3 .9-2.6 2.6-4.7z" fill="#eaf4fb"/></svg> Boiler</a>
       <a data-view="planer">🗓️ Nutzung</a>
     </nav>
@@ -726,9 +726,11 @@ var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
   // Testannahmen Geraete (Leistung/Energie je Lauf)
   devices:[ {n:"Waschmaschine", kwh:1.5}, {n:"Tumbler", kwh:1.5}, {n:"Geschirrspüler", kwh:2} ],
   car:{ n:"Auto (VW ID.3)", cap:58, minKw:1.3, maxKw:11 },
-  // Haushalts-Grundlast (kW) je Monat Jan..Dez – tagsueber; Winter etwas hoeher.
-  // (Netzbezug tagsueber ~0, d.h. PV deckt die Grundlast; Rest = Ueberschuss.)
-  baseByMonth:[0.8,0.8,0.6,0.5,0.4,0.4,0.4,0.4,0.5,0.6,0.7,0.8], _cache:null };
+  // Haushalts-Grundlast (kW) je Monat Jan..Dez, aus realem BKW-Monatsbezug 2026
+  // abgeleitet: Ø kW = kWh/Monat / Tage / 24 h. Okt-Dez geschaetzt (noch keine
+  // 2026-Daten). Netzbezug tagsueber ~0 (PV deckt Grundlast); Rest = Ueberschuss.
+  // Jan313 Feb388 Mär279 Apr187 Mai134 Jun94 Jul100 Aug102 Sep90 kWh
+  baseByMonth:[0.42,0.58,0.37,0.26,0.18,0.13,0.13,0.14,0.13,0.28,0.45,0.52], _cache:null };
 
 PLANNER.render=function(main){
   main.innerHTML='<div class="wrap">'+
