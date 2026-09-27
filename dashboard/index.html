@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <title>Stefans Zuhause – Dashboard</title>
 <style>
   :root{
@@ -146,7 +147,7 @@ function lineChart(holder, series, opts){
   series.forEach(function(s){ if(s.bandFrac!=null)return; var tgt=(s.axis==="right")?allR:allL; s.pts.forEach(function(p){ if(p.v!=null) tgt.push(p); }); });
   var all=allL.concat(allR);
   if(all.length<1){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
-  var W=1000,H=300,padL=(opts.padL||58),padR=(hasRight?70:16),padT=28,padB=36;
+  var W=1000,H=(opts.height||300),padL=(opts.padL||58),padR=(hasRight?70:16),padT=28,padB=36;
   var tMin=Math.min.apply(null,all.map(function(p){return p.t.getTime();}));
   var tMax=Math.max.apply(null,all.map(function(p){return p.t.getTime();}));
   var singleT=(tMax===tMin); if(singleT)tMax=tMin+1;  // nur ein Zeitpunkt -> mittig
@@ -332,6 +333,8 @@ PV.render=function(main){
       kpiCard("Peak","e-peak","kW")+kpiCard("Sonnenstunden","e-sun","h")+'</div>'+
     '<div class="panel"><h2>Leistung <span class="tag" id="power-tag"></span></h2><div id="chart-power"><div class="chart-empty">wird geladen…</div></div></div>'+
     '<div class="panel"><h2>Energie <span class="seg" id="seg-energy"><button data-m="tage" class="active">Tage</button><button data-m="monate">Monate</button><button data-m="jahre">Jahre</button></span> <select id="energy-year" style="display:none;margin-left:8px;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px">'+yearOpts+'</select></h2><div id="chart-days"><div class="chart-empty">wird geladen…</div></div></div>'+
+    '<div class="panel"><h2>PV-Arbeit je Jahr (kumuliert)</h2><div id="chart-cumyear"><div class="chart-empty">wird geladen…</div></div>'+
+      '<div class="note">Aufsummierte Energie im Jahresverlauf (Jan–Dez) – jede Linie ein Jahr. Zeigt, ob das laufende Jahr über oder unter den Vorjahren liegt.</div></div>'+
     '<div class="panel"><h2>Strom je MPP-Tracker <span class="tag" id="strom-tag"></span></h2>'+
       '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
@@ -401,6 +404,30 @@ PV.loadPeakSun=function(){
     if(g("e-sun")) g("e-sun").textContent=fmt(sunMs/3600000,1);
   });
 };
+
+// PV-Arbeit je Jahr kumuliert (Jan-Dez aufsummiert) - eine Linie pro Jahr
+PV.loadCumYear=function(){
+  var holder=document.getElementById("chart-cumyear"); if(!holder)return;
+  var mo=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"], now=new Date();
+  var yrs=[]; for(var y=2014;y<=now.getFullYear();y++) yrs.push(y);
+  var seriesAll=[], chain=Promise.resolve();
+  yrs.forEach(function(yy){ chain=chain.then(function(){
+    var maxM=(yy===now.getFullYear())?now.getMonth():11, ms=[]; for(var m=0;m<=maxM;m++) ms.push(m);
+    return Promise.all(ms.map(function(m){ return pvMonthTotal(yy,m).then(function(v){return {m:m,v:v};}); })).then(function(res){
+      res.sort(function(a,b){return a.m-b.m;});
+      var cum=0, pts=[]; res.forEach(function(o){ if(o.v!==null){ cum+=o.v; pts.push({t:new Date(2000,o.m,15),v:cum/1000}); } });  // MWh
+      if(pts.length>=1) seriesAll.push({year:yy,pts:pts});
+    });
+  }); });
+  var curY=now.getFullYear();
+  return chain.then(function(){
+    if(!seriesAll.length){ holder.innerHTML='<div class="chart-empty">keine Daten</div>'; return; }
+    var n=seriesAll.length, legend=[];
+    seriesAll.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)"; legend.push({color:s.color,label:String(s.year)}); });
+    var xt=[]; for(var m=0;m<12;m++) xt.push({t:new Date(2000,m,15),label:mo[m]});
+    lineChart(holder, seriesAll.map(function(s){return {color:s.color,pts:s.pts,width:(s.year===curY?3:2)};}), {unit:"MWh",xTicks:xt,legend:legend,zero:true,dec:1,height:600});
+  }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
+};
 PV.load=function(){
   var errEl=function(){return document.getElementById("err");};
   function g(id){return document.getElementById(id);}
@@ -415,7 +442,7 @@ PV.load=function(){
     var sd=L("field7"); g("sd-status").innerHTML= sd===1?'<span class="dot ok"></span>SD-Karte OK':(sd===0?'<span class="dot bad"></span>SD-Karte Fehler':'<span class="dot na"></span>SD-Karte');
     if(last.created_at) g("updated").textContent="Aktualisiert "+relTime(new Date(last.created_at));
   });
-  PV.loadPower(); PV.loadEnergy();
+  PV.loadPower(); PV.loadEnergy(); PV.loadCumYear();
   var p4=PV.loadTrackers();
   var p5=PV.loadPeakSun();
   // Verlust-Diagnose aus dem dedizierten Log-Kanal (2. Account): pro Tag ein
