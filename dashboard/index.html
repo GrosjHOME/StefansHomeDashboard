@@ -348,7 +348,8 @@ PV.render=function(main){
       '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
-      '<span class="it">— WR 5 · - - - WR 6</span></div><div id="chart-verlust"><div class="chart-empty">wird geladen…</div></div>'+
+      '<span class="it">— WR 5 · - - - WR 6</span>'+
+      '<span class="it"><span class="sw" style="border-color:#9333ea"></span>Mittags-PAC (kW, rechts)</span></div><div id="chart-verlust"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Tages-Mittel des Tracker-Stroms im Mittagsfenster (11–13 h) – ein Punkt pro Tag aus dem dedizierten Log-Kanal (volle Historie). Zum Erkennen eines schleichenden Rückgangs über Wochen/Monate; Feld „Mittags-PAC" dient später der Normierung gegen die Einstrahlung.</div></div>'+
     '<footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
   var spd=document.getElementById("seg-period"); if(spd) spd.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.period=b.getAttribute("data-m"); segActive(spd,b); PV.loadPower(); PV.loadTrackers(); PV.loadPeakSun(); });
@@ -422,14 +423,16 @@ PV.load=function(){
   var CH2=3510388, KEY2="0Q2JFTJU0B4NNYQU";
   var p6=j("https://api.thingspeak.com/channels/"+CH2+"/feeds.json?api_key="+KEY2+"&results=1000").then(function(d){
     var f=(d&&d.feeds)?d.feeds:[]; var holder=g("chart-verlust"); if(!holder)return;
-    var cols=["var(--green)","var(--blue)","var(--amber)"], S=[[],[],[],[],[],[]];
+    var cols=["var(--green)","var(--blue)","var(--amber)"], S=[[],[],[],[],[],[]], Spac=[];
     var flds=["field1","field2","field3","field4","field5","field6"];
     f.forEach(function(x){ var t=new Date(x.created_at);
-      for(var i=0;i<6;i++){ var v=num(x[flds[i]]); if(v!==null) S[i].push({t:t,v:v}); } });
+      for(var i=0;i<6;i++){ var v=num(x[flds[i]]); if(v!==null) S[i].push({t:t,v:v}); }
+      var p=num(x.field7); if(p!==null) Spac.push({t:t,v:p/1000}); });  // Mittags-PAC in kW
     var series=[{color:cols[0],pts:S[0]},{color:cols[1],pts:S[1]},{color:cols[2],pts:S[2]},
-      {color:cols[0],dash:true,pts:S[3]},{color:cols[1],dash:true,pts:S[4]},{color:cols[2],dash:true,pts:S[5]}].filter(function(s){return s.pts.length>=1;});
+      {color:cols[0],dash:true,pts:S[3]},{color:cols[1],dash:true,pts:S[4]},{color:cols[2],dash:true,pts:S[5]},
+      {color:"#9333ea",axis:"right",dec:1,pts:Spac}].filter(function(s){return s.pts.length>=1;});
     if(!series.length){ holder.innerHTML='<div class="chart-empty">Sammelt Daten – ein Punkt pro Tag (nach 13:00).</div>'; return; }
-    lineChart(holder, series, {unit:"A", zero:false, dots:true});
+    lineChart(holder, series, {unit:"A", zero:false, unit2:"kW", zero2:false, dots:true});
   });
   Promise.all([p1,p4,p5,p6]).then(function(){ if(errEl())errEl().textContent=""; }).catch(function(){ if(errEl())errEl().textContent="Daten konnten nicht geladen werden – nächster Versuch in 60 s."; });
 };
