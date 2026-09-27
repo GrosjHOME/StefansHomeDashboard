@@ -738,36 +738,41 @@ PLANNER.render=function(main){
     '<div class="view-head"><h1>🗓️ Vorgeschlagene Gerätenutzung</h1><div class="meta" id="pl-meta">wird geladen…</div></div>'+
     '<div class="panel"><h2>Solarprognose 7 Tage <span class="tag" id="pl-cal"></span></h2>'+
       '<div id="pl-chart"><div class="chart-empty">wird geladen…</div></div>'+
-      '<div class="note">Erwartete PV-Leistung – Prognose (Open-Meteo, geneigte Einstrahlung '+PLANNER.TILT+'°/Süd), umgerechnet mit einem an den letzten Tagen kalibrierten Faktor.</div></div>'+
+      '<div class="note">Erwartete PV-Leistung – Prognose (Open-Meteo, geneigte Einstrahlung '+PLANNER.TILT+'°/Süd), pro Tagesstunde an den letzten 14 Tagen kalibriert (berücksichtigt die lokale Horizont-Verschattung im Tal, v.a. abends).</div></div>'+
     '<div class="panel"><h2>Tagesübersicht &amp; Empfehlungen</h2><div id="pl-days"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Ampel je Gerät: 🟢 im Solarfenster gut machbar · 🟠 knapp (läuft teils in die Dämmerung) · 🔴 zu spät bzw. zu wenig Überschuss. Bei „Heute" ab der aktuellen Uhrzeit gerechnet. Laufzeiten: Waschmaschine 1.5 h, Geschirrspüler 3 h, Tumbler 3.5 h (je 1 kW). Überschuss = Brutto-PV (ab Wechselrichter) − Haushalts-Grundlast (aus BKW-Bezug). Auto: 58 kWh, 1.3–11 kW.</div></div>'+
     '<footer>Prognose: Open-Meteo · Kalibrierung: ThingSpeak Kanal '+PLANNER.CH+' · <span id="pl-err" style="color:var(--red)"></span></footer></div>';
 };
 
-// Kalibrierfaktor: Median(Ist-Tagesertrag / Tages-GTI) der letzten Tage (heute ausgeschlossen)
-PLANNER._calcFactor=function(){
-  var u="https://api.open-meteo.com/v1/forecast?latitude="+PLANNER.LAT+"&longitude="+PLANNER.LON+"&hourly=global_tilted_irradiance&tilt="+PLANNER.TILT+"&azimuth="+PLANNER.AZ+"&past_days=14&forecast_days=1&timezone=Europe%2FZurich";
-  var pj=api(PLANNER.CH,"/feeds.json?days=15&average=60",true);
+// Kalibrierung pro Tagesstunde: Median(Ist-Leistung / GTI) je Stunde der letzten
+// 14 Tage. Bildet die lokale Horizont-/Terrain-Verschattung ab (im Emmental-Tal
+// geht die Sonne abends frueh hinter die Huegel -> Abendfaktor faellt gegen 0),
+// die die reine Prognose nicht kennt. Ergebnis: F[0..23] (kW pro kW/m²).
+PLANNER._calcHourFactors=function(){
+  var u="https://api.open-meteo.com/v1/forecast?latitude="+PLANNER.LAT+"&longitude="+PLANNER.LON+"&hourly=global_tilted_irradiance&tilt="+PLANNER.TILT+"&azimuth="+PLANNER.AZ+"&past_days=14&forecast_days=0&timezone=Europe%2FZurich";
+  var pj=api(PLANNER.CH,"/feeds.json?days=14&average=60&timezone=Europe/Zurich",true);
   return Promise.all([ j(u), j(pj) ]).then(function(res){
-    var hj=res[0], tj=res[1]; var today=new Date().toISOString().slice(0,10);
-    var g={}; var ht=hj.hourly.time, hg=hj.hourly.global_tilted_irradiance;
-    for(var i=0;i<ht.length;i++){ var d=ht[i].slice(0,10); g[d]=(g[d]||0)+(hg[i]||0)/1000; }
-    var prod={}; (tj.feeds||[]).forEach(function(x){ var v=num(x.field2); if(v===null)return; var d=x.created_at.slice(0,10); if(!prod[d]||v>prod[d])prod[d]=v; });
-    var r=[]; Object.keys(prod).forEach(function(d){ if(d!==today && g[d]>0.5 && prod[d]>0) r.push(prod[d]/g[d]); });
-    r.sort(function(a,b){return a-b;});
-    return r.length ? r[Math.floor(r.length/2)] : 25;  // Fallback 25
+    var gj=res[0], tj=res[1];
+    var gt=gj.hourly.time, gg=gj.hourly.global_tilted_irradiance, gmap={};
+    for(var i=0;i<gt.length;i++) gmap[gt[i].slice(0,13)]=gg[i];  // key YYYY-MM-DDTHH (lokal)
+    var bh={}; (tj.feeds||[]).forEach(function(x){ var k=x.created_at.slice(0,13); var g=gmap[k]; if(g==null||g<40)return; var a=num(x.field1); if(a===null)return; var h=parseInt(k.slice(11,13),10); (bh[h]=bh[h]||[]).push((a/1000)/(g/1000)); });
+    function med(a){ a.sort(function(x,y){return x-y;}); return a.length?a[Math.floor(a.length/2)]:0; }
+    var F=[], any=false; for(var h=0;h<24;h++){ F[h]=bh[h]?med(bh[h]):0; if(F[h]>0)any=true; }
+    if(!any){ for(var h2=8;h2<=17;h2++) F[h2]=25; }  // Fallback ohne Ist-Daten
+    return F;
   });
 };
 
 PLANNER.load=function(){
   var g=function(id){return document.getElementById(id);};
   var draw=function(c){
-    var factor=c.factor, hj=c.fc;
-    if(g("pl-cal")) g("pl-cal").textContent="Faktor "+Math.round(factor)+" kWh/(kWh/m²)";
+    var F=c.factor, hj=c.fc;  // F = Stunden-Faktoren [0..23]
+    var fmid=Math.round(F[13]||F[12]||0);
+    if(g("pl-cal")) g("pl-cal").textContent="kalibriert stündlich (Ø mittags ~"+fmid+")";
     var ht=hj.hourly.time, hg=hj.hourly.global_tilted_irradiance;
     // stuendliche Leistung (kW) + Tageswerte
     var pts=[], days={}, order=[];
-    for(var i=0;i<ht.length;i++){ var dt=new Date(ht[i].replace(" ","T")); var kw=(hg[i]||0)*factor/1000;
+    for(var i=0;i<ht.length;i++){ var dt=new Date(ht[i].replace(" ","T")); var kw=(hg[i]||0)/1000*(F[dt.getHours()]||0);
       var base=PLANNER.baseByMonth[dt.getMonth()];
       pts.push({t:dt, v:kw});
       var d=ht[i].slice(0,10); if(!days[d]){ days[d]={kwh:0, surplus:0, peak:0, win:[], date:dt, base:base}; order.push(d); }
@@ -807,7 +812,7 @@ PLANNER.load=function(){
   };
   if(PLANNER._cache && (Date.now()-PLANNER._cache.t)<1800000){ draw(PLANNER._cache); return; }
   var fcUrl="https://api.open-meteo.com/v1/forecast?latitude="+PLANNER.LAT+"&longitude="+PLANNER.LON+"&hourly=global_tilted_irradiance&tilt="+PLANNER.TILT+"&azimuth="+PLANNER.AZ+"&forecast_days=7&timezone=Europe%2FZurich";
-  Promise.all([ PLANNER._calcFactor(), j(fcUrl) ]).then(function(res){
+  Promise.all([ PLANNER._calcHourFactors(), j(fcUrl) ]).then(function(res){
     PLANNER._cache={t:Date.now(), factor:res[0], fc:res[1]}; draw(PLANNER._cache);
   }).catch(function(){ if(g("pl-err")) g("pl-err").textContent="Prognosedaten konnten nicht geladen werden."; });
 };
