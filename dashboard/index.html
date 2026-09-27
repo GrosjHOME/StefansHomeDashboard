@@ -349,7 +349,7 @@ PV.render=function(main){
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
       '<span class="it">— WR 5 · - - - WR 6</span>'+
-      '<span class="it"><span class="sw" style="border-color:#9333ea"></span>Mittags-PAC (kW, rechts)</span></div><div id="chart-verlust"><div class="chart-empty">wird geladen…</div></div>'+
+      '<span class="it"><span class="sw" style="border-color:var(--red)"></span>Mittags-PAC (kW, rechts)</span></div><div id="chart-verlust"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Tages-Mittel des Tracker-Stroms im Mittagsfenster (11–13 h) – ein Punkt pro Tag aus dem dedizierten Log-Kanal (volle Historie). Zum Erkennen eines schleichenden Rückgangs über Wochen/Monate; Feld „Mittags-PAC" dient später der Normierung gegen die Einstrahlung.</div></div>'+
     '<footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
   var spd=document.getElementById("seg-period"); if(spd) spd.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.period=b.getAttribute("data-m"); segActive(spd,b); PV.loadPower(); PV.loadTrackers(); PV.loadPeakSun(); });
@@ -430,7 +430,7 @@ PV.load=function(){
       var p=num(x.field7); if(p!==null) Spac.push({t:t,v:p/1000}); });  // Mittags-PAC in kW
     var series=[{color:cols[0],pts:S[0]},{color:cols[1],pts:S[1]},{color:cols[2],pts:S[2]},
       {color:cols[0],dash:true,pts:S[3]},{color:cols[1],dash:true,pts:S[4]},{color:cols[2],dash:true,pts:S[5]},
-      {color:"#9333ea",axis:"right",dec:1,pts:Spac}].filter(function(s){return s.pts.length>=1;});
+      {color:"var(--red)",axis:"right",dec:1,pts:Spac}].filter(function(s){return s.pts.length>=1;});
     if(!series.length){ holder.innerHTML='<div class="chart-empty">Sammelt Daten – ein Punkt pro Tag (nach 13:00).</div>'; return; }
     lineChart(holder, series, {unit:"A", zero:false, unit2:"kW", zero2:false, dots:true});
   });
