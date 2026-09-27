@@ -261,6 +261,41 @@ function barChart(holder, bars, opts){
   });
   svg.addEventListener("mouseleave",function(){ ov.style.display="none"; tip.style.opacity=0; });
 }
+/* Gruppiertes Balkendiagramm: groups=[{label, bars:[{v,color,tip}]}] */
+function groupedBarChart(holder, groups, opts){
+  opts=opts||{};
+  var allv=[]; groups.forEach(function(g){ g.bars.forEach(function(b){ allv.push(b.v); }); });
+  if(!allv.length){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
+  var W=1000,H=300,padL=58,padR=16,padT=28,padB=48,ng=groups.length;
+  var vMax=niceMax(Math.max.apply(null,allv));
+  function Y(v){ return padT+(H-padT-padB)*(1-v/vMax); }
+  var gslot=(W-padL-padR)/ng, grid="",yl="";
+  [0,vMax/2,vMax].forEach(function(v){ var y=Y(v);
+    grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
+    yl+='<text x="'+(padL-8)+'" y="'+(y+7)+'" text-anchor="end" font-size="21" fill="var(--muted)">'+ylab(v)+'</text>'; });
+  var r="", flat=[];
+  groups.forEach(function(g,gi){ var gx=padL+gslot*gi, k=g.bars.length;
+    if(k){ var inner=gslot*0.86, x0=gx+(gslot-inner)/2, bw=inner/k;
+      g.bars.forEach(function(b,bi){ var x=x0+bi*bw, y=Y(b.v), h=Y(0)-y;
+        r+='<rect x="'+x+'" y="'+y+'" width="'+(bw*0.9)+'" height="'+h+'" fill="'+b.color+'"/>';
+        flat.push({x:x,w:bw,b:b}); }); }
+    r+='<text x="'+(gx+gslot/2)+'" y="'+(H-22)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+g.label+'</text>'; });
+  var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
+    '<text x="6" y="18" font-size="18" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
+  var legHtml="";
+  if(opts.legend&&opts.legend.length){ legHtml='<div class="legend">'+opts.legend.map(function(it){ return '<span class="it"><span class="sw" style="border-color:'+it.color+'"></span>'+it.label+'</span>'; }).join("")+'</div>'; }
+  holder.innerHTML=legHtml+'<div class="chart-wrap">'+svgStr+'<div class="tip"></div></div>';
+  var wrap=holder.querySelector(".chart-wrap"), svg=wrap.querySelector("svg"), ov=wrap.querySelector(".ov"), tip=wrap.querySelector(".tip");
+  svg.addEventListener("mousemove",function(ev){
+    var rect=svg.getBoundingClientRect(), mx=(ev.clientX-rect.left)/rect.width*W, hit=null;
+    for(var i=0;i<flat.length;i++){ if(mx>=flat[i].x && mx<flat[i].x+flat[i].w){ hit=flat[i]; break; } }
+    if(!hit){ ov.style.display="none"; tip.style.opacity=0; return; }
+    ov.innerHTML='<rect x="'+hit.x+'" y="'+padT+'" width="'+hit.w+'" height="'+(H-padT-padB)+'" fill="var(--ink)" opacity="0.08"/>'; ov.style.display="";
+    tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+(hit.b.tip||"")+'</div><div>'+fmt(hit.b.v,0)+' '+(opts.unit||"")+'</div>';
+    var px=(hit.x+hit.w/2)/W*rect.width; tip.style.left=Math.max(0,Math.min(rect.width-tip.offsetWidth-4, px+8))+"px"; tip.style.top="6px"; tip.style.opacity=1;
+  });
+  svg.addEventListener("mouseleave",function(){ ov.style.display="none"; tip.style.opacity=0; });
+}
 function parseStatus(s){ var o={},re=/([UI])([56])=([\d.]+)\/([\d.]+)\/([\d.]+)/g,m; while((m=re.exec(s))){ o[m[1]+m[2]]=[parseFloat(m[3]),parseFloat(m[4]),parseFloat(m[5])]; } return o; }
 function downsample(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)), out=[]; for(var i=0;i<arr.length;i+=st) out.push(arr[i]); if(arr.length && out[out.length-1]!==arr[arr.length-1]) out.push(arr[arr.length-1]); return out; }
 
@@ -276,7 +311,7 @@ function segActive(container, btn){ Array.prototype.forEach.call(container.query
 PV.render=function(main){
   PV.period="heute";  // bei jedem Mount auf Standard (passt zum aktiven Button)
   PV.energyMode="tage"; PV.energyYear=null;
-  var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 Monate</option><option value="alle">Monate aller Jahre</option>'; for(var _y=_cy;_y>=2014;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
+  var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 Monate</option><option value="alle">Alle Monate</option><option value="gruppiert">Monate aller Jahre</option>'; for(var _y=_cy;_y>=2014;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
   main.innerHTML='<div class="wrap">'+
     '<div class="view-head"><h1>☀️ PV-Anlage</h1>'+
       '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
@@ -449,8 +484,10 @@ PV.loadEnergy=function(){
   var holder=document.getElementById("chart-days"); if(!holder)return;
   var mo=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
   var now=new Date();
-  if(PV.energyMode==="monate" && PV.energyYear==="alle"){
-    // TEST: alle Monate aller Jahre chronologisch als Balken (Jahre farbig)
+  if(PV.energyMode==="monate" && (PV.energyYear==="alle" || PV.energyYear==="gruppiert")){
+    // "alle" = alle Monate chronologisch (Balken, Jahre farbig, ohne Legende)
+    // "gruppiert" = pro Monat die Jahre nebeneinander (gruppierte Balken + Legende)
+    var grouped=(PV.energyYear==="gruppiert");
     holder.innerHTML='<div class="chart-empty">wird geladen…</div>';
     var yrs=[]; for(var yy=2014; yy<=now.getFullYear(); yy++) yrs.push(yy);
     var seriesAll=[], chain=Promise.resolve();
@@ -463,10 +500,19 @@ PV.loadEnergy=function(){
     }); });
     chain.then(function(){
       if(!seriesAll.length){ holder.innerHTML='<div class="chart-empty">keine Daten</div>'; return; }
-      var n=seriesAll.length, legend=[], bars=[];
-      seriesAll.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)"; legend.push({color:s.color,label:String(s.year)});
-        s.pts.forEach(function(p){ bars.push({v:p.v,color:s.color,label:(p.m===0?String(s.year):""),tip:mo[p.m]+" "+s.year}); }); });
-      barChart(holder, bars, {unit:"kWh",legend:legend});
+      var n=seriesAll.length, legend=[];
+      seriesAll.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)"; legend.push({color:s.color,label:String(s.year)}); });
+      if(grouped){
+        var groups=[];
+        for(var m=0;m<12;m++){ var gb=[];
+          seriesAll.forEach(function(s){ for(var k=0;k<s.pts.length;k++){ if(s.pts[k].m===m){ gb.push({v:s.pts[k].v,color:s.color,tip:mo[m]+" "+s.year}); break; } } });
+          groups.push({label:mo[m],bars:gb}); }
+        groupedBarChart(holder, groups, {unit:"kWh",legend:legend});
+      } else {
+        var bars=[];
+        seriesAll.forEach(function(s){ s.pts.forEach(function(p){ bars.push({v:p.v,color:s.color,label:(p.m===0?String(s.year):""),tip:mo[p.m]+" "+s.year}); }); });
+        barChart(holder, bars, {unit:"kWh"});
+      }
     }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
     return;
   }
