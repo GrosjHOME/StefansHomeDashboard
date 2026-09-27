@@ -196,15 +196,19 @@ function lineChart(holder, series, opts){
     if(open){ d+=" L "+lastX+" "+by+" Z"; }
     if(d){ fill+='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+s.color+'" stop-opacity="0.30"/><stop offset="100%" stop-color="'+s.color+'" stop-opacity="0.02"/></linearGradient></defs><path d="'+d+'" fill="url(#'+gid+')"/>'; } });
   var xl="";
-  for(var k=0;k<=5;k++){ var tt=tMin+(tMax-tMin)*k/5, x=padL+(W-padL-padR)*k/5;
+  if(opts.xTicks){ opts.xTicks.forEach(function(xt){ var tv=(xt.t instanceof Date)?xt.t.getTime():xt.t; if(tv<tMin||tv>tMax)return; var x=X(tv);
+      xl+='<text x="'+x+'" y="'+(H-9)+'" text-anchor="middle" font-size="21" fill="var(--muted)">'+xt.label+'</text>'; }); }
+  else for(var k=0;k<=5;k++){ var tt=tMin+(tMax-tMin)*k/5, x=padL+(W-padL-padR)*k/5;
     var span=tMax-tMin, dd=new Date(tt);
     var lab = span> 26*3600*1000 ? dd.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"}) : dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
     xl+='<text x="'+x+'" y="'+(H-9)+'" text-anchor="middle" font-size="21" fill="var(--muted)">'+lab+'</text>'; }
   var unit2Lab = hasRight ? '<text x="'+(W-padR+8)+'" y="18" text-anchor="start" font-size="18" fill="'+rColor+'">'+(opts.unit2||"")+'</text>' : "";
   var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+fill+grid+paths+yl+xl+
     '<text x="6" y="18" font-size="18" fill="var(--muted)">'+(opts.unit||"")+'</text>'+unit2Lab+'<g class="ov" style="display:none"></g></svg>';
-  holder.innerHTML='<div class="chart-wrap">'+svgStr+'<div class="tip"></div></div>';
-  var wrap=holder.firstChild, svg=wrap.querySelector("svg"), ov=wrap.querySelector(".ov"), tip=wrap.querySelector(".tip");
+  var legHtml="";
+  if(opts.legend&&opts.legend.length){ legHtml='<div class="legend">'+opts.legend.map(function(it){ return '<span class="it"><span class="sw" style="border-color:'+it.color+'"></span>'+it.label+'</span>'; }).join("")+'</div>'; }
+  holder.innerHTML=legHtml+'<div class="chart-wrap">'+svgStr+'<div class="tip"></div></div>';
+  var wrap=holder.querySelector(".chart-wrap"), svg=wrap.querySelector("svg"), ov=wrap.querySelector(".ov"), tip=wrap.querySelector(".tip");
   var dec=(opts.dec!=null)?opts.dec:1;
   svg.addEventListener("mousemove",function(ev){
     var rect=svg.getBoundingClientRect(), mx=(ev.clientX-rect.left)/rect.width*W;
@@ -269,7 +273,7 @@ function segActive(container, btn){ Array.prototype.forEach.call(container.query
 PV.render=function(main){
   PV.period="heute";  // bei jedem Mount auf Standard (passt zum aktiven Button)
   PV.energyMode="tage"; PV.energyYear=null;
-  var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 Monate</option>'; for(var _y=_cy;_y>=2016;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
+  var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 Monate</option><option value="alle">Monate aller Jahre</option>'; for(var _y=_cy;_y>=2016;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
   main.innerHTML='<div class="wrap">'+
     '<div class="view-head"><h1>☀️ PV-Anlage</h1>'+
       '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
@@ -307,7 +311,7 @@ PV.render=function(main){
   var se=document.getElementById("seg-energy"); if(se) se.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.energyMode=b.getAttribute("data-m"); segActive(se,b);
     var sy=document.getElementById("energy-year"); if(sy){ sy.style.display=(PV.energyMode==="monate")?"":"none"; if(PV.energyMode!=="monate"){ PV.energyYear=null; sy.value=""; } }
     PV.loadEnergy(); });
-  var sy2=document.getElementById("energy-year"); if(sy2) sy2.addEventListener("change",function(){ PV.energyYear=this.value?parseInt(this.value,10):null; PV.loadEnergy(); });
+  var sy2=document.getElementById("energy-year"); if(sy2) sy2.addEventListener("change",function(){ PV.energyYear=this.value?(this.value==="alle"?"alle":parseInt(this.value,10)):null; PV.loadEnergy(); });
 };
 function kpiCard(k,id,unit){ return '<div class="kpi"><div class="k">'+k+'</div><div class="v"><span id="'+id+'">–</span> <small>'+unit+'</small></div></div>'; }
 function panel(title,tag,id){ return '<div class="panel"><h2>'+title+' '+tag+'</h2><div id="'+id+'"><div class="chart-empty">wird geladen…</div></div></div>'; }
@@ -431,6 +435,27 @@ PV.loadEnergy=function(){
   var holder=document.getElementById("chart-days"); if(!holder)return;
   var mo=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
   var now=new Date();
+  if(PV.energyMode==="monate" && PV.energyYear==="alle"){
+    // Jahresvergleich: eine Linie pro Jahr, X-Achse Jan-Dez
+    holder.innerHTML='<div class="chart-empty">wird geladen…</div>';
+    var yrs=[]; for(var yy=2016; yy<=now.getFullYear(); yy++) yrs.push(yy);
+    var seriesAll=[], chain=Promise.resolve();
+    yrs.forEach(function(y){ chain=chain.then(function(){
+      var maxM=(y===now.getFullYear())?now.getMonth():11, ms=[]; for(var m=0;m<=maxM;m++) ms.push(m);
+      return Promise.all(ms.map(function(m){ return pvMonthTotal(y,m).then(function(v){return {m:m,v:v};}); })).then(function(res){
+        var pts=res.filter(function(o){return o.v!==null&&o.v>0;}).map(function(o){return {t:new Date(2000,o.m,15),v:o.v};});
+        if(pts.length>1) seriesAll.push({year:y,pts:pts});
+      });
+    }); });
+    chain.then(function(){
+      if(!seriesAll.length){ holder.innerHTML='<div class="chart-empty">keine Daten</div>'; return; }
+      var n=seriesAll.length, legend=[];
+      seriesAll.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)"; legend.push({color:s.color,label:String(s.year)}); });
+      var xt=[]; for(var m=0;m<12;m++) xt.push({t:new Date(2000,m,15),label:mo[m]});
+      lineChart(holder, seriesAll.map(function(s){return {color:s.color,pts:s.pts,width:2};}), {unit:"kWh",xTicks:xt,legend:legend,zero:true,dec:0});
+    }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
+    return;
+  }
   if(PV.energyMode==="monate"){
     var months=[];
     if(PV.energyYear){ var maxM=(PV.energyYear===now.getFullYear())?now.getMonth():11;
