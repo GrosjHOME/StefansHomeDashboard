@@ -184,12 +184,17 @@ function lineChart(holder, series, opts){
     } else { var yb = s.bandFrac!=null ? (padT+(H-padT-padB)*(1-s.bandFrac)) : null;
       var d="", pen=false; s.pts.forEach(function(p){ if(p.v==null){ pen=false; return; } d+=(pen?" L ":"M ")+X(p.t.getTime())+" "+(yb!=null?yb:YS(p.v)); pen=true; });
       paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="'+(s.width||2)+'" stroke-linejoin="round" stroke-linecap="round"'+(s.dash?' stroke-dasharray="5 4"':'')+'/>'; } });
+  // Flaeche nur fuer Linien mit fill:true (aktive Leistung); bis zur Achsen-
+  // Grundlinie gefuellt, Luecken (null) unterbrechen die Flaeche.
   var fill="";
-  if(series.length===1 && L.base<=0 && series[0].pts.every(function(p){return p.v!=null;})){ var s0=series[0], a="M "+X(s0.pts[0].t.getTime())+" "+Y(0);
-    s0.pts.forEach(function(p){ a+=" L "+X(p.t.getTime())+" "+Y(p.v); });
-    a+=" L "+X(s0.pts[s0.pts.length-1].t.getTime())+" "+Y(0)+" Z";
-    var gid="g"+Math.random().toString(36).slice(2);
-    fill='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+s0.color+'" stop-opacity="0.30"/><stop offset="100%" stop-color="'+s0.color+'" stop-opacity="0.02"/></linearGradient></defs><path d="'+a+'" fill="url(#'+gid+')"/>'; }
+  series.forEach(function(s){ if(!s.fill||s.pts.length<2)return; var YS=YF(s), by=H-padB;
+    var gid="g"+Math.random().toString(36).slice(2), d="", open=false, lastX=null;
+    s.pts.forEach(function(p){ if(p.v==null){ if(open){ d+=" L "+lastX+" "+by+" Z"; open=false; } return; }
+      var x=X(p.t.getTime()), y=YS(p.v);
+      if(!open){ d+="M "+x+" "+by+" L "+x+" "+y; open=true; } else { d+=" L "+x+" "+y; }
+      lastX=x; });
+    if(open){ d+=" L "+lastX+" "+by+" Z"; }
+    if(d){ fill+='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+s.color+'" stop-opacity="0.30"/><stop offset="100%" stop-color="'+s.color+'" stop-opacity="0.02"/></linearGradient></defs><path d="'+d+'" fill="url(#'+gid+')"/>'; } });
   var xl="";
   for(var k=0;k<=5;k++){ var tt=tMin+(tMax-tMin)*k/5, x=padL+(W-padL-padR)*k/5;
     var span=tMax-tMin, dd=new Date(tt);
@@ -252,26 +257,37 @@ function barChart(holder, bars, opts){
 function parseStatus(s){ var o={},re=/([UI])([56])=([\d.]+)\/([\d.]+)\/([\d.]+)/g,m; while((m=re.exec(s))){ o[m[1]+m[2]]=[parseFloat(m[3]),parseFloat(m[4]),parseFloat(m[5])]; } return o; }
 function downsample(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)), out=[]; for(var i=0;i<arr.length;i+=st) out.push(arr[i]); if(arr.length && out[out.length-1]!==arr[arr.length-1]) out.push(arr[arr.length-1]); return out; }
 
+/* Zeitraum-Query je Modus:
+   "heute" = ab lokaler Mitternacht (ThingSpeak start-Param, in UTC = korrekter Zeitpunkt),
+   "24h"   = rollierende letzte 24 h, "7tage" = letzte 7 Tage. */
+function midnightStartUTC(){ var d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,19).replace('T',' '); }
+function periodQuery(mode){ if(mode==="7tage") return "/feeds.json?days=7"; if(mode==="24h") return "/feeds.json?days=1"; return "/feeds.json?start="+encodeURIComponent(midnightStartUTC()); }
+
 /* ================= View: PV ================= */
-var PV={ CH:172430, powerMode:"heute", energyMode:"tage" };
+var PV={ CH:172430, period:"heute", energyMode:"tage" };
 function segActive(container, btn){ Array.prototype.forEach.call(container.querySelectorAll("button"), function(b){ b.classList.toggle("active", b===btn); }); }
 PV.render=function(main){
+  PV.period="heute";  // bei jedem Mount auf Standard (passt zum aktiven Button)
   main.innerHTML='<div class="wrap">'+
-    '<div class="view-head"><h1>☀️ PV-Anlage</h1><div class="meta"><div id="sd-status"><span class="dot na"></span>SD-Karte</div><div id="updated">wird geladen…</div></div></div>'+
+    '<div class="view-head"><h1>☀️ PV-Anlage</h1>'+
+      '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
+        '<span class="seg" id="seg-period"><button data-m="heute" class="active">Heute</button><button data-m="24h">24 h</button><button data-m="7tage">7 Tage</button></span>'+
+        '<div class="meta"><div id="sd-status"><span class="dot na"></span>SD-Karte</div><div id="updated">wird geladen…</div></div>'+
+      '</div></div>'+
     '<div class="hero"><div class="lbl">Aktuelle Leistung</div><div class="val"><span id="power">–</span> <small>kW</small></div>'+
       '<div class="bar"><span id="power-bar" style="width:0%"></span></div><div class="bar-scale"><span>0</span><span>15 kW</span><span>30 kW</span></div></div>'+
     '<div class="kpis">'+
       kpiCard("Heute","e-today","kWh")+kpiCard("Gestern","e-yesterday","kWh")+kpiCard("Aktueller Monat","e-month","kWh")+
       kpiCard("Letzter Monat","e-lastmonth","kWh")+kpiCard("Dieses Jahr","e-year","kWh")+kpiCard("Ø DC-Spannung","dc-mean","V")+
-      kpiCard("Tages-Peak","e-peak","kW")+kpiCard("Sonnenstunden","e-sun","h")+'</div>'+
-    '<div class="panel"><h2>Leistung <span class="seg" id="seg-power"><button data-m="heute" class="active">Heute</button><button data-m="7tage">7 Tage</button></span></h2><div id="chart-power"><div class="chart-empty">wird geladen…</div></div></div>'+
+      kpiCard("Peak","e-peak","kW")+kpiCard("Sonnenstunden","e-sun","h")+'</div>'+
+    '<div class="panel"><h2>Leistung <span class="tag" id="power-tag"></span></h2><div id="chart-power"><div class="chart-empty">wird geladen…</div></div></div>'+
     '<div class="panel"><h2>Energie <span class="seg" id="seg-energy"><button data-m="tage" class="active">Tage</button><button data-m="monate">Monate</button><button data-m="jahre">Jahre</button></span></h2><div id="chart-days"><div class="chart-empty">wird geladen…</div></div></div>'+
-    '<div class="panel"><h2>Strom je MPP-Tracker heute <span class="tag" id="strom-tag"></span></h2>'+
+    '<div class="panel"><h2>Strom je MPP-Tracker <span class="tag" id="strom-tag"></span></h2>'+
       '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
       '<span class="it">— WR 5 · - - - WR 6</span></div><div id="chart-strom"><div class="chart-empty">wird geladen…</div></div></div>'+
-    '<div class="panel"><h2>Spannung je MPP-Tracker heute <span class="tag" id="spannung-tag"></span></h2>'+
+    '<div class="panel"><h2>Spannung je MPP-Tracker <span class="tag" id="spannung-tag"></span></h2>'+
       '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
@@ -285,27 +301,17 @@ PV.render=function(main){
       '<span class="it">— WR 5 · - - - WR 6</span></div><div id="chart-verlust"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Tages-Mittel des Tracker-Stroms im Mittagsfenster (11–13 h) – ein Punkt pro Tag aus dem dedizierten Log-Kanal (volle Historie). Zum Erkennen eines schleichenden Rückgangs über Wochen/Monate; Feld „Mittags-PAC" dient später der Normierung gegen die Einstrahlung.</div></div>'+
     '<footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
-  var sp=document.getElementById("seg-power"); if(sp) sp.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.powerMode=b.getAttribute("data-m"); segActive(sp,b); PV.loadPower(); });
+  var spd=document.getElementById("seg-period"); if(spd) spd.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.period=b.getAttribute("data-m"); segActive(spd,b); PV.loadPower(); PV.loadTrackers(); PV.loadPeakSun(); });
   var se=document.getElementById("seg-energy"); if(se) se.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.energyMode=b.getAttribute("data-m"); segActive(se,b); PV.loadEnergy(); });
 };
 function kpiCard(k,id,unit){ return '<div class="kpi"><div class="k">'+k+'</div><div class="v"><span id="'+id+'">–</span> <small>'+unit+'</small></div></div>'; }
 function panel(title,tag,id){ return '<div class="panel"><h2>'+title+' '+tag+'</h2><div id="'+id+'"><div class="chart-empty">wird geladen…</div></div></div>'; }
-PV.load=function(){
-  var errEl=function(){return document.getElementById("err");};
-  function g(id){return document.getElementById(id);}
-  var p1=j(api(PV.CH,"/feeds.json?results=20",true)).then(function(d){
-    var f=(d&&d.feeds)?d.feeds:[]; if(!f.length||!g("power"))return; var last=f[f.length-1];
-    var pW=num(last.field1),pKW=pW===null?null:pW/1000;
-    g("power").textContent=fmt(pKW,2); g("power-bar").style.width=(pKW===null?0:Math.max(0,Math.min(100,pKW/30*100)))+"%";
-    function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
-    g("e-today").textContent=fmt(L("field2"),1); g("e-yesterday").textContent=fmt(L("field5"),1);
-    g("e-month").textContent=fmt(L("field3"),0); g("e-lastmonth").textContent=fmt(L("field6"),0);
-    g("e-year").textContent=fmt(L("field4"),0); g("dc-mean").textContent=fmt(L("field8"),0);
-    var sd=L("field7"); g("sd-status").innerHTML= sd===1?'<span class="dot ok"></span>SD-Karte OK':(sd===0?'<span class="dot bad"></span>SD-Karte Fehler':'<span class="dot na"></span>SD-Karte');
-    if(last.created_at) g("updated").textContent="Aktualisiert "+relTime(new Date(last.created_at));
-  });
-  PV.loadPower(); PV.loadEnergy();
-  var p4=j(api(PV.CH,"/status.json?days=1",true)).then(function(d){
+
+// Tracker-Status (Tabelle aktueller Wert + Strom/Spannung-Historie) fuer den globalen Zeitraum
+PV.loadTrackers=function(){
+  function g(id){ return document.getElementById(id); }
+  var url = periodQuery(PV.period).replace("feeds.json","status.json");
+  return j(api(PV.CH,url,true)).then(function(d){
     var f=(d&&d.feeds)?d.feeds:[]; var last=f.length?f[f.length-1]:null; var holder=g("tracker-holder"); if(!holder)return;
     if(last&&last.status){ g("status-time").textContent=relTime(new Date(last.created_at)); var p=parseStatus(last.status);
       function wr(w){ var U=p["U"+w],I=p["I"+w]; if(!U||!I)return '<tr><td class="wr-head">WR '+w+'</td><td colspan="3" style="text-align:left;color:var(--muted)">keine Daten</td></tr>';
@@ -326,7 +332,12 @@ PV.load=function(){
     if(g("chart-spannung")) lineChart(g("chart-spannung"),mk(SU),{unit:"V",zero:false});
     if(g("spannung-tag")&&last&&last.created_at) g("spannung-tag").textContent="Stand "+relTime(new Date(last.created_at));
   });
-  var p5=j(api(PV.CH,"/feeds.json?days=1",true)).then(function(d){
+};
+
+// Peak-Leistung + Sonnenstunden fuer den globalen Zeitraum
+PV.loadPeakSun=function(){
+  function g(id){ return document.getElementById(id); }
+  return j(api(PV.CH,periodQuery(PV.period),true)).then(function(d){
     var f=(d&&d.feeds)?d.feeds:[], pts=[], peak=0;
     f.forEach(function(x){ var v=num(x.field1); if(v===null)return; if(v>peak)peak=v; pts.push({t:new Date(x.created_at).getTime(),v:v}); });
     pts.sort(function(a,b){return a.t-b.t;});
@@ -334,6 +345,24 @@ PV.load=function(){
     if(g("e-peak")) g("e-peak").textContent=fmt(peak/1000,1);
     if(g("e-sun")) g("e-sun").textContent=fmt(sunMs/3600000,1);
   });
+};
+PV.load=function(){
+  var errEl=function(){return document.getElementById("err");};
+  function g(id){return document.getElementById(id);}
+  var p1=j(api(PV.CH,"/feeds.json?results=20",true)).then(function(d){
+    var f=(d&&d.feeds)?d.feeds:[]; if(!f.length||!g("power"))return; var last=f[f.length-1];
+    var pW=num(last.field1),pKW=pW===null?null:pW/1000;
+    g("power").textContent=fmt(pKW,2); g("power-bar").style.width=(pKW===null?0:Math.max(0,Math.min(100,pKW/30*100)))+"%";
+    function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
+    g("e-today").textContent=fmt(L("field2"),1); g("e-yesterday").textContent=fmt(L("field5"),1);
+    g("e-month").textContent=fmt(L("field3"),0); g("e-lastmonth").textContent=fmt(L("field6"),0);
+    g("e-year").textContent=fmt(L("field4"),0); g("dc-mean").textContent=fmt(L("field8"),0);
+    var sd=L("field7"); g("sd-status").innerHTML= sd===1?'<span class="dot ok"></span>SD-Karte OK':(sd===0?'<span class="dot bad"></span>SD-Karte Fehler':'<span class="dot na"></span>SD-Karte');
+    if(last.created_at) g("updated").textContent="Aktualisiert "+relTime(new Date(last.created_at));
+  });
+  PV.loadPower(); PV.loadEnergy();
+  var p4=PV.loadTrackers();
+  var p5=PV.loadPeakSun();
   // Verlust-Diagnose aus dem dedizierten Log-Kanal (2. Account): pro Tag ein
   // fertiger Mittags-Mittelwert je Tracker (von der Firmware berechnet).
   var CH2=3510388, KEY2="0Q2JFTJU0B4NNYQU";
@@ -353,10 +382,10 @@ PV.load=function(){
 
 PV.loadPower=function(){
   var holder=document.getElementById("chart-power"); if(!holder)return;
-  var url = PV.powerMode==="7tage" ? "/feeds.json?days=7" : "/feeds.json?days=1";
+  var url = periodQuery(PV.period);
   j(api(PV.CH,url,true)).then(function(d){
     var f=(d&&d.feeds)?d.feeds:[],pts=[]; f.forEach(function(x){ var v=num(x.field1); if(v!==null)pts.push({t:new Date(x.created_at),v:v/1000}); });
-    lineChart(holder,[{color:"var(--green)",pts:pts}],{unit:"kW"});
+    lineChart(holder,[{color:"var(--green)",fill:true,pts:pts}],{unit:"kW"});
   });
 };
 PV.loadEnergy=function(){
@@ -391,9 +420,9 @@ PV.loadEnergy=function(){
 
 /* ========== Generische Ansicht (Wallbox/Heizung/Boiler) ========== */
 function simpleView(cfg){
-  var mode = "heute";  // "heute" | "7tage" (steuert alle Charts der Ansicht)
+  var mode = "heute";  // "heute" (ab Mitternacht) | "24h" | "7tage" (steuert alle Charts der Ansicht)
   function g(id){ return document.getElementById(id); }
-  function periodUrl(){ return mode === "7tage" ? "/feeds.json?days=7" : "/feeds.json?days=1"; }
+  function periodUrl(){ return periodQuery(mode); }
 
   // KPIs immer aktuell (letzter bekannter Wert), unabhaengig vom Zeitraum
   function loadKpis(){
@@ -444,7 +473,7 @@ function simpleView(cfg){
         var series=c.lines.map(function(ln){ var pts=[]; var ff=byChan[String(ln.channel||cfg.channel)]||[]; ff.forEach(function(x){ var raw=num(x[ln.field]);
             var v = ln.derive ? ln.derive(raw) : (raw===null?null:(ln.scale? raw*ln.scale : raw));
             pts.push({t:new Date(x.created_at), v:v}); });
-          return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, bandFrac:ln.bandFrac, axis:ln.axis, dec:ln.dec, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
+          return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, bandFrac:ln.bandFrac, axis:ln.axis, dec:ln.dec, fill:ln.fill, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
         if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null){ vv.push(v); ct.push(new Date(x.created_at)); } });
           if(vv.length>1){ var mn=Math.min.apply(null,vv), mx=Math.max.apply(null,vv), t0=ct[0], t1=ct[ct.length-1];
             series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
@@ -470,7 +499,7 @@ function simpleView(cfg){
       }).join("");
       main.innerHTML='<div class="wrap"><div class="view-head"><h1>'+cfg.icon+" "+cfg.title+'</h1>'+
         '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
-          '<span class="seg" id="seg-period"><button data-m="heute" class="active">Heute</button><button data-m="7tage">7 Tage</button></span>'+
+          '<span class="seg" id="seg-period"><button data-m="heute" class="active">Heute</button><button data-m="24h">24 h</button><button data-m="7tage">7 Tage</button></span>'+
           '<div class="meta" id="head-meta">wird geladen…</div>'+
         '</div></div>'+
         '<div class="kpis">'+kp+'</div>'+charts+
@@ -489,7 +518,7 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
     {field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"verbunden, lädt":s===66?"verbunden, lädt nicht":s===65?"nicht verbunden":("Status "+s);}}
   ],
   charts:[
-    {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001},{field:"field7",label:"Geglättet",color:"var(--blue)",scale:0.001},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
+    {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001,fill:true},{field:"field7",label:"Geglättet (Vorgabe)",color:"var(--blue)",scale:0.001},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
     {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, padL:150, yTicks:[{v:65,label:"nicht verbunden"},{v:66,label:"verbunden, lädt nicht"},{v:67,label:"verbunden, lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
   ]});
@@ -519,7 +548,7 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", yMax:7000, lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?150:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0}]},
+    {title:"Ladeleistung", unit:"W", yMax:7000, lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0,fill:true},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?10:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0}]},
     {title:"Einschaltschwelle", unit:"W", lines:[{field:"field4",label:"Einschaltschwelle",color:"var(--blue)",dec:0}]}
   ]});
 
