@@ -184,12 +184,17 @@ function lineChart(holder, series, opts){
     } else { var yb = s.bandFrac!=null ? (padT+(H-padT-padB)*(1-s.bandFrac)) : null;
       var d="", pen=false; s.pts.forEach(function(p){ if(p.v==null){ pen=false; return; } d+=(pen?" L ":"M ")+X(p.t.getTime())+" "+(yb!=null?yb:YS(p.v)); pen=true; });
       paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="'+(s.width||2)+'" stroke-linejoin="round" stroke-linecap="round"'+(s.dash?' stroke-dasharray="5 4"':'')+'/>'; } });
+  // Flaeche nur fuer Linien mit fill:true (aktive Leistung); bis zur Achsen-
+  // Grundlinie gefuellt, Luecken (null) unterbrechen die Flaeche.
   var fill="";
-  if(series.length===1 && L.base<=0 && series[0].pts.every(function(p){return p.v!=null;})){ var s0=series[0], a="M "+X(s0.pts[0].t.getTime())+" "+Y(0);
-    s0.pts.forEach(function(p){ a+=" L "+X(p.t.getTime())+" "+Y(p.v); });
-    a+=" L "+X(s0.pts[s0.pts.length-1].t.getTime())+" "+Y(0)+" Z";
-    var gid="g"+Math.random().toString(36).slice(2);
-    fill='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+s0.color+'" stop-opacity="0.30"/><stop offset="100%" stop-color="'+s0.color+'" stop-opacity="0.02"/></linearGradient></defs><path d="'+a+'" fill="url(#'+gid+')"/>'; }
+  series.forEach(function(s){ if(!s.fill||s.pts.length<2)return; var YS=YF(s), by=H-padB;
+    var gid="g"+Math.random().toString(36).slice(2), d="", open=false, lastX=null;
+    s.pts.forEach(function(p){ if(p.v==null){ if(open){ d+=" L "+lastX+" "+by+" Z"; open=false; } return; }
+      var x=X(p.t.getTime()), y=YS(p.v);
+      if(!open){ d+="M "+x+" "+by+" L "+x+" "+y; open=true; } else { d+=" L "+x+" "+y; }
+      lastX=x; });
+    if(open){ d+=" L "+lastX+" "+by+" Z"; }
+    if(d){ fill+='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+s.color+'" stop-opacity="0.30"/><stop offset="100%" stop-color="'+s.color+'" stop-opacity="0.02"/></linearGradient></defs><path d="'+d+'" fill="url(#'+gid+')"/>'; } });
   var xl="";
   for(var k=0;k<=5;k++){ var tt=tMin+(tMax-tMin)*k/5, x=padL+(W-padL-padR)*k/5;
     var span=tMax-tMin, dd=new Date(tt);
@@ -356,7 +361,7 @@ PV.loadPower=function(){
   var url = PV.powerMode==="7tage" ? "/feeds.json?days=7" : "/feeds.json?days=1";
   j(api(PV.CH,url,true)).then(function(d){
     var f=(d&&d.feeds)?d.feeds:[],pts=[]; f.forEach(function(x){ var v=num(x.field1); if(v!==null)pts.push({t:new Date(x.created_at),v:v/1000}); });
-    lineChart(holder,[{color:"var(--green)",pts:pts}],{unit:"kW"});
+    lineChart(holder,[{color:"var(--green)",fill:true,pts:pts}],{unit:"kW"});
   });
 };
 PV.loadEnergy=function(){
@@ -444,7 +449,7 @@ function simpleView(cfg){
         var series=c.lines.map(function(ln){ var pts=[]; var ff=byChan[String(ln.channel||cfg.channel)]||[]; ff.forEach(function(x){ var raw=num(x[ln.field]);
             var v = ln.derive ? ln.derive(raw) : (raw===null?null:(ln.scale? raw*ln.scale : raw));
             pts.push({t:new Date(x.created_at), v:v}); });
-          return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, bandFrac:ln.bandFrac, axis:ln.axis, dec:ln.dec, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
+          return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, bandFrac:ln.bandFrac, axis:ln.axis, dec:ln.dec, fill:ln.fill, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
         if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null){ vv.push(v); ct.push(new Date(x.created_at)); } });
           if(vv.length>1){ var mn=Math.min.apply(null,vv), mx=Math.max.apply(null,vv), t0=ct[0], t1=ct[ct.length-1];
             series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
@@ -489,7 +494,7 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
     {field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"verbunden, lädt":s===66?"verbunden, lädt nicht":s===65?"nicht verbunden":("Status "+s);}}
   ],
   charts:[
-    {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001},{field:"field7",label:"Geglättet",color:"var(--blue)",scale:0.001},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
+    {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001,fill:true},{field:"field7",label:"Geglättet (Vorgabe)",color:"var(--blue)",scale:0.001},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
     {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, padL:150, yTicks:[{v:65,label:"nicht verbunden"},{v:66,label:"verbunden, lädt nicht"},{v:67,label:"verbunden, lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
   ]});
@@ -519,7 +524,7 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", yMax:7000, lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?10:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0}]},
+    {title:"Ladeleistung", unit:"W", yMax:7000, lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0,fill:true},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?10:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0}]},
     {title:"Einschaltschwelle", unit:"W", lines:[{field:"field4",label:"Einschaltschwelle",color:"var(--blue)",dec:0}]}
   ]});
 
