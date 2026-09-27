@@ -273,7 +273,7 @@ function segActive(container, btn){ Array.prototype.forEach.call(container.query
 PV.render=function(main){
   PV.period="heute";  // bei jedem Mount auf Standard (passt zum aktiven Button)
   PV.energyMode="tage"; PV.energyYear=null;
-  var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 Monate</option><option value="alle">Monate aller Jahre</option>'; for(var _y=_cy;_y>=2016;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
+  var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 Monate</option><option value="alle">Monate aller Jahre</option>'; for(var _y=_cy;_y>=2014;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
   main.innerHTML='<div class="wrap">'+
     '<div class="view-head"><h1>☀️ PV-Anlage</h1>'+
       '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
@@ -411,8 +411,19 @@ var PV_HIST_YEARS = {
   2020:40383, 2021:37189, 2022:40854, 2023:35549, 2024:31976, 2025:33986
 };
 
-// Monatssumme (kWh) via Endpunkt (Feld 3 = Energie aktueller Monat)
+// Historische Monatswerte (kWh, beide WR summiert) aus der MaxTalk-DB, Vor-
+// ThingSpeak-Zeit. Index 0=Jan..11=Dez. 2016 hat kleine Aufzeichnungsluecken
+// (Jun/Nov). Ab 2017 kommen die Monate live aus ThingSpeak.
+var PV_HIST_MONTHS = {
+  2014:[709,2271,4143,3860,3852,4716,3592,3715,4006,3270,2139,1125],
+  2015:[1360,1986,3677,4490,4010,4506,4926,4257,3382,2574,2625,2704],
+  2016:[1406,1552,3197,3337,3945,1923,4366,4534,4045,2748,1585,3132]
+};
+
+// Monatssumme (kWh): historischer Wert falls vorhanden, sonst via Endpunkt
+// (Feld 3 = Energie aktueller Monat); abgeschlossene Monate gecacht.
 function pvMonthTotal(year,m0){
+  if(PV_HIST_MONTHS[year] && PV_HIST_MONTHS[year][m0]!=null) return Promise.resolve(PV_HIST_MONTHS[year][m0]);
   var now=new Date(), isCur=(year===now.getFullYear() && m0===now.getMonth());
   var key="pv_m_"+year+"_"+m0;
   if(!isCur){ var c=lsGet(key); if(c!==null) return Promise.resolve(parseFloat(c)); }
@@ -438,7 +449,7 @@ PV.loadEnergy=function(){
   if(PV.energyMode==="monate" && PV.energyYear==="alle"){
     // Jahresvergleich: eine Linie pro Jahr, X-Achse Jan-Dez
     holder.innerHTML='<div class="chart-empty">wird geladen…</div>';
-    var yrs=[]; for(var yy=2016; yy<=now.getFullYear(); yy++) yrs.push(yy);
+    var yrs=[]; for(var yy=2014; yy<=now.getFullYear(); yy++) yrs.push(yy);
     var seriesAll=[], chain=Promise.resolve();
     yrs.forEach(function(y){ chain=chain.then(function(){
       var maxM=(y===now.getFullYear())?now.getMonth():11, ms=[]; for(var m=0;m<=maxM;m++) ms.push(m);
