@@ -542,12 +542,13 @@ var PV_HIST_YEARS = {
 };
 
 // Historische Monatswerte (kWh, beide WR summiert) aus der MaxTalk-DB, Vor-
-// ThingSpeak-Zeit. Index 0=Jan..11=Dez. 2016 hat kleine Aufzeichnungsluecken
-// (Jun/Nov). Ab 2017 kommen die Monate live aus ThingSpeak.
+// ThingSpeak-Zeit. Index 0=Jan..11=Dez. Juni 2016: ein Wechselrichter war
+// defekt, der gemessene Wert (1923 kWh) ist daher verdoppelt. Nov 2016 hat eine
+// kleine Aufzeichnungsluecke. Ab 2017 kommen die Monate live aus ThingSpeak.
 var PV_HIST_MONTHS = {
   2014:[709,2271,4143,3860,3852,4716,3592,3715,4006,3270,2139,1125],
   2015:[1360,1986,3677,4490,4010,4506,4926,4257,3382,2574,2625,2704],
-  2016:[1406,1552,3197,3337,3945,1923,4366,4534,4045,2748,1585,3132]
+  2016:[1406,1552,3197,3337,3945,1923*2,4366,4534,4045,2748,1585,3132]
 };
 
 // Monatssumme (kWh): historischer Wert falls vorhanden, sonst via Endpunkt
