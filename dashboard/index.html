@@ -172,7 +172,9 @@ function lineChart(holder, series, opts){
   series.forEach(function(s){ if(s.bandFrac!=null)return; var tgt=(s.axis==="right")?allR:allL; s.pts.forEach(function(p){ if(p.v!=null) tgt.push(p); }); });
   var all=allL.concat(allR);
   if(all.length<1){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
-  var W=1000,H=(opts.height||300),padL=(opts.padL||58),padR=(hasRight?70:16),padT=28,padB=36;
+  // Linker Rand waechst mit der laengsten Text-Beschriftung der Y-Achse (Schrift 21 px, ~11.5 px/Zeichen)
+  var longestTick=Math.max.apply(null,[0].concat((opts.yTicks||[]).map(function(tk){ return tk.label!=null?String(tk.label).length:0; })));
+  var W=1000,H=(opts.height||300),padL=Math.max(opts.padL||58, Math.ceil(longestTick*11.5)+16),padR=(hasRight?70:16),padT=28,padB=36;
   var tMin=Math.min.apply(null,all.map(function(p){return p.t.getTime();}));
   var tMax=Math.max.apply(null,all.map(function(p){return p.t.getTime();}));
   var singleT=(tMax===tMin); if(singleT)tMax=tMin+1;  // nur ein Zeitpunkt -> mittig
@@ -733,7 +735,7 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
   charts:[
     {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001,fill:true},{field:"field7",label:"Geglättet (Vorgabe)",color:"var(--blue)",scale:0.001},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
-    {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, padL:150, yTicks:[{v:65,label:"nicht verbunden"},{v:66,label:"verbunden, lädt nicht"},{v:67,label:"verbunden, lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
+    {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, yTicks:[{v:65,label:"nicht verbunden"},{v:66,label:"verbunden, lädt nicht"},{v:67,label:"verbunden, lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
   ]});
 
 var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
