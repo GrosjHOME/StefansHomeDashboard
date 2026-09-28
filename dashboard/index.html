@@ -810,6 +810,9 @@ PLANNER.load=function(){
       o.win.forEach(function(w){ if(isToday && w.h<nowH) return; var e=effKw(w);
         kwh+=e; sur+=Math.max(0,e-o.base); if(e>peak)peak=e; if(e>=2){ if(lo===null)lo=w.h; hi=w.h; } });
       kwh=Math.round(kwh); sur=Math.round(sur);
+      // aktuell real produzierter Ueberschuss (heute) – Basis fuer "wirklich Strom da"
+      var curSur=null;
+      if(isToday){ var fN=0; o.win.forEach(function(w){ if(w.h===nowH) fN=w.kw; }); var nowEff=(curKw!=null?curKw:fN*scale); curSur=nowEff-o.base; }
       var winTxt = lo!==null ? ((lo<10?"0"+lo:lo)+"–"+(hi+1<10?"0"+(hi+1):(hi+1))+" Uhr") : "kaum Ertrag";
       var sun = sur>=100?"☀️☀️☀️":(sur>=50?"☀️☀️":(sur>=15?"☀️":"☁️"));
       var chargeKw=Math.max(PLANNER.car.minKw, Math.min(PLANNER.car.maxKw, Math.round(peak-o.base)));
@@ -817,7 +820,11 @@ PLANNER.load=function(){
       var q=o.win.filter(function(w){ return (!isToday || w.h>=nowH) && (effKw(w)-o.base)>=1; });
       function ampel(dev){ if(!q.length || sur < dev.h*dev.kw) return "red";
         var avail=(q[q.length-1].h+1)-q[0].h;
-        return avail>=dev.h ? "green" : (avail>=dev.h*0.5 ? "orange" : "red"); }
+        if(avail < dev.h*0.5) return "red";
+        // heute nur gruen, wenn AKTUELL wirklich Ueberschuss (>=1 kW) produziert wird;
+        // vor Sonnenaufgang / bei zu wenig Leistung hoechstens orange.
+        if(isToday && !(curSur>=1)) return "orange";
+        return avail>=dev.h ? "green" : "orange"; }
       var devRows=PLANNER.devices.map(function(dev){ var c=ampel(dev);
         return '<div style="display:flex;align-items:center;gap:7px;font-size:.85rem;margin:3px 0"><span style="width:11px;height:11px;border-radius:50%;background:'+col[c]+';flex:none"></span>'+dev.n+' <span style="color:var(--muted)">('+String(dev.h).replace(".",",")+' h)</span></div>'; }).join("");
       var carKwh=Math.min(Math.max(0,Math.round(sur-applTotal)), PLANNER.car.cap);
@@ -825,7 +832,7 @@ PLANNER.load=function(){
       // Auto-Ampel: reicht (Rest-)Fenster & Ueberschuss zum sinnvollen Laden?
       function carAmpel(){ if(carKwh<3 || !q.length) return "red";
         var avail=(q[q.length-1].h+1)-q[0].h;
-        if(isToday) return avail>=2 ? "green" : "orange";
+        if(isToday){ if(avail<2) return "orange"; return curSur>=1 ? "green" : "orange"; }
         return carKwh>=15 ? "green" : "orange"; }
       var carC=carAmpel();
       var carSvg='<svg viewBox="0 0 24 24" width="18" height="18" style="vertical-align:-5px;margin-right:4px;flex:none"><path fill="'+col[carC]+'" d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>';
