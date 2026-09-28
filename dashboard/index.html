@@ -731,7 +731,7 @@ var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
   // Haushalts-Grundlast (kW) je Monat Jan..Dez, tagsueber (von PV gedeckt, daher
   // im Netzbezug ~unsichtbar). Realer Dauerbezug ~0.5 kW (Kuehlung, Standby,
   // Pumpen), Winter etwas hoeher. Wird beim Ueberschuss immer abgezogen.
-  baseByMonth:[0.7,0.7,0.6,0.5,0.5,0.5,0.5,0.5,0.5,0.6,0.65,0.7], _cache:null, _pNow:null };
+  baseByMonth:[0.7,0.7,0.6,0.5,0.5,0.5,0.5,0.5,0.5,0.6,0.65,0.7], _cache:null, _pNow:null, _todayActual:null };
 
 PLANNER.render=function(main){
   main.innerHTML='<div class="wrap">'+
@@ -784,40 +784,59 @@ PLANNER.load=function(){
     var applTotal=0; PLANNER.devices.forEach(function(dv){applTotal+=dv.h*dv.kw;});  // 8 kWh
     var col={green:"var(--green)",orange:"var(--amber)",red:"var(--red)"};
     var cards=order.map(function(d,idx){ var o=days[d];
-      var kwh=Math.round(o.kwh), sur=Math.round(o.surplus), peak=o.peak, isToday=(d===today);
-      var lo=null,hi=null; o.win.forEach(function(w){ if(w.kw>=2){ if(lo===null)lo=w.h; hi=w.h; } });
+      var isToday=(d===today);
+      // --- Nowcast HEUTE: aktuelle/heutige Ist-Produktion einbeziehen -----------
+      // scale korrigiert die Restprognose. Bevorzugt kumulativ (Summe Ist /
+      // Summe Prognose ueber die bereits vergangenen produktiven Stunden heute),
+      // ersatzweise die Momentanleistung. So greift der Nowcast auch morgens,
+      // sobald die Sonne ueber den Talrand kommt, und nicht erst mittags.
+      var scale=1, curKw=(isToday && PLANNER._pNow!=null)?PLANNER._pNow:null;
+      if(isToday){
+        var ta=PLANNER._todayActual||{}, aSum=0, fSum=0;
+        o.win.forEach(function(w){ if(w.h<nowH && w.kw>0.3 && ta[w.h]!=null){ aSum+=ta[w.h]; fSum+=w.kw; } });
+        if(fSum>1){ scale=Math.min(aSum/fSum, 1.3); }
+        else if(curKw!=null){ var fN=0; o.win.forEach(function(w){ if(w.h===nowH) fN=w.kw; }); if(fN>0.3) scale=Math.min(curKw/fN, 1.3); }
+      }
+      // effektive Stundenleistung: vergangene Stunden = Ist, aktuelle = Momentan,
+      // kuenftige = Prognose x Nowcast-Faktor.
+      function effKw(w){
+        if(!isToday) return w.kw;
+        if(w.h<nowH){ var a=(PLANNER._todayActual||{})[w.h]; return (a!=null)?a:w.kw*scale; }
+        if(w.h===nowH && curKw!=null) return curKw;
+        return w.kw*scale;
+      }
+      // Kennzahlen: heute ab jetzt (Rest) mit Nowcast, sonst volle Tagesprognose.
+      var kwh=0, sur=0, peak=0, lo=null, hi=null;
+      o.win.forEach(function(w){ if(isToday && w.h<nowH) return; var e=effKw(w);
+        kwh+=e; sur+=Math.max(0,e-o.base); if(e>peak)peak=e; if(e>=2){ if(lo===null)lo=w.h; hi=w.h; } });
+      kwh=Math.round(kwh); sur=Math.round(sur);
       var winTxt = lo!==null ? ((lo<10?"0"+lo:lo)+"–"+(hi+1<10?"0"+(hi+1):(hi+1))+" Uhr") : "kaum Ertrag";
       var sun = sur>=100?"☀️☀️☀️":(sur>=50?"☀️☀️":(sur>=15?"☀️":"☁️"));
       var chargeKw=Math.max(PLANNER.car.minKw, Math.min(PLANNER.car.maxKw, Math.round(peak-o.base)));
-      // Nowcast: fuer HEUTE die Restprognose an die AKTUELLE PV-Leistung anpassen
-      // (Prognose kennt lokale Wolken/Verschattung nicht; z.B. real 0.6 kW statt 2 kW).
-      var scale=1;
-      if(isToday && PLANNER._pNow!=null){ var fcNow=null; o.win.forEach(function(w){ if(w.h===nowH) fcNow=w.kw; });
-        if(fcNow!=null && fcNow>0.5) scale=Math.min(PLANNER._pNow/fcNow, 1.3); }
-      // Geraete-Ampel: Stunden mit Ueberschuss >= 1 kW; reicht die (Rest-)Fensterdauer fuer die Laufzeit?
-      function effKw(w){ return (isToday && w.h>=nowH) ? w.kw*scale : w.kw; }
-      var q=o.win.filter(function(w){return (effKw(w)-o.base)>=1;});
-      function ampel(dev){ if(!q.length || o.surplus < dev.h*dev.kw) return "red";
-        var start=isToday?nowH:q[0].h;
-        var rem=q.filter(function(w){return w.h>=start;});
-        if(!rem.length) return "red";
-        var avail=(rem[rem.length-1].h+1)-start;
+      // Geraete-Ampel: Stunden (heute ab jetzt) mit Ueberschuss >= 1 kW; reicht die Fensterdauer fuer die Laufzeit?
+      var q=o.win.filter(function(w){ return (!isToday || w.h>=nowH) && (effKw(w)-o.base)>=1; });
+      function ampel(dev){ if(!q.length || sur < dev.h*dev.kw) return "red";
+        var avail=(q[q.length-1].h+1)-q[0].h;
         return avail>=dev.h ? "green" : (avail>=dev.h*0.5 ? "orange" : "red"); }
       var devRows=PLANNER.devices.map(function(dev){ var c=ampel(dev);
         return '<div style="display:flex;align-items:center;gap:7px;font-size:.85rem;margin:3px 0"><span style="width:11px;height:11px;border-radius:50%;background:'+col[c]+';flex:none"></span>'+dev.n+' <span style="color:var(--muted)">('+String(dev.h).replace(".",",")+' h)</span></div>'; }).join("");
-      var carKwh=Math.min(Math.max(0,Math.round(o.surplus-applTotal)), PLANNER.car.cap);
+      var carKwh=Math.min(Math.max(0,Math.round(sur-applTotal)), PLANNER.car.cap);
       var carKm=Math.round(carKwh/PLANNER.car.kwhPer100*100);
       // Auto-Ampel: reicht (Rest-)Fenster & Ueberschuss zum sinnvollen Laden?
-      function carAmpel(){ if(carKwh<3) return "red";
-        if(isToday){ var rem=q.filter(function(w){return w.h>=nowH;}); if(!rem.length) return "red";
-          var avail=(rem[rem.length-1].h+1)-nowH; return avail>=2 ? "green" : "orange"; }
+      function carAmpel(){ if(carKwh<3 || !q.length) return "red";
+        var avail=(q[q.length-1].h+1)-q[0].h;
+        if(isToday) return avail>=2 ? "green" : "orange";
         return carKwh>=15 ? "green" : "orange"; }
       var carC=carAmpel();
       var carSvg='<svg viewBox="0 0 24 24" width="18" height="18" style="vertical-align:-5px;margin-right:4px;flex:none"><path fill="'+col[carC]+'" d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>';
       var carTxt = carC==="red" ? "Auto: kaum Solar-Laden möglich" : ("Auto ~"+carKwh+" kWh (~"+carKm+" km) laden, bis "+chargeKw+" kW");
       var carRow='<div class="pd-rec" style="margin-top:6px">'+carSvg+carTxt+'</div>';
       var dateTxt=(isToday?"Heute · ":"")+wd[o.date.getDay()]+" "+o.date.getDate()+"."+(o.date.getMonth()+1)+".";
-      return '<div class="plday"><div class="pd-date">'+dateTxt+'</div><div class="pd-kwh">'+kwh+' <small>kWh</small></div>'+
+      // Live-Zeile heute: aktuelle PV-Leistung (Nowcast-Basis) sichtbar machen
+      var liveRow = isToday ? ('<div class="pd-win" style="color:'+(curKw!=null&&curKw>=1?"var(--green)":"var(--muted)")+';font-weight:600">Aktuell '+(curKw!=null?curKw.toFixed(1):"?")+' kW'+(scale<0.9?" · Prognose ×"+scale.toFixed(2):"")+'</div>') : '';
+      var kwhLbl = isToday ? ' <small>kWh ab jetzt</small>' : ' <small>kWh</small>';
+      return '<div class="plday"><div class="pd-date">'+dateTxt+'</div><div class="pd-kwh">'+kwh+kwhLbl+'</div>'+
+        liveRow+
         '<div class="pd-sun">'+sun+' <span style="font-size:.8rem;color:var(--muted);font-weight:600">Überschuss ~'+sur+' kWh</span></div>'+
         '<div class="pd-win">Solarfenster '+winTxt+' · Peak '+peak.toFixed(1)+' kW</div>'+
         devRows+carRow+'</div>';
@@ -835,8 +854,20 @@ PLANNER.load=function(){
       PLANNER._cache={t:Date.now(), factor:res[0], fc:res[1]}; draw(PLANNER._cache);
     }).catch(function(){ if(g("pl-err")) g("pl-err").textContent="Prognosedaten konnten nicht geladen werden."; });
   };
-  // aktuelle PV-Leistung jedes Mal frisch holen (Nowcast der Heute-Ampel, ~alle 60 s)
-  j(api(PLANNER.CH,"/feeds.json?results=1",true)).then(function(d){ var f=(d&&d.feeds)?d.feeds:[]; var v=f.length?num(f[f.length-1].field1):null; PLANNER._pNow=(v===null?null:v/1000); afterPnow(); }).catch(function(){ afterPnow(); });
+  // aktuelle PV-Leistung + heutige Ist-Kurve jedes Mal frisch holen
+  // (Nowcast der Heute-Ampel, ~alle 60 s). _pNow = Momentanleistung (kW),
+  // _todayActual = {stunde:kW} der bereits vergangenen Stunden heute.
+  Promise.all([
+    j(api(PLANNER.CH,"/feeds.json?results=1",true)),
+    j(api(PLANNER.CH,"/feeds.json?days=1&average=60&timezone=Europe/Zurich",true))
+  ]).then(function(r){
+    var f=(r[0]&&r[0].feeds)?r[0].feeds:[]; var v=f.length?num(f[f.length-1].field1):null;
+    PLANNER._pNow=(v===null?null:v/1000);
+    var td=new Date().toISOString().slice(0,10), th={};
+    ((r[1]&&r[1].feeds)?r[1].feeds:[]).forEach(function(x){ if(x.created_at.slice(0,10)!==td)return; var a=num(x.field1); if(a===null)return; th[parseInt(x.created_at.slice(11,13),10)]=a/1000; });
+    PLANNER._todayActual=th;
+    afterPnow();
+  }).catch(function(){ afterPnow(); });
 };
 
 var VIEWS={ pv:PV, wallbox:WALLBOX, heizung:HEIZUNG, boiler:BOILER, planer:PLANNER };
