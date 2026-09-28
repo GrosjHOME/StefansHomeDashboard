@@ -62,6 +62,11 @@
   .panel h2{font-size:1rem; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
   .panel h2 .tag{font-size:.7rem; font-weight:600; color:var(--muted); background:var(--bg); padding:2px 8px; border-radius:20px;}
   .seg{display:inline-flex; gap:2px; background:var(--bg); border-radius:8px; padding:2px; flex-wrap:wrap; margin-left:auto;}
+  /* Zusatz-Steuerelement links vom Umschalter: der Umschalter bleibt fix oben rechts.
+     flex-basis 0 haelt die Gruppe in der Titelzeile; wird es zu eng, bricht dank
+     wrap-reverse nur das Zusatz-Element unter den Umschalter um. */
+  .head-ctl{flex:1 1 0; min-width:0; display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap-reverse;}
+  .head-ctl .seg{margin-left:0;}
   .seg button{cursor:pointer; border:0; background:transparent; color:var(--muted); font-family:inherit; font-size:.76rem; font-weight:600; padding:4px 10px; border-radius:6px;}
   .seg button.active{background:var(--card); color:var(--ink); box-shadow:var(--shadow);}
   .chart-wrap{position:relative;}
@@ -363,7 +368,7 @@ PV.render=function(main){
       kpiCard("Letzter Monat","e-lastmonth","kWh")+kpiCard("Dieses Jahr","e-year","kWh")+kpiCard("Ø DC-Spannung","dc-mean","V")+
       kpiCard("Peak","e-peak","kW")+kpiCard("Sonnenstunden","e-sun","h")+'</div>'+
     '<div class="panel"><h2>Leistung <span class="tag" id="power-tag"></span></h2><div id="chart-power"><div class="chart-empty">wird geladen…</div></div></div>'+
-    '<div class="panel"><h2>Energie <span class="seg" id="seg-energy"><button data-m="tage" class="active">Tage</button><button data-m="monate">Monate</button><button data-m="jahre">Jahre</button></span> <select id="energy-year" style="display:none;margin-left:8px;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px">'+yearOpts+'</select></h2><div id="chart-days"><div class="chart-empty">wird geladen…</div></div></div>'+
+    '<div class="panel"><h2>Energie <span class="head-ctl"><select id="energy-year" style="display:none;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px">'+yearOpts+'</select><span class="seg" id="seg-energy"><button data-m="tage" class="active">Tage</button><button data-m="monate">Monate</button><button data-m="jahre">Jahre</button></span></span></h2><div id="chart-days"><div class="chart-empty">wird geladen…</div></div></div>'+
     '<div class="panel"><h2>PV-Arbeit je Jahr <span class="seg" id="seg-cmp"><button data-m="kumuliert" class="active">Kumuliert</button><button data-m="alle">Alle Monate</button><button data-m="gruppiert">Monate aller Jahre</button></span></h2><div id="chart-cumyear"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note" id="cmp-note"></div></div>'+
     '<div class="panel"><h2>Strom je MPP-Tracker <span class="tag" id="strom-tag"></span></h2>'+
