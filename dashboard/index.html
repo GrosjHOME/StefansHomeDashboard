@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<title>Stefans Zuhause – Dashboard</title>
+<title>Grosjeans Zuhause – Dashboard</title>
 <style>
   :root{
     --bg:#eef2f5; --card:#ffffff; --ink:#1f2933; --muted:#6b7280; --line:#e3e8ee;
@@ -62,6 +62,11 @@
   .panel h2{font-size:1rem; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
   .panel h2 .tag{font-size:.7rem; font-weight:600; color:var(--muted); background:var(--bg); padding:2px 8px; border-radius:20px;}
   .seg{display:inline-flex; gap:2px; background:var(--bg); border-radius:8px; padding:2px; flex-wrap:wrap; margin-left:auto;}
+  /* Zusatz-Steuerelement links vom Umschalter: der Umschalter bleibt fix oben rechts.
+     flex-basis 0 haelt die Gruppe in der Titelzeile; wird es zu eng, bricht dank
+     wrap-reverse nur das Zusatz-Element unter den Umschalter um. */
+  .head-ctl{flex:1 1 0; min-width:0; display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap-reverse;}
+  .head-ctl .seg{margin-left:0;}
   .seg button{cursor:pointer; border:0; background:transparent; color:var(--muted); font-family:inherit; font-size:.76rem; font-weight:600; padding:4px 10px; border-radius:6px;}
   .seg button.active{background:var(--card); color:var(--ink); box-shadow:var(--shadow);}
   .chart-wrap{position:relative;}
@@ -105,7 +110,7 @@
 </head>
 <body>
   <header class="nav">
-    <div class="brand">⚡ Stefans Zuhause</div>
+    <div class="brand">⚡ Grosjeans Zuhause</div>
     <nav class="tabs" id="tabs">
       <a data-view="pv">☀️<span class="tl"> PV-Anlage</span></a>
       <a data-view="wallbox">🚗<span class="tl"> Wallbox</span></a>
@@ -172,7 +177,9 @@ function lineChart(holder, series, opts){
   series.forEach(function(s){ if(s.bandFrac!=null)return; var tgt=(s.axis==="right")?allR:allL; s.pts.forEach(function(p){ if(p.v!=null) tgt.push(p); }); });
   var all=allL.concat(allR);
   if(all.length<1){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
-  var W=1000,H=(opts.height||300),padL=(opts.padL||58),padR=(hasRight?70:16),padT=28,padB=36;
+  // Linker Rand waechst mit der laengsten Text-Beschriftung der Y-Achse (Schrift 21 px, ~11.5 px/Zeichen)
+  var longestTick=Math.max.apply(null,[0].concat((opts.yTicks||[]).map(function(tk){ return tk.label!=null?String(tk.label).length:0; })));
+  var W=1000,H=(opts.height||300),padL=Math.max(opts.padL||58, Math.ceil(longestTick*11.5)+16),padR=(hasRight?70:16),padT=28,padB=36;
   var tMin=Math.min.apply(null,all.map(function(p){return p.t.getTime();}));
   var tMax=Math.max.apply(null,all.map(function(p){return p.t.getTime();}));
   var singleT=(tMax===tMin); if(singleT)tMax=tMin+1;  // nur ein Zeitpunkt -> mittig
@@ -361,7 +368,7 @@ PV.render=function(main){
       kpiCard("Letzter Monat","e-lastmonth","kWh")+kpiCard("Dieses Jahr","e-year","kWh")+kpiCard("Ø DC-Spannung","dc-mean","V")+
       kpiCard("Peak","e-peak","kW")+kpiCard("Sonnenstunden","e-sun","h")+'</div>'+
     '<div class="panel"><h2>Leistung <span class="tag" id="power-tag"></span></h2><div id="chart-power"><div class="chart-empty">wird geladen…</div></div></div>'+
-    '<div class="panel"><h2>Energie <span class="seg" id="seg-energy"><button data-m="tage" class="active">Tage</button><button data-m="monate">Monate</button><button data-m="jahre">Jahre</button></span> <select id="energy-year" style="display:none;margin-left:8px;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px">'+yearOpts+'</select></h2><div id="chart-days"><div class="chart-empty">wird geladen…</div></div></div>'+
+    '<div class="panel"><h2>Energie <span class="head-ctl"><select id="energy-year" style="display:none;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px">'+yearOpts+'</select><span class="seg" id="seg-energy"><button data-m="tage" class="active">Tage</button><button data-m="monate">Monate</button><button data-m="jahre">Jahre</button></span></span></h2><div id="chart-days"><div class="chart-empty">wird geladen…</div></div></div>'+
     '<div class="panel"><h2>PV-Arbeit je Jahr <span class="seg" id="seg-cmp"><button data-m="kumuliert" class="active">Kumuliert</button><button data-m="alle">Alle Monate</button><button data-m="gruppiert">Monate aller Jahre</button></span></h2><div id="chart-cumyear"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note" id="cmp-note"></div></div>'+
     '<div class="panel"><h2>Strom je MPP-Tracker <span class="tag" id="strom-tag"></span></h2>'+
@@ -463,7 +470,9 @@ PV.loadCumYear=function(){
     if(token!==PV.cmpToken) return;  // inzwischen umgeschaltet
     if(!yearsData.length){ holder.innerHTML='<div class="chart-empty">keine Daten</div>'; return; }
     var n=yearsData.length, legend=[];
-    yearsData.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)"; legend.push({color:s.color,label:String(s.year)}); });
+    // Legende platzsparend: erstes und letztes Jahr vierstellig, dazwischen zweistellig (2014, 15, ..., 25, 2026)
+    yearsData.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)";
+      legend.push({color:s.color,label:(i===0||i===n-1)?String(s.year):String(s.year).slice(2)}); });
     if(mode==="alle"){
       var bars=[];
       yearsData.forEach(function(s){ s.pts.forEach(function(p){ bars.push({v:p.v,color:s.color,label:(p.m===0?String(s.year):""),tip:mo[p.m]+" "+s.year}); }); });
@@ -542,12 +551,13 @@ var PV_HIST_YEARS = {
 };
 
 // Historische Monatswerte (kWh, beide WR summiert) aus der MaxTalk-DB, Vor-
-// ThingSpeak-Zeit. Index 0=Jan..11=Dez. 2016 hat kleine Aufzeichnungsluecken
-// (Jun/Nov). Ab 2017 kommen die Monate live aus ThingSpeak.
+// ThingSpeak-Zeit. Index 0=Jan..11=Dez. Juni 2016: ein Wechselrichter war
+// defekt, der gemessene Wert (1923 kWh) ist daher verdoppelt. Nov 2016 hat eine
+// kleine Aufzeichnungsluecke. Ab 2017 kommen die Monate live aus ThingSpeak.
 var PV_HIST_MONTHS = {
   2014:[709,2271,4143,3860,3852,4716,3592,3715,4006,3270,2139,1125],
   2015:[1360,1986,3677,4490,4010,4506,4926,4257,3382,2574,2625,2704],
-  2016:[1406,1552,3197,3337,3945,1923,4366,4534,4045,2748,1585,3132]
+  2016:[1406,1552,3197,3337,3945,1923*2,4366,4534,4045,2748,1585,3132]
 };
 
 // Monatssumme (kWh): historischer Wert falls vorhanden, sonst via Endpunkt
@@ -732,7 +742,7 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
   charts:[
     {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001,fill:true},{field:"field7",label:"Geglättet (Vorgabe)",color:"var(--blue)",scale:0.001},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
-    {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, padL:150, yTicks:[{v:65,label:"nicht verbunden"},{v:66,label:"verbunden, lädt nicht"},{v:67,label:"verbunden, lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
+    {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, yTicks:[{v:65,label:"nicht verbunden"},{v:66,label:"verbunden, lädt nicht"},{v:67,label:"verbunden, lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
   ]});
 
 var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
