@@ -762,8 +762,7 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
-    {title:"Ladeleistung", unit:"W", yMax:7000, lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0,fill:true},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?10:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0}]},
-    {title:"Einschaltschwelle", unit:"W", lines:[{field:"field4",label:"Einschaltschwelle",color:"var(--blue)",dec:0}]}
+    {title:"Ladeleistung &amp; Einschaltschwelle", unit:"W", yMax:7000, lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0,fill:true},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?10:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0},{field:"field4",label:"Einschaltschwelle",color:"var(--blue)",dec:0,dash:true}]}
   ]});
 
 /* ================= Routing ================= */
