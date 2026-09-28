@@ -140,11 +140,27 @@ function fmt(v,d){ return v===null?"–":v.toLocaleString("de-CH",{minimumFracti
 function relTime(dt){ var s=Math.round((Date.now()-dt.getTime())/1000); if(s<90)return "vor "+s+" s"; var m=Math.round(s/60); if(m<90)return "vor "+m+" min"; var h=Math.round(m/60); if(h<48)return "vor "+h+" h"; return "vor "+Math.round(h/24)+" T"; }
 function niceMax(m){ if(m<=0)return 1; var p=Math.pow(10,Math.floor(Math.log10(m))); var c=[1,1.5,2,2.5,3,4,5,6,8,10]; for(var i=0;i<c.length;i++){ if(c[i]*p>=m) return c[i]*p; } return 10*p; }
 function ylab(v){ return (Math.abs(v-Math.round(v))<1e-9)?String(Math.round(v)):v.toFixed(1); }
-// Ampelfarbe fuer ein Verhaeltnis 0..1: rot -> gelb/amber -> gruen
-function ratioColor(r){ r=Math.max(0,Math.min(1,isFinite(r)?r:0));
-  var stops=[[214,69,69],[245,166,35],[46,158,91]]; // rot, amber, gruen
-  var x=r*2, i=Math.min(1,Math.floor(x)), f=x-i, a=stops[i], b=stops[i+1];
-  return "rgb("+Math.round(a[0]+(b[0]-a[0])*f)+","+Math.round(a[1]+(b[1]-a[1])*f)+","+Math.round(a[2]+(b[2]-a[2])*f)+")"; }
+// Farbverlauf ueber Stuetzstellen [[x,[r,g,b]],...], ausserhalb geklemmt
+function rampColor(stops,x){
+  var c=stops[stops.length-1][1];
+  if(!(x>stops[0][0])) c=stops[0][1];
+  else for(var i=1;i<stops.length;i++){ if(x<=stops[i][0]){ var a=stops[i-1], b=stops[i], f=(x-a[0])/(b[0]-a[0]);
+    c=[0,1,2].map(function(k){ return Math.round(a[1][k]+(b[1][k]-a[1][k])*f); }); break; } }
+  return "rgb("+c.join(",")+")";
+}
+// Feste Farbbaender [[obereGrenze,farbe],...] wie bei den ThingSpeak-Tachos
+function bandColor(bands,v){ for(var i=0;i<bands.length;i++){ if(v<bands[i][0]) return bands[i][1]; } return bands[bands.length-1][1]; }
+var C_RED=[214,69,69], C_ORANGE=[245,140,35], C_GREEN_LT=[166,227,161], C_GREEN_MID=[87,201,106], C_GREEN=[22,163,74];
+// Einschaltschwelle: rot (keine PV) -> orange bis zur Schwelle; ab Schwelle gruen, 2 kW darueber voll gruen
+function thresholdColor(pv,thr){
+  return pv<thr ? rampColor([[0,C_RED],[thr,C_ORANGE]],pv) : rampColor([[thr,C_GREEN_LT],[thr+2000,C_GREEN]],pv);
+}
+// Boiler-Ladeleistung: 0 W neutral, 1-10 W rot (Laden verlangt, zu wenig PV), darueber Gruenverlauf
+function chargeColor(w){
+  if(w<=0) return "";
+  if(w<11) return "rgb("+C_RED.join(",")+")";
+  return rampColor([[1000,C_GREEN_LT],[1800,C_GREEN_MID],[4000,C_GREEN]],w);
+}
 function el(html){ var d=document.createElement("div"); d.innerHTML=html; return d.firstElementChild; }
 function api(ch,path,withKey){ var u="https://api.thingspeak.com/channels/"+ch+path; if(withKey) u+=(path.indexOf("?")>=0?"&":"?")+"api_key=6GIAGINL9VN4CTL8"; return u; }
 
@@ -627,15 +643,16 @@ function simpleView(cfg){
       function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
       cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
         el.textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0);
-        if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : ""; });
+        if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
+        if(k.color) el.style.color = (v===null) ? "" : k.color(v); });
       if(g("head-meta")&&last.created_at) g("head-meta").textContent="Aktualisiert "+relTime(new Date(last.created_at));
-      // Ampel-Faerbung: KPI-Wert nach Verhaeltnis aktuelle PV-Leistung / Schwelle
-      // (rot = keine PV-Leistung, gruen = Schwelle erreicht)
+      // Ampel-Faerbung: KPI-Wert nach aktueller PV-Leistung gegenueber der Schwelle
+      // (rot = keine PV-Leistung, orange bis zur Schwelle, gruen ab Schwelle)
       if(cfg.kpis.some(function(k){return k.colorPv;})){
         j(api(172430,"/feeds.json?results=5",true)).then(function(pd){
           var pf=(pd&&pd.feeds)?pd.feeds:[], pv=null; for(var i=pf.length-1;i>=0;i--){ var vv=num(pf[i].field1); if(vv!==null){pv=vv;break;} }
           cfg.kpis.forEach(function(k,ix){ if(!k.colorPv)return; var thr=L(k.field), el=g("kpi_"+ix); if(!el||thr===null||!thr||pv===null)return;
-            el.style.color=ratioColor(pv/thr); });
+            el.style.color=thresholdColor(pv,thr); });
         }).catch(function(){});
       }
     }).catch(function(){});
@@ -736,9 +753,11 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
 
 var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22" height="22" style="vertical-align:-4px"><rect x="5.5" y="4" width="13" height="17" rx="5" fill="#2b83c7"/><rect x="10.5" y="1.5" width="3" height="3" rx="1" fill="#7fb2dd"/><path d="M12 9.5c1.7 2.1 2.6 3.4 2.6 4.7a2.6 2.6 0 1 1-5.2 0c0-1.3 .9-2.6 2.6-4.7z" fill="#eaf4fb"/></svg>', title:"Boiler",
   kpis:[
-    {field:"field1",label:"Temperatur mitte",unit:"°C",dec:1},
-    {field:"field2",label:"Temperatur unten",unit:"°C",dec:1},
-    {field:"field3",label:"Ladeleistung",unit:"W",dec:0},
+    {field:"field1",label:"Temperatur mitte",unit:"°C",dec:1,
+      color:function(v){ return bandColor([[25,"#3b5bdb"],[45,"#d4c21a"],[70,"#2fb344"],[90,"#f08c00"],[Infinity,"#e03131"]],v); }},
+    {field:"field2",label:"Temperatur unten",unit:"°C",dec:1,
+      color:function(v){ return bandColor([[35,"#8b5cf6"],[70,"#2fb344"],[90,"#f4a261"],[Infinity,"#e03131"]],v); }},
+    {field:"field3",label:"Ladeleistung",unit:"W",dec:0,color:chargeColor},
     {field:"field4",label:"Einschaltschwelle",unit:"W",dec:0,colorPv:true}
   ],
   charts:[
