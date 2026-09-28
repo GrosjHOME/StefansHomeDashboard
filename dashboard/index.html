@@ -326,12 +326,12 @@ function midnightStartUTC(){ var d=new Date(); d.setHours(0,0,0,0); return d.toI
 function periodQuery(mode){ if(mode==="7tage") return "/feeds.json?days=7"; if(mode==="24h") return "/feeds.json?days=1"; return "/feeds.json?start="+encodeURIComponent(midnightStartUTC()); }
 
 /* ================= View: PV ================= */
-var PV={ CH:172430, period:"heute", energyMode:"tage", energyYear:null };
+var PV={ CH:172430, period:"heute", energyMode:"tage", energyYear:null, cmpMode:"kumuliert", cmpToken:0 };
 function segActive(container, btn){ Array.prototype.forEach.call(container.querySelectorAll("button"), function(b){ b.classList.toggle("active", b===btn); }); }
 PV.render=function(main){
   PV.period="heute";  // bei jedem Mount auf Standard (passt zum aktiven Button)
-  PV.energyMode="tage"; PV.energyYear=null;
-  var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 Monate</option><option value="alle">Alle Monate</option><option value="gruppiert">Monate aller Jahre</option>'; for(var _y=_cy;_y>=2014;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
+  PV.energyMode="tage"; PV.energyYear=null; PV.cmpMode="kumuliert";
+  var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 Monate</option>'; for(var _y=_cy;_y>=2014;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
   main.innerHTML='<div class="wrap">'+
     '<div class="view-head"><h1>☀️ PV-Anlage</h1>'+
       '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
@@ -346,8 +346,8 @@ PV.render=function(main){
       kpiCard("Peak","e-peak","kW")+kpiCard("Sonnenstunden","e-sun","h")+'</div>'+
     '<div class="panel"><h2>Leistung <span class="tag" id="power-tag"></span></h2><div id="chart-power"><div class="chart-empty">wird geladen…</div></div></div>'+
     '<div class="panel"><h2>Energie <span class="seg" id="seg-energy"><button data-m="tage" class="active">Tage</button><button data-m="monate">Monate</button><button data-m="jahre">Jahre</button></span> <select id="energy-year" style="display:none;margin-left:8px;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px">'+yearOpts+'</select></h2><div id="chart-days"><div class="chart-empty">wird geladen…</div></div></div>'+
-    '<div class="panel"><h2>PV-Arbeit je Jahr (kumuliert)</h2><div id="chart-cumyear"><div class="chart-empty">wird geladen…</div></div>'+
-      '<div class="note">Aufsummierte Energie im Jahresverlauf (Jan–Dez) – jede Linie ein Jahr. Zeigt, ob das laufende Jahr über oder unter den Vorjahren liegt.</div></div>'+
+    '<div class="panel"><h2>PV-Arbeit je Jahr <span class="seg" id="seg-cmp"><button data-m="kumuliert" class="active">Kumuliert</button><button data-m="alle">Alle Monate</button><button data-m="gruppiert">Monate aller Jahre</button></span></h2><div id="chart-cumyear"><div class="chart-empty">wird geladen…</div></div>'+
+      '<div class="note" id="cmp-note"></div></div>'+
     '<div class="panel"><h2>Strom je MPP-Tracker <span class="tag" id="strom-tag"></span></h2>'+
       '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
@@ -369,11 +369,14 @@ PV.render=function(main){
       '<div class="note">Tages-Mittel des Tracker-Stroms im Mittagsfenster (11–13 h) – ein Punkt pro Tag aus dem dedizierten Log-Kanal (volle Historie). Zum Erkennen eines schleichenden Rückgangs über Wochen/Monate; Feld „Mittags-PAC" dient später der Normierung gegen die Einstrahlung.</div></div>'+
     '<footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
   var spd=document.getElementById("seg-period"); if(spd) spd.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.period=b.getAttribute("data-m"); segActive(spd,b); PV.loadPower(); PV.loadTrackers(); PV.loadPeakSun(); });
-  function parseEnergyYear(v){ return (v==="alle"||v==="gruppiert") ? v : (v?parseInt(v,10):null); }
+  function parseEnergyYear(v){ return v?parseInt(v,10):null; }
   var se=document.getElementById("seg-energy"); if(se) se.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.energyMode=b.getAttribute("data-m"); segActive(se,b);
     var sy=document.getElementById("energy-year"); if(sy){ if(PV.energyMode==="monate"){ sy.style.display=""; PV.energyYear=parseEnergyYear(sy.value); } else { sy.style.display="none"; PV.energyYear=null; } }
     PV.loadEnergy(); });
   var sy2=document.getElementById("energy-year"); if(sy2) sy2.addEventListener("change",function(){ PV.energyYear=parseEnergyYear(this.value); PV.loadEnergy(); });
+  var sc=document.getElementById("seg-cmp"); if(sc) sc.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.cmpMode=b.getAttribute("data-m"); segActive(sc,b);
+    var h=document.getElementById("chart-cumyear"); if(h) h.innerHTML='<div class="chart-empty">wird geladen…</div>';
+    PV.loadCumYear(); });
 };
 function kpiCard(k,id,unit){ return '<div class="kpi"><div class="k">'+k+'</div><div class="v"><span id="'+id+'">–</span> <small>'+unit+'</small></div></div>'; }
 function panel(title,tag,id){ return '<div class="panel"><h2>'+title+' '+tag+'</h2><div id="'+id+'"><div class="chart-empty">wird geladen…</div></div></div>'; }
@@ -418,28 +421,51 @@ PV.loadPeakSun=function(){
   });
 };
 
-// PV-Arbeit je Jahr kumuliert (Jan-Dez aufsummiert) - eine Linie pro Jahr
+// PV-Arbeit je Jahr (Jahresvergleich), drei Ansichten aus denselben Monatssummen:
+//  "kumuliert" = Jan-Dez aufsummiert, eine Linie pro Jahr
+//  "alle"      = alle Monate chronologisch (Balken, Jahre farbig, ohne Legende)
+//  "gruppiert" = pro Monat die Jahre nebeneinander (gruppierte Balken + Legende)
+var CMP_NOTES={
+  kumuliert:"Aufsummierte Energie im Jahresverlauf (Jan–Dez) – jede Linie ein Jahr. Zeigt, ob das laufende Jahr über oder unter den Vorjahren liegt.",
+  alle:"Alle Monatssummen seit 2014 chronologisch, jedes Jahr in eigener Farbe.",
+  gruppiert:"Je Monat die Jahre nebeneinander – zeigt, wie ein Monat im Vergleich zu den Vorjahren abschneidet."
+};
 PV.loadCumYear=function(){
   var holder=document.getElementById("chart-cumyear"); if(!holder)return;
-  var mo=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"], now=new Date();
-  var yrs=[]; for(var y=2014;y<=now.getFullYear();y++) yrs.push(y);
-  var seriesAll=[], chain=Promise.resolve();
-  yrs.forEach(function(yy){ chain=chain.then(function(){
-    var maxM=(yy===now.getFullYear())?now.getMonth():11, ms=[]; for(var m=0;m<=maxM;m++) ms.push(m);
+  var mode=PV.cmpMode, token=++PV.cmpToken;
+  var note=document.getElementById("cmp-note"); if(note) note.textContent=CMP_NOTES[mode];
+  var mo=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"], now=new Date(), curY=now.getFullYear();
+  var yearsData=[], chain=Promise.resolve();
+  for(var y=2014;y<=curY;y++) (function(yy){ chain=chain.then(function(){
+    var maxM=(yy===curY)?now.getMonth():11, ms=[]; for(var m=0;m<=maxM;m++) ms.push(m);
     return Promise.all(ms.map(function(m){ return pvMonthTotal(yy,m).then(function(v){return {m:m,v:v};}); })).then(function(res){
-      res.sort(function(a,b){return a.m-b.m;});
-      var cum=0, pts=[]; res.forEach(function(o){ if(o.v!==null){ cum+=o.v; pts.push({t:new Date(2000,o.m,15),v:cum/1000}); } });  // MWh
-      if(pts.length>=1) seriesAll.push({year:yy,pts:pts});
+      var pts=res.filter(function(o){return o.v!==null&&o.v>0;}).sort(function(a,b){return a.m-b.m;});
+      if(pts.length) yearsData.push({year:yy,pts:pts});
     });
-  }); });
-  var curY=now.getFullYear();
+  }); })(y);
   return chain.then(function(){
-    if(!seriesAll.length){ holder.innerHTML='<div class="chart-empty">keine Daten</div>'; return; }
-    var n=seriesAll.length, legend=[];
-    seriesAll.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)"; legend.push({color:s.color,label:String(s.year)}); });
-    var xt=[]; for(var m=0;m<12;m++) xt.push({t:new Date(2000,m,15),label:mo[m]});
-    lineChart(holder, seriesAll.map(function(s){return {color:s.color,pts:s.pts,width:(s.year===curY?3:2)};}), {unit:"MWh",xTicks:xt,legend:legend,zero:true,dec:1,height:600});
-  }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
+    if(token!==PV.cmpToken) return;  // inzwischen umgeschaltet
+    if(!yearsData.length){ holder.innerHTML='<div class="chart-empty">keine Daten</div>'; return; }
+    var n=yearsData.length, legend=[];
+    yearsData.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)"; legend.push({color:s.color,label:String(s.year)}); });
+    if(mode==="alle"){
+      var bars=[];
+      yearsData.forEach(function(s){ s.pts.forEach(function(p){ bars.push({v:p.v,color:s.color,label:(p.m===0?String(s.year):""),tip:mo[p.m]+" "+s.year}); }); });
+      barChart(holder, bars, {unit:"kWh"});
+    } else if(mode==="gruppiert"){
+      var groups=[];
+      for(var m=0;m<12;m++){ var gb=[];
+        yearsData.forEach(function(s){ for(var k=0;k<s.pts.length;k++){ if(s.pts[k].m===m){ gb.push({v:s.pts[k].v,color:s.color,tip:mo[m]+" "+s.year}); break; } } });
+        groups.push({label:mo[m],bars:gb}); }
+      groupedBarChart(holder, groups, {unit:"kWh",legend:legend});
+    } else {
+      var xt=[]; for(var mm=0;mm<12;mm++) xt.push({t:new Date(2000,mm,15),label:mo[mm]});
+      var lines=yearsData.map(function(s){ var cum=0;
+        return {color:s.color,width:(s.year===curY?3:2),pts:s.pts.map(function(p){ cum+=p.v; return {t:new Date(2000,p.m,15),v:cum/1000}; })};  // MWh
+      });
+      lineChart(holder, lines, {unit:"MWh",xTicks:xt,legend:legend,zero:true,dec:1,height:600});
+    }
+  }).catch(function(){ if(token===PV.cmpToken) holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
 };
 PV.load=function(){
   var errEl=function(){return document.getElementById("err");};
@@ -534,38 +560,6 @@ PV.loadEnergy=function(){
   var holder=document.getElementById("chart-days"); if(!holder)return;
   var mo=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
   var now=new Date();
-  if(PV.energyMode==="monate" && (PV.energyYear==="alle" || PV.energyYear==="gruppiert")){
-    // "alle" = alle Monate chronologisch (Balken, Jahre farbig, ohne Legende)
-    // "gruppiert" = pro Monat die Jahre nebeneinander (gruppierte Balken + Legende)
-    var grouped=(PV.energyYear==="gruppiert");
-    holder.innerHTML='<div class="chart-empty">wird geladen…</div>';
-    var yrs=[]; for(var yy=2014; yy<=now.getFullYear(); yy++) yrs.push(yy);
-    var seriesAll=[], chain=Promise.resolve();
-    yrs.forEach(function(y){ chain=chain.then(function(){
-      var maxM=(y===now.getFullYear())?now.getMonth():11, ms=[]; for(var m=0;m<=maxM;m++) ms.push(m);
-      return Promise.all(ms.map(function(m){ return pvMonthTotal(y,m).then(function(v){return {m:m,v:v};}); })).then(function(res){
-        var pts=res.filter(function(o){return o.v!==null&&o.v>0;}).map(function(o){return {m:o.m,v:o.v};});
-        if(pts.length>=1) seriesAll.push({year:y,pts:pts});
-      });
-    }); });
-    chain.then(function(){
-      if(!seriesAll.length){ holder.innerHTML='<div class="chart-empty">keine Daten</div>'; return; }
-      var n=seriesAll.length, legend=[];
-      seriesAll.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)"; legend.push({color:s.color,label:String(s.year)}); });
-      if(grouped){
-        var groups=[];
-        for(var m=0;m<12;m++){ var gb=[];
-          seriesAll.forEach(function(s){ for(var k=0;k<s.pts.length;k++){ if(s.pts[k].m===m){ gb.push({v:s.pts[k].v,color:s.color,tip:mo[m]+" "+s.year}); break; } } });
-          groups.push({label:mo[m],bars:gb}); }
-        groupedBarChart(holder, groups, {unit:"kWh",legend:legend});
-      } else {
-        var bars=[];
-        seriesAll.forEach(function(s){ s.pts.forEach(function(p){ bars.push({v:p.v,color:s.color,label:(p.m===0?String(s.year):""),tip:mo[p.m]+" "+s.year}); }); });
-        barChart(holder, bars, {unit:"kWh"});
-      }
-    }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
-    return;
-  }
   if(PV.energyMode==="monate"){
     var months=[];
     if(PV.energyYear){ var maxM=(PV.energyYear===now.getFullYear())?now.getMonth():11;
