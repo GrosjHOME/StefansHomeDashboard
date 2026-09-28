@@ -465,7 +465,9 @@ PV.loadCumYear=function(){
     if(token!==PV.cmpToken) return;  // inzwischen umgeschaltet
     if(!yearsData.length){ holder.innerHTML='<div class="chart-empty">keine Daten</div>'; return; }
     var n=yearsData.length, legend=[];
-    yearsData.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)"; legend.push({color:s.color,label:String(s.year)}); });
+    // Legende platzsparend: erstes und letztes Jahr vierstellig, dazwischen zweistellig (2014, 15, ..., 25, 2026)
+    yearsData.forEach(function(s,i){ s.color="hsl("+Math.round(i*(360/n))+",70%,50%)";
+      legend.push({color:s.color,label:(i===0||i===n-1)?String(s.year):String(s.year).slice(2)}); });
     if(mode==="alle"){
       var bars=[];
       yearsData.forEach(function(s){ s.pts.forEach(function(p){ bars.push({v:p.v,color:s.color,label:(p.m===0?String(s.year):""),tip:mo[p.m]+" "+s.year}); }); });
