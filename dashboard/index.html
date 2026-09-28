@@ -8,7 +8,7 @@
 <style>
   :root{
     --bg:#eef2f5; --card:#ffffff; --ink:#1f2933; --muted:#6b7280; --line:#e3e8ee;
-    --amber:#f5a623; --green:#2e9e5b; --blue:#2b83c7; --red:#d64545;
+    --amber:#f5a623; --amber-lt:#f7d774; --green:#2e9e5b; --blue:#2b83c7; --red:#d64545;
     --nav:#ffffff; --shadow:0 1px 3px rgba(20,30,40,.10), 0 1px 2px rgba(20,30,40,.06);
   }
   :root[data-theme="dark"]{
@@ -249,17 +249,20 @@ function lineChart(holder, series, opts){
 function barChart(holder, bars, opts){
   opts=opts||{}; if(!bars.length){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
   var W=1000,H=300,padL=58,padR=16,padT=28,padB=48,n=bars.length;
-  var vMax=niceMax(Math.max.apply(null,bars.map(function(b){return b.v;})));
+  // gestapelte Balken moeglich: b.v = unteres Segment, b.v2 = oberes Segment (color2)
+  function total(b){ return b.v+(b.v2||0); }
+  var vMax=niceMax(Math.max.apply(null,bars.map(total)));
   function Y(v){ return padT+(H-padT-padB)*(1-v/vMax); }
   var slot=(W-padL-padR)/n, bw=slot*0.6, grid="",yl="";
   [0,vMax/2,vMax].forEach(function(v){ var y=Y(v);
     grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
     yl+='<text x="'+(padL-8)+'" y="'+(y+7)+'" text-anchor="end" font-size="21" fill="var(--muted)">'+ylab(v)+'</text>'; });
   var many = n>24;  // bei vielen Balken: Werte-Beschriftung weglassen, Ecken flacher
-  var r="";
-  bars.forEach(function(b,i){ var x=padL+slot*i+(slot-bw)/2, y=Y(b.v), h=Y(0)-y;
-    r+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+h+'" rx="'+(many?1:3)+'" fill="'+(b.color||opts.color||"var(--green)")+'"/>';
-    if(!many) r+='<text x="'+(x+bw/2)+'" y="'+(y-6)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+fmt(b.v,0)+'</text>';
+  var r="", rx=(many?1:3);
+  bars.forEach(function(b,i){ var x=padL+slot*i+(slot-bw)/2, tp=total(b), yTop=Y(tp);
+    if(b.v>0){ var y=Y(b.v), h=Y(0)-y; r+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+h+'" rx="'+rx+'" fill="'+(b.color||opts.color||"var(--green)")+'"/>'; }
+    if(b.v2>0){ var y2=Y(tp), h2=Y(b.v)-y2; r+='<rect x="'+x+'" y="'+y2+'" width="'+bw+'" height="'+h2+'" rx="'+rx+'" fill="'+(b.color2||"var(--amber-lt)")+'"/>'; }
+    if(!many) r+='<text x="'+(x+bw/2)+'" y="'+(yTop-6)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+fmt(tp,0)+'</text>';
     if(b.label) r+='<text x="'+(x+bw/2)+'" y="'+(H-22)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+b.label+'</text>'; });
   var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
     '<text x="6" y="18" font-size="18" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
@@ -272,7 +275,8 @@ function barChart(holder, bars, opts){
     if(mx<padL||idx<0||idx>=n){ ov.style.display="none"; tip.style.opacity=0; return; }
     var b=bars[idx], bx=padL+slot*idx+(slot-bw)/2;
     ov.innerHTML='<rect x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+(H-padT-padB)+'" fill="var(--ink)" opacity="0.06"/>'; ov.style.display="";
-    tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+(b.tip||b.label)+'</div><div>'+fmt(b.v,0)+' '+(opts.unit||"")+'</div>';
+    var tv=b.v+(b.v2||0);
+    tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+(b.tip||b.label)+'</div><div>'+fmt(tv,0)+' '+(opts.unit||"")+'</div>';
     var px=(bx+bw/2)/W*rect.width; tip.style.left=Math.max(0,Math.min(rect.width-tip.offsetWidth-4, px+8))+"px"; tip.style.top="6px"; tip.style.opacity=1;
   });
   svg.addEventListener("mouseleave",function(){ ov.style.display="none"; tip.style.opacity=0; });
@@ -578,12 +582,40 @@ PV.loadEnergy=function(){
       barChart(holder, res.filter(function(o){return o.v!==null&&o.v>0;}).map(function(o){return {label:String(o.y),v:o.v};}), {unit:"kWh",color:"var(--amber)"});
     }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
   } else {
-    j(api(PV.CH,"/feeds.json?days=15&average=15",true)).then(function(d){
+    // Ist-Tageswerte + Prognose (heute + naechste 2 Tage) als hellgelbe Balken
+    Promise.all([
+      j(api(PV.CH,"/feeds.json?days=15&average=15",true)),
+      PLANNER.ensureForecast().catch(function(){return null;})
+    ]).then(function(res){
+      var d=res[0], fc=res[1];
       var f=(d&&d.feeds)?d.feeds:[],byDay={}; f.forEach(function(x){ var v=num(x.field2); if(v===null)return; var dt=new Date(x.created_at);
         var key=dt.getFullYear()+"-"+dt.getMonth()+"-"+dt.getDate(); if(!byDay[key]||v>byDay[key].v)byDay[key]={v:v,dt:dt}; });
       var arr=Object.keys(byDay).map(function(k){return byDay[k];}).sort(function(a,b){return a.dt-b.dt;}).slice(-14);
-      barChart(holder,arr.map(function(o){return {label:o.dt.getDate()+"."+(o.dt.getMonth()+1)+".",v:o.v};}),{unit:"kWh",color:"var(--amber)"});
-    });
+      var bars=arr.map(function(o){return {label:o.dt.getDate()+"."+(o.dt.getMonth()+1)+".",v:o.v,dt:o.dt};});
+      function ymdOf(dt){ return dt.getFullYear()+"-"+("0"+(dt.getMonth()+1)).slice(-2)+"-"+("0"+dt.getDate()).slice(-2); }
+      if(fc && fc.fc && fc.fc.hourly){
+        var F=fc.factor, ht=fc.fc.hourly.time, hg=fc.fc.hourly.global_tilted_irradiance;
+        var perDay={}, order=[], nowH=now.getHours(), todayYmd=ymdOf(now), remToday=0;
+        for(var i=0;i<ht.length;i++){ var dt=new Date(ht[i].replace(" ","T")); var kw=(hg[i]||0)/1000*(F[dt.getHours()]||0); var ymd=ht[i].slice(0,10);
+          if(!(ymd in perDay)){ perDay[ymd]=0; order.push(ymd); } perDay[ymd]+=kw;
+          if(ymd===todayYmd && dt.getHours()>=nowH) remToday+=kw; }
+        var fut=order.filter(function(y){return y>=todayYmd;}).slice(0,3);  // heute + 2
+        var last=bars.length?bars[bars.length-1]:null;
+        var lastYmd=(last&&last.dt)?ymdOf(last.dt):null;
+        fut.forEach(function(ymd){
+          var dObj=new Date(ymd+"T12:00"), lbl=dObj.getDate()+"."+(dObj.getMonth()+1)+".";
+          if(ymd===todayYmd && lastYmd===todayYmd){
+            // heute: Ist-Balken behalten, erwarteter Rest bis Tagesprognose oben aufstapeln
+            last.v2=Math.max(0,Math.round(remToday)); last.color="var(--amber)"; last.color2="var(--amber-lt)";
+            last.tip="Heute · bisher "+Math.round(last.v)+" + Prognose-Rest "+Math.round(remToday)+" kWh";
+          } else {
+            bars.push({label:lbl, v:0, v2:Math.round(perDay[ymd]||0), color2:"var(--amber-lt)",
+              tip:(ymd===todayYmd?"Heute":lbl)+" · Prognose "+Math.round(perDay[ymd]||0)+" kWh"});
+          }
+        });
+      }
+      barChart(holder,bars,{unit:"kWh",color:"var(--amber)",legend:[{color:"var(--amber)",label:"Ist"},{color:"var(--amber-lt)",label:"Prognose"}]});
+    }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
   }
 };
 
@@ -763,6 +795,17 @@ PLANNER._calcHourFactors=function(){
   });
 };
 
+// Prognose (Stunden-Faktoren + 7-Tage-Vorhersage) laden/cachen (30 min).
+// Geteilt von der Nutzung-Ansicht und der Energie-Tage-Grafik.
+PLANNER.ensureForecast=function(){
+  var self=this;
+  if(self._cache && (Date.now()-self._cache.t)<1800000) return Promise.resolve(self._cache);
+  var fcUrl="https://api.open-meteo.com/v1/forecast?latitude="+self.LAT+"&longitude="+self.LON+"&hourly=global_tilted_irradiance&tilt="+self.TILT+"&azimuth="+self.AZ+"&forecast_days=7&timezone=Europe%2FZurich";
+  return Promise.all([ self._calcHourFactors(), j(fcUrl) ]).then(function(res){
+    self._cache={t:Date.now(), factor:res[0], fc:res[1]}; return self._cache;
+  });
+};
+
 PLANNER.load=function(){
   var g=function(id){return document.getElementById(id);};
   var draw=function(c){
@@ -867,11 +910,7 @@ PLANNER.load=function(){
     if(g("pl-err")) g("pl-err").textContent="";
   };
   var afterPnow=function(){
-    if(PLANNER._cache && (Date.now()-PLANNER._cache.t)<1800000){ draw(PLANNER._cache); return; }
-    var fcUrl="https://api.open-meteo.com/v1/forecast?latitude="+PLANNER.LAT+"&longitude="+PLANNER.LON+"&hourly=global_tilted_irradiance&tilt="+PLANNER.TILT+"&azimuth="+PLANNER.AZ+"&forecast_days=7&timezone=Europe%2FZurich";
-    Promise.all([ PLANNER._calcHourFactors(), j(fcUrl) ]).then(function(res){
-      PLANNER._cache={t:Date.now(), factor:res[0], fc:res[1]}; draw(PLANNER._cache);
-    }).catch(function(){ if(g("pl-err")) g("pl-err").textContent="Prognosedaten konnten nicht geladen werden."; });
+    PLANNER.ensureForecast().then(draw).catch(function(){ if(g("pl-err")) g("pl-err").textContent="Prognosedaten konnten nicht geladen werden."; });
   };
   // aktuelle PV-Leistung + heutige Ist-Kurve jedes Mal frisch holen
   // (Nowcast der Heute-Ampel, ~alle 60 s). _pNow = Momentanleistung (kW),
