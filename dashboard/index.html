@@ -347,6 +347,9 @@ function downsample(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)), out=
    "24h"   = rollierende letzte 24 h, "7tage" = letzte 7 Tage. */
 function midnightStartUTC(){ var d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,19).replace('T',' '); }
 function periodQuery(mode){ if(mode==="7tage") return "/feeds.json?days=7"; if(mode==="24h") return "/feeds.json?days=1"; return "/feeds.json?start="+encodeURIComponent(midnightStartUTC()); }
+// Trapez-Integral einer Leistungsreihe (W) -> kWh. Datenluecken >2 h werden uebersprungen.
+function integKwh(feeds, field){ var wh=0, prev=null; (feeds||[]).forEach(function(x){ var p=num(x[field]); if(p===null)return; p=Math.max(0,p); var t=new Date(x.created_at); if(prev){ var dt=(t-prev.t)/3600000; if(dt>0&&dt<2) wh+=(prev.p+p)/2*dt; } prev={t:t,p:p}; }); return wh/1000; }
+function tsStamp(ms){ return new Date(ms).toISOString().slice(0,19).replace("T"," "); }  // ThingSpeak start/end (UTC)
 
 /* ================= View: PV ================= */
 var PV={ CH:172430, period:"heute", energyMode:"tage", energyYear:null, cmpMode:"kumuliert", cmpToken:0 };
@@ -692,12 +695,21 @@ function simpleView(cfg){
       var f=byChan[String(cfg.channel)]||[];
       var lastTs = f.length ? new Date(f[f.length-1].created_at) : null;
       // Integral-KPIs (z. B. "Geladene Menge"): Leistung (W) ueber den Zeitraum
-      // aufintegrieren -> kWh. Nutzt dieselben Zeitraum-Feeds wie die Charts.
+      // aufintegrieren -> kWh. Heute/24h aus den vorhandenen Chart-Feeds; fuer 7 Tage
+      // die vollen 7 Tage in 2 Fenstern nachladen (ThingSpeak roh ~8000 Punkte ≈ 6.5 Tage).
       cfg.kpis.forEach(function(k,ki){ if(!k.integrate)return; var el=g("kpi_"+ki); if(!el)return;
-        var ff=byChan[String(k.channel||cfg.channel)]||[], wh=0, prev=null;
-        ff.forEach(function(x){ var p=num(x[k.field]); if(p===null)return; p=Math.max(0,p); var t=new Date(x.created_at);
-          if(prev){ var dt=(t-prev.t)/3600000; if(dt>0 && dt<2) wh+=(prev.p+p)/2*dt; } prev={t:t,p:p}; });
-        el.textContent = fmt(wh/1000, k.dec!=null?k.dec:1); });
+        var ch=k.channel||cfg.channel, dec=(k.dec!=null?k.dec:1), withKey=(String(ch)==="172430");
+        if(mode==="7tage"){
+          var now=Date.now(), mid=now-3.5*864e5, wk=mode;
+          var u1=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(now-7*864e5))+"&end="+encodeURIComponent(tsStamp(mid)),withKey);
+          var u2=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(mid))+"&end="+encodeURIComponent(tsStamp(now)),withKey);
+          Promise.all([j(u1),j(u2)]).then(function(rr){ if(mode!==wk)return;  // Zeitraum inzwischen gewechselt
+            var ff=((rr[0]&&rr[0].feeds)||[]).concat((rr[1]&&rr[1].feeds)||[]);
+            el.textContent = fmt(integKwh(ff,k.field), dec); }).catch(function(){});
+        } else {
+          el.textContent = fmt(integKwh(byChan[String(ch)]||[], k.field), dec);
+        }
+      });
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
         var series=c.lines.map(function(ln){ var pts=[]; var ff=byChan[String(ln.channel||cfg.channel)]||[]; ff.forEach(function(x){ var raw=num(x[ln.field]);
             var v = ln.derive ? ln.derive(raw) : (raw===null?null:(ln.scale? raw*ln.scale : raw));
