@@ -1,0 +1,35 @@
+name: ID.3 SoC -> ThingSpeak
+
+# Pollt den Ladezustand des VW ID.3 (We Connect ID) und schreibt ihn in den
+# ThingSpeak-Kanal 3514838. Zugangsdaten ausschliesslich aus Repo-Secrets.
+# Laeuft nur auf dem Default-Branch (schedule) bzw. manuell (workflow_dispatch).
+
+on:
+  schedule:
+    - cron: '*/20 * * * *'   # alle ~20 min (GitHub-Cron kann verspaetet sein)
+  workflow_dispatch:          # manueller Testlauf
+
+permissions:
+  contents: read
+
+concurrency:
+  group: id3-soc
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: WeConnect installieren
+        run: pip install --quiet weconnect
+      - name: SoC lesen und an ThingSpeak senden
+        env:
+          VW_USER: ${{ secrets.VW_USER }}
+          VW_PASSWORD: ${{ secrets.VW_PASSWORD }}
+          VW_VIN: ${{ secrets.VW_VIN }}
+          TS_WRITE_KEY: ${{ secrets.TS_WRITE_KEY }}
+        run: python scripts/id3_soc.py
