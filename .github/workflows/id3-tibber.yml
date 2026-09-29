@@ -1,0 +1,30 @@
+name: ID.3 SoC (Tibber) -> ThingSpeak
+
+# Pollt den Ladezustand des VW ID.3 ueber die Tibber Data API und schreibt ihn
+# in den ThingSpeak-Kanal 3514838. Laeuft in der Cloud (kein PC noetig).
+# Zugangsdaten nur aus Repo-Secrets. Nur Python-Standardbibliothek (kein pip).
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # alle ~30 min (GitHub-Cron kann verspaetet sein)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: id3-tibber
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SoC lesen und an ThingSpeak senden
+        env:
+          TIBBER_CLIENT_ID: ${{ secrets.TIBBER_CLIENT_ID }}
+          TIBBER_CLIENT_SECRET: ${{ secrets.TIBBER_CLIENT_SECRET }}
+          TIBBER_REFRESH_TOKEN: ${{ secrets.TIBBER_REFRESH_TOKEN }}
+          TS_WRITE_KEY: ${{ secrets.TS_WRITE_KEY }}
+        run: python3 scripts/id3_tibber_cloud.py
