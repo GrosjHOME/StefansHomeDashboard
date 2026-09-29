@@ -651,7 +651,7 @@ function simpleView(cfg){
       var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
       var last=f[f.length-1];
       function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
-      cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
+      cfg.kpis.forEach(function(k,i){ if(k.integrate)return; if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
         el.textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0);
         if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
         if(k.color) el.style.color = (v===null) ? "" : k.color(v); });
@@ -691,6 +691,13 @@ function simpleView(cfg){
       var byChan={}; results.forEach(function(r){ byChan[r.k]=r.feeds; });
       var f=byChan[String(cfg.channel)]||[];
       var lastTs = f.length ? new Date(f[f.length-1].created_at) : null;
+      // Integral-KPIs (z. B. "Geladene Menge"): Leistung (W) ueber den Zeitraum
+      // aufintegrieren -> kWh. Nutzt dieselben Zeitraum-Feeds wie die Charts.
+      cfg.kpis.forEach(function(k,ki){ if(!k.integrate)return; var el=g("kpi_"+ki); if(!el)return;
+        var ff=byChan[String(k.channel||cfg.channel)]||[], wh=0, prev=null;
+        ff.forEach(function(x){ var p=num(x[k.field]); if(p===null)return; p=Math.max(0,p); var t=new Date(x.created_at);
+          if(prev){ var dt=(t-prev.t)/3600000; if(dt>0 && dt<2) wh+=(prev.p+p)/2*dt; } prev={t:t,p:p}; });
+        el.textContent = fmt(wh/1000, k.dec!=null?k.dec:1); });
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
         var series=c.lines.map(function(ln){ var pts=[]; var ff=byChan[String(ln.channel||cfg.channel)]||[]; ff.forEach(function(x){ var raw=num(x[ln.field]);
             var v = ln.derive ? ln.derive(raw) : (raw===null?null:(ln.scale? raw*ln.scale : raw));
@@ -768,7 +775,8 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
     {field:"field2",label:"Temperatur unten",unit:"°C",dec:1,
       color:function(v){ return bandColor([[35,"#8b5cf6"],[70,"#2fb344"],[90,"#f4a261"],[Infinity,"#e03131"]],v); }},
     {field:"field3",label:"Ladeleistung",unit:"W",dec:0,color:chargeColor},
-    {field:"field4",label:"Einschaltschwelle",unit:"W",dec:0,colorPv:true}
+    {field:"field4",label:"Einschaltschwelle",unit:"W",dec:0,colorPv:true},
+    {field:"field3",label:"Geladene Menge",unit:"kWh",dec:1,integrate:true}  // Integral field3 (W) ueber Zeitraum
   ],
   charts:[
     {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
