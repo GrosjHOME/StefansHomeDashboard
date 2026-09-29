@@ -348,7 +348,9 @@ function downsample(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)), out=
 function midnightStartUTC(){ var d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,19).replace('T',' '); }
 function periodQuery(mode){ if(mode==="7tage") return "/feeds.json?days=7"; if(mode==="24h") return "/feeds.json?days=1"; return "/feeds.json?start="+encodeURIComponent(midnightStartUTC()); }
 // Trapez-Integral einer Leistungsreihe (W) -> kWh. Datenluecken >2 h werden uebersprungen.
-function integKwh(feeds, field){ var wh=0, prev=null; (feeds||[]).forEach(function(x){ var p=num(x[field]); if(p===null)return; p=Math.max(0,p); var t=new Date(x.created_at); if(prev){ var dt=(t-prev.t)/3600000; if(dt>0&&dt<2) wh+=(prev.p+p)/2*dt; } prev={t:t,p:p}; }); return wh/1000; }
+// Trapez-Integral einer Leistungsreihe -> kWh. toKw skaliert den Rohwert auf kW
+// (Standard 0.001: Rohwert in W; z. B. Wallbox field4 in µW -> 0.000001). Luecken >2 h uebersprungen.
+function integKwh(feeds, field, toKw){ toKw=(toKw==null?0.001:toKw); var e=0, prev=null; (feeds||[]).forEach(function(x){ var raw=num(x[field]); if(raw===null)return; var p=Math.max(0,raw*toKw); var t=new Date(x.created_at); if(prev){ var dt=(t-prev.t)/3600000; if(dt>0&&dt<2) e+=(prev.p+p)/2*dt; } prev={t:t,p:p}; }); return e; }
 function tsStamp(ms){ return new Date(ms).toISOString().slice(0,19).replace("T"," "); }  // ThingSpeak start/end (UTC)
 
 /* ================= View: PV ================= */
@@ -698,16 +700,16 @@ function simpleView(cfg){
       // aufintegrieren -> kWh. Heute/24h aus den vorhandenen Chart-Feeds; fuer 7 Tage
       // die vollen 7 Tage in 2 Fenstern nachladen (ThingSpeak roh ~8000 Punkte ≈ 6.5 Tage).
       cfg.kpis.forEach(function(k,ki){ if(!k.integrate)return; var el=g("kpi_"+ki); if(!el)return;
-        var ch=k.channel||cfg.channel, dec=(k.dec!=null?k.dec:1), withKey=(String(ch)==="172430");
+        var ch=k.channel||cfg.channel, dec=(k.dec!=null?k.dec:1), withKey=(String(ch)==="172430"), toKw=k.intScale;
         if(mode==="7tage"){
           var now=Date.now(), mid=now-3.5*864e5, wk=mode;
           var u1=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(now-7*864e5))+"&end="+encodeURIComponent(tsStamp(mid)),withKey);
           var u2=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(mid))+"&end="+encodeURIComponent(tsStamp(now)),withKey);
           Promise.all([j(u1),j(u2)]).then(function(rr){ if(mode!==wk)return;  // Zeitraum inzwischen gewechselt
             var ff=((rr[0]&&rr[0].feeds)||[]).concat((rr[1]&&rr[1].feeds)||[]);
-            el.textContent = fmt(integKwh(ff,k.field), dec); }).catch(function(){});
+            el.textContent = fmt(integKwh(ff,k.field,toKw), dec); }).catch(function(){});
         } else {
-          el.textContent = fmt(integKwh(byChan[String(ch)]||[], k.field), dec);
+          el.textContent = fmt(integKwh(byChan[String(ch)]||[], k.field, toKw), dec);
         }
       });
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
@@ -756,7 +758,8 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
     {field:"field4",label:"Aktuelle Ladeleistung",unit:"kW",dec:1,scale:0.000001},
     {field:"field7",label:"PV-Ladevorgabe",unit:"kW",dec:1,scale:0.001},
     {field:"field6",label:"Ladestrom-Begrenzung",unit:"A",dec:1},
-    {field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"verbunden, lädt":s===66?"verbunden, lädt nicht":s===65?"nicht verbunden":("Status "+s);}}
+    {field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"verbunden, lädt":s===66?"verbunden, lädt nicht":s===65?"nicht verbunden":("Status "+s);}},
+    {field:"field4",label:"Geladene Menge",unit:"kWh",dec:1,integrate:true,intScale:0.000001}  // Integral field4 (µW) ueber Zeitraum
   ],
   charts:[
     {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001,fill:true},{field:"field7",label:"PV-Ladevorgabe",color:"var(--blue)",scale:0.001},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
