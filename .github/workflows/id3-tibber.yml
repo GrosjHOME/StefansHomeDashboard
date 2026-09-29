@@ -6,7 +6,7 @@ name: ID.3 SoC (Tibber) -> ThingSpeak
 
 on:
   schedule:
-    - cron: '*/30 * * * *'   # alle ~30 min (GitHub-Cron kann verspaetet sein)
+    - cron: '*/10 * * * *'   # alle ~30 min (GitHub-Cron kann verspaetet sein)
   workflow_dispatch:
 
 permissions:
