@@ -981,7 +981,7 @@ PLANNER.load=function(){
         }
       }
       var devRows=PLANNER.devices.map(function(dev,i){
-        return '<div style="display:flex;align-items:center;gap:7px;font-size:.85rem;margin:3px 0"><span style="width:11px;height:11px;border-radius:50%;background:'+devColor(i)+';flex:none"></span>'+dev.n+' <span style="color:var(--muted)">('+String(dev.h).replace(".",",")+' h)</span></div>'; }).join("");
+        return '<div style="display:flex;align-items:center;gap:7px;font-size:.85rem;margin:3px 0"><span style="width:11px;height:11px;border-radius:50%;background:'+devColor(i)+';flex:none"></span>'+dev.n+' <span style="color:var(--muted);white-space:nowrap">('+String(dev.h).replace(".",",")+' h)</span></div>'; }).join("");
       if(isToday && dayC.some(function(c){ return c==="ok"; }))
         devRows+='<div style="font-size:.78rem;color:var(--muted);margin:2px 0 0 18px">Jetzt: '+nNow+' von '+nDev+' gleichzeitig ('+Math.max(0,curSur).toFixed(1)+' kW frei)</div>';
       var carKwh=Math.min(Math.max(0,Math.round(sur-applTotal)), PLANNER.car.cap);
@@ -994,13 +994,15 @@ PLANNER.load=function(){
       var carC=carAmpel();
       var carSvg='<svg viewBox="0 0 24 24" width="18" height="18" style="flex:none;margin-top:1px"><path fill="'+col[carC]+'" d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>';
       // Detail (km + Laderate) auf eigener zweiter Zeile, unter dem Text eingerueckt
-      var carTxt = carC==="red" ? "Auto: kaum Solar-Laden möglich" : ("Auto ~"+carKwh+" kWh, ~"+carKm+' km<br><span style="color:var(--muted)">(laden bis '+chargeKw+' kW)</span>');
+      // Kein fester Umbruch: Zahl+Einheit und der Klammerinhalt bleiben zusammen (nowrap/&nbsp;)
+      // und brechen nur als Ganzes um, wenn der Platz nicht reicht.
+      var carTxt = carC==="red" ? "Auto: kaum Solar-Laden möglich" : ("Auto ~"+carKwh+"&nbsp;kWh, ~"+carKm+'&nbsp;km <span style="color:var(--muted);white-space:nowrap">(laden bis '+chargeKw+' kW)</span>');
       var carRow='<div class="pd-rec" style="margin-top:6px;display:flex;align-items:flex-start;gap:5px">'+carSvg+'<div>'+carTxt+'</div></div>';
       // Boiler-Zeile zuunterst: erwartete Tages-Ladearbeit + Solar-Deckungs-Ampel.
       var boilerSvg='<svg viewBox="0 0 24 24" width="16" height="16" style="flex:none;margin-top:1px"><rect x="5.5" y="4" width="13" height="17" rx="5" fill="'+col[boilerC]+'"/><path d="M12 9.5c1.7 2.1 2.6 3.4 2.6 4.7a2.6 2.6 0 1 1-5.2 0c0-1.3 .9-2.6 2.6-4.7z" fill="#fff"/></svg>';
       // Hinweis auf eigener zweiter Zeile, unter dem Text eingerueckt (Icon+Text via flex)
-      var boilerHint=(isToday && boilerActual>0) ? '<br><span style="color:var(--muted)">('+boilerActual+' kWh geladen)</span>' : '';
-      var boilerRow='<div class="pd-rec" style="margin-top:4px;display:flex;align-items:flex-start;gap:5px">'+boilerSvg+'<div>Boiler ~'+boilerKwh+' kWh'+boilerHint+'</div></div>';
+      var boilerHint=(isToday && boilerActual>0) ? ' <span style="color:var(--muted);white-space:nowrap">('+boilerActual+' kWh geladen)</span>' : '';
+      var boilerRow='<div class="pd-rec" style="margin-top:4px;display:flex;align-items:flex-start;gap:5px">'+boilerSvg+'<div>Boiler ~'+boilerKwh+'&nbsp;kWh'+boilerHint+'</div></div>';
       var dateTxt=(isToday?"Heute · ":"")+wd[o.date.getDay()]+" "+o.date.getDate()+"."+(o.date.getMonth()+1)+".";
       // Live-Zeile heute: aktuelle PV-Leistung + Vorrang-Lasten (Boiler/Auto) sichtbar machen
       var liveRow = '';
