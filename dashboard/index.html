@@ -828,7 +828,7 @@ var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
   // Tagesmittel-Leistung x 24 h). Referenz fuer Prognose & Ueberschuss-Abzug;
   // bei Bedarf mit neuen Daten aktualisieren.
   boilerByMonth:[8.7,5.5,6.7,6.9,7.3,5.8,5.0,7.3,6.6,6.4,8.5,7.5],
-  _cache:null, _pNow:null, _todayActual:null, _boilerNow:null, _boilerTodayKwh:null, _carNow:null, _carVorgabe:null };
+  _cache:null, _pNow:null, _todayActual:null, _boilerNow:null, _boilerThr:null, _boilerTodayKwh:null, _carNow:null, _carVorgabe:null };
 
 PLANNER.render=function(main){
   main.innerHTML='<div class="wrap">'+
@@ -932,7 +932,6 @@ PLANNER.load=function(){
       var boilerKwh = isToday ? Math.max(boilerRef, boilerActual) : boilerRef;   // Anzeige: Tagesbedarf
       var boilerSub = isToday ? Math.max(0, boilerRef-boilerActual) : boilerRef; // Abzug vom Rest-Ueberschuss
       var grossSur=sur;
-      var boilerC = grossSur>=boilerSub ? "green" : (grossSur>=boilerSub*0.5 ? "orange" : "red");
       sur=Math.max(0, sur-boilerSub);
       // aktuell FREI verfuegbarer Ueberschuss (heute) nach Boiler+Auto – "wirklich Strom da"
       var curSur=null;
@@ -952,6 +951,19 @@ PLANNER.load=function(){
         // vor Sonnenaufgang / bei zu wenig Leistung hoechstens orange.
         if(isToday && !(curSur>=1)) return "orange";
         return avail>=dev.h ? "green" : "orange"; }
+      // Boiler-Ampel: Deckt der (Rest-)Ueberschuss die noch kommende Ladung? Heute wie bei
+      // Geraeten/Auto: ohne verbleibendes Solarfenster rot, und gruen nur, wenn der Boiler JETZT
+      // laedt oder laden kann (PV ueber der Einschaltschwelle) - sonst hoechstens orange.
+      var boilerC;
+      if(isToday && !q.length) boilerC="red";
+      else {
+        boilerC = grossSur>=boilerSub ? "green" : (grossSur>=boilerSub*0.5 ? "orange" : "red");
+        if(isToday && boilerC==="green"){
+          var thrW=PLANNER._boilerThr, pvW=(curKw!=null ? curKw*1000 : null);
+          var canNow=(PLANNER._boilerNow||0)>=0.1 || ((thrW!=null && pvW!=null) ? pvW>=thrW : curSur>=1);
+          if(!canNow) boilerC="orange";
+        }
+      }
       var devRows=PLANNER.devices.map(function(dev){ var c=ampel(dev);
         return '<div style="display:flex;align-items:center;gap:7px;font-size:.85rem;margin:3px 0"><span style="width:11px;height:11px;border-radius:50%;background:'+col[c]+';flex:none"></span>'+dev.n+' <span style="color:var(--muted)">('+String(dev.h).replace(".",",")+' h)</span></div>'; }).join("");
       var carKwh=Math.min(Math.max(0,Math.round(sur-applTotal)), PLANNER.car.cap);
@@ -1015,6 +1027,8 @@ PLANNER.load=function(){
     // aktuelle Boiler-Ladeleistung (kW, field3 in W) – Vorrang, wird abgezogen
     var bf=(r[2]&&r[2].feeds&&r[2].feeds[0])?r[2].feeds[0]:null;
     PLANNER._boilerNow = bf ? Math.max(0,(num(bf.field3)||0)/1000) : null;
+    // aktuelle Einschaltschwelle (W, field4): ab dieser PV-Leistung laedt der Boiler
+    PLANNER._boilerThr = bf ? num(bf.field4) : null;
     // heute bereits geladene Boiler-Energie (kWh) aus Stundenmittel field3 integriert
     var bt=0, bany=false;
     ((r[4]&&r[4].feeds)?r[4].feeds:[]).forEach(function(x){ if(x.created_at.slice(0,10)!==td)return; var p=num(x.field3); if(p===null)return; bt+=Math.max(0,p)/1000; bany=true; });
