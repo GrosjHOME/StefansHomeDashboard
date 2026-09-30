@@ -815,9 +815,10 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
 /* ================= Routing ================= */
 /* ================= View: Vorgeschlagene Gerätenutzung (Solar-Planer) ================= */
 var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
-  // Testannahmen Geraete (Leistung/Energie je Lauf)
-  // je Geraet: Laufdauer h und Leistung kw (Energie/Lauf = h*kw)
-  devices:[ {n:"Waschmaschine", h:1.5, kw:1}, {n:"Geschirrspüler", h:3, kw:1}, {n:"Tumbler", h:3.5, kw:1} ],
+  // Haushaltsgeraete, Eco-Programme (Datenblaetter: Samsung 7 kg Eco 40-60, Sharp Eco,
+  // Elin Waermepumpentrockner 8 kg). h = Laufdauer, peakKw = Spitzenleistung (Aufheizen bzw.
+  // Kompressor) fuer "wie viele gleichzeitig", kwh = Energie je Durchgang fuer die Tagespruefung.
+  devices:[ {n:"Waschmaschine", h:3, peakKw:2, kwh:0.7}, {n:"Geschirrspüler", h:3.5, peakKw:2, kwh:0.85}, {n:"Tumbler", h:3, peakKw:0.9, kwh:1.45} ],
   car:{ n:"Auto (VW ID.3)", cap:58, minKw:1.3, maxKw:11, kwhPer100:19 },  // Verbrauch 19 kWh/100km
   // Haushalts-Grundlast (kW) je Monat Jan..Dez, tagsueber (von PV gedeckt, daher
   // im Netzbezug ~unsichtbar). Realer Dauerbezug ~0.5 kW (Kuehlung, Standby,
@@ -889,7 +890,7 @@ PLANNER.load=function(){
     // Tageskarten
     var wd=["So","Mo","Di","Mi","Do","Fr","Sa"], today=new Date().toISOString().slice(0,10);
     var nowH=new Date().getHours();
-    var applTotal=0; PLANNER.devices.forEach(function(dv){applTotal+=dv.h*dv.kw;});  // 8 kWh
+    var applTotal=0; PLANNER.devices.forEach(function(dv){applTotal+=dv.kwh;});  // 3 kWh
     var col={green:"var(--green)",orange:"var(--amber)",red:"var(--red)"};
     var cards=order.map(function(d,idx){ var o=days[d];
       var isToday=(d===today);
@@ -946,7 +947,7 @@ PLANNER.load=function(){
       var q=o.win.filter(function(w){ return (!isToday || w.h>=nowH) && effSur(w)>=1; });
       // Tagespruefung je Geraet: "red" = heute/an dem Tag nicht, "orange" = Fenster kuerzer als
       // die Laufzeit, "ok" = moeglich.
-      function dayAmpel(dev){ if(!q.length || sur < dev.h*dev.kw) return "red";
+      function dayAmpel(dev){ if(!q.length || sur < dev.kwh) return "red";
         var avail=(q[q.length-1].h+1)-q[0].h;
         if(avail < dev.h*0.5) return "red";
         return avail>=dev.h ? "ok" : "orange"; }
@@ -957,7 +958,7 @@ PLANNER.load=function(){
       // spaeter) -> 1/3 -> 2/3 -> gruen (alle).
       var nDev=PLANNER.devices.length, nNow=0;
       if(isToday && curSur!=null){ var restKw=curSur;
-        PLANNER.devices.filter(function(d,i){ return dayC[i]==="ok"; }).map(function(d){ return d.kw; })
+        PLANNER.devices.filter(function(d,i){ return dayC[i]==="ok"; }).map(function(d){ return d.peakKw; })
           .sort(function(a,b){ return a-b; }).forEach(function(kw){ if(restKw>=kw){ nNow++; restKw-=kw; } }); }
       var nowCol=rampColor([[0,[245,166,35]],[nDev,[46,158,91]]], nNow);  // var(--amber) -> var(--green)
       function devColor(i){ var c=dayC[i]; if(c==="red") return col.red; if(c==="orange") return col.orange;
