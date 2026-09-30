@@ -944,13 +944,24 @@ PLANNER.load=function(){
       var chargeKw=Math.max(PLANNER.car.minKw, Math.min(PLANNER.car.maxKw, Math.round(vorgabe!=null ? vorgabe : peak-o.base)));
       // Geraete-Ampel: Stunden (heute ab jetzt) mit Ueberschuss >= 1 kW; reicht die Fensterdauer fuer die Laufzeit?
       var q=o.win.filter(function(w){ return (!isToday || w.h>=nowH) && effSur(w)>=1; });
-      function ampel(dev){ if(!q.length || sur < dev.h*dev.kw) return "red";
+      // Tagespruefung je Geraet: "red" = heute/an dem Tag nicht, "orange" = Fenster kuerzer als
+      // die Laufzeit, "ok" = moeglich.
+      function dayAmpel(dev){ if(!q.length || sur < dev.h*dev.kw) return "red";
         var avail=(q[q.length-1].h+1)-q[0].h;
         if(avail < dev.h*0.5) return "red";
-        // heute nur gruen, wenn AKTUELL wirklich Ueberschuss (>=1 kW) produziert wird;
-        // vor Sonnenaufgang / bei zu wenig Leistung hoechstens orange.
-        if(isToday && !(curSur>=1)) return "orange";
-        return avail>=dev.h ? "green" : "orange"; }
+        return avail>=dev.h ? "ok" : "orange"; }
+      var dayC=PLANNER.devices.map(dayAmpel);
+      // HEUTE: wie viele der moeglichen Geraete koennen JETZT gleichzeitig laufen? curSur hat
+      // Boiler + Auto schon abgezogen. Keine Reihenfolge - kleinste Leistung zuerst ergibt die
+      // maximale Anzahl. Alle moeglichen Geraete bekommen dieselbe Farbe: orange (0, erst
+      // spaeter) -> 1/3 -> 2/3 -> gruen (alle).
+      var nDev=PLANNER.devices.length, nNow=0;
+      if(isToday && curSur!=null){ var restKw=curSur;
+        PLANNER.devices.filter(function(d,i){ return dayC[i]==="ok"; }).map(function(d){ return d.kw; })
+          .sort(function(a,b){ return a-b; }).forEach(function(kw){ if(restKw>=kw){ nNow++; restKw-=kw; } }); }
+      var nowCol=rampColor([[0,[245,166,35]],[nDev,[46,158,91]]], nNow);  // var(--amber) -> var(--green)
+      function devColor(i){ var c=dayC[i]; if(c==="red") return col.red; if(c==="orange") return col.orange;
+        return isToday ? nowCol : col.green; }
       // Boiler-Ampel: Deckt der (Rest-)Ueberschuss die noch kommende Ladung? Heute wie bei
       // Geraeten/Auto: ohne verbleibendes Solarfenster rot, und gruen nur, wenn der Boiler JETZT
       // laedt oder laden kann (PV ueber der Einschaltschwelle) - sonst hoechstens orange.
@@ -964,8 +975,10 @@ PLANNER.load=function(){
           if(!canNow) boilerC="orange";
         }
       }
-      var devRows=PLANNER.devices.map(function(dev){ var c=ampel(dev);
-        return '<div style="display:flex;align-items:center;gap:7px;font-size:.85rem;margin:3px 0"><span style="width:11px;height:11px;border-radius:50%;background:'+col[c]+';flex:none"></span>'+dev.n+' <span style="color:var(--muted)">('+String(dev.h).replace(".",",")+' h)</span></div>'; }).join("");
+      var devRows=PLANNER.devices.map(function(dev,i){
+        return '<div style="display:flex;align-items:center;gap:7px;font-size:.85rem;margin:3px 0"><span style="width:11px;height:11px;border-radius:50%;background:'+devColor(i)+';flex:none"></span>'+dev.n+' <span style="color:var(--muted)">('+String(dev.h).replace(".",",")+' h)</span></div>'; }).join("");
+      if(isToday && dayC.some(function(c){ return c==="ok"; }))
+        devRows+='<div style="font-size:.78rem;color:var(--muted);margin:2px 0 0 18px">Jetzt: '+nNow+' von '+nDev+' gleichzeitig ('+Math.max(0,curSur).toFixed(1)+' kW frei)</div>';
       var carKwh=Math.min(Math.max(0,Math.round(sur-applTotal)), PLANNER.car.cap);
       var carKm=Math.round(carKwh/PLANNER.car.kwhPer100*100);
       // Auto-Ampel: reicht (Rest-)Fenster & Ueberschuss zum sinnvollen Laden?
