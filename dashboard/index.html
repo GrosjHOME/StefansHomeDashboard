@@ -57,6 +57,7 @@
   .kpi .k{color:var(--muted); font-size:.8rem; margin-bottom:4px;}
   .kpi .v{font-size:1.45rem; font-weight:700;}
   .kpi .v small{font-size:.8rem; font-weight:600; color:var(--muted);}
+  .kpi .stale{font-size:.72rem; font-weight:600; color:var(--red); margin-top:4px;}
 
   .panel{background:var(--card); border-radius:14px; box-shadow:var(--shadow); padding:16px 18px; margin-bottom:16px;}
   .panel h2{font-size:1rem; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
@@ -679,7 +680,13 @@ function simpleView(cfg){
         var f=(d&&d.feeds)?d.feeds:[];
         function L2(fd){ for(var i=f.length-1;i>=0;i--){ var v=num(f[i][fd]); if(v!==null)return v; } return null; }
         extra[ch].forEach(function(o){ var g2=g("kpi_"+o.i); if(!g2)return; var v=L2(o.k.field); if(v!==null&&o.k.scale)v=v*o.k.scale;
-          g2.textContent = o.k.map ? (v===null?"–":o.k.map(v)) : fmt(v,o.k.dec||0); });
+          g2.textContent = o.k.map ? (v===null?"–":o.k.map(v)) : fmt(v,o.k.dec||0);
+          // Warnung, wenn der Kanal seit staleMin Minuten nichts Neues geliefert hat (z. B. Poller ausgefallen)
+          if(o.k.staleMin){ var card=g2.closest(".kpi"), w=card.querySelector(".stale");
+            if(!w){ w=document.createElement("div"); w.className="stale"; card.appendChild(w); }
+            var lastT=f.length?new Date(f[f.length-1].created_at):null, old=!lastT||(Date.now()-lastT.getTime())>o.k.staleMin*60000;
+            w.textContent = old ? "⚠ veraltet – "+(lastT?"Stand "+relTime(lastT):"keine Daten") : "";
+            w.style.display = old ? "" : "none"; } });
       }).catch(function(){});
     });
   }
@@ -761,7 +768,7 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
     {field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"verbunden, lädt":s===66?"verbunden, lädt nicht":s===65?"nicht verbunden":("Status "+s);}},
     {field:"field4",label:"Geladene Menge",unit:"kWh",dec:1,integrate:true,intScale:0.000001},  // Integral field4 (µW) ueber Zeitraum
     // ID.3-Werte aus Kanal 3514838 (via Tibber Data API, GitHub-Actions-Poller)
-    {channel:3514838,field:"field1",label:"Ladezustand Auto",unit:"%",dec:0},
+    {channel:3514838,field:"field1",label:"Ladezustand Auto",unit:"%",dec:0,staleMin:60},
     {channel:3514838,field:"field2",label:"Reichweite",unit:"km",dec:0},
     {channel:3514838,field:"field4",label:"Ziel-Ladezustand",unit:"%",dec:0},
     {channel:3514838,field:"field6",label:"Auto-Stecker",map:function(v){return Math.round(v)===1?"verbunden":"getrennt";}},
