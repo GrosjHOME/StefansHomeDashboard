@@ -838,7 +838,11 @@ PLANNER.render=function(main){
       '<div id="pl-chart"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Erwartete PV-Leistung – Prognose (Open-Meteo, geneigte Einstrahlung '+PLANNER.TILT+'°/Süd), pro Tagesstunde an den letzten 14 Tagen kalibriert (berücksichtigt die lokale Horizont-Verschattung im Tal, v.a. abends).</div></div>'+
     '<div class="panel"><h2>Tagesübersicht &amp; Empfehlungen</h2><div id="pl-days"><div class="chart-empty">wird geladen…</div></div>'+
-      '<div class="note">Ampel je Gerät: 🟢 gut machbar · 🟠 knapp · 🔴 zu spät bzw. zu wenig Überschuss. „Heute" wird ab der aktuellen Uhrzeit gerechnet und mit der aktuellen PV-Leistung nachgeführt (Nowcast); Aktualisierung alle 60 s. Laufzeiten: Waschmaschine 1.5 h, Geschirrspüler 3 h, Tumbler 3.5 h (je 1 kW). Überschuss = Brutto-PV (ab Wechselrichter) − Haushalts-Grundlast (~0.5 kW) − erwartete Boiler-Ladearbeit (Monats-Referenz, Warmwasser hat Vorrang) − aktuelle Boiler-/Auto-Ladeleistung (Vorrang Boiler → Auto → Geräte). Boiler-Punkt: 🟢 Solar deckt den Boiler · 🟠 knapp · 🔴 zu wenig Sonne. Auto: 58 kWh, 1.3–11 kW, 20 kWh/100 km.</div></div>'+
+      '<div class="note">Geräte heute: 🟠 erst später · Zwischenstufen = 1 bzw. 2 Geräte gleichzeitig · 🟢 alle gleichzeitig (Spitzenleistung im aktuell freien Überschuss) · 🔴 heute nicht mehr. Folgetage: 🟢 gut machbar · 🟠 knapp · 🔴 zu wenig Überschuss. „Heute" wird ab der aktuellen Uhrzeit gerechnet und mit der aktuellen PV-Leistung nachgeführt (Nowcast); Aktualisierung alle 60 s. '+
+        'Geräte (Eco): '+PLANNER.devices.map(function(d){ return d.n+' '+d.h+' h, Spitze '+d.peakKw+' kW, '+d.kwh+' kWh'; }).join(' · ')+'. '+
+        'Überschuss = Brutto-PV (ab Wechselrichter) − Haushalts-Grundlast (~0.5 kW) − erwartete Boiler-Ladearbeit (Monats-Referenz, Warmwasser hat Vorrang) − aktuelle Boiler-/Auto-Ladeleistung (Vorrang Boiler → Auto → Geräte). '+
+        'Boiler-Punkt: 🟢 Solar deckt den Boiler und er lädt jetzt bzw. PV liegt über der Einschaltschwelle · 🟠 knapp bzw. erst später · 🔴 zu wenig Sonne bzw. heute kein Solarfenster mehr. '+
+        'Auto: '+PLANNER.car.cap+' kWh, '+PLANNER.car.minKw+'–'+PLANNER.car.maxKw+' kW, '+PLANNER.car.kwhPer100+' kWh/100 km; heute lädt es mit der PV-Ladevorgabe der Wallbox.</div></div>'+
     '<footer>Prognose: Open-Meteo · Kalibrierung: ThingSpeak Kanal '+PLANNER.CH+' · <span id="pl-err" style="color:var(--red)"></span></footer></div>';
 };
 
