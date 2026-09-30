@@ -836,7 +836,7 @@ PLANNER.render=function(main){
     '<div class="view-head"><h1>🗓️ Vorgeschlagene Gerätenutzung</h1><div class="meta" id="pl-meta">wird geladen…</div></div>'+
     '<div class="panel"><h2>Solarprognose 7 Tage <span class="tag" id="pl-cal"></span></h2>'+
       '<div id="pl-chart"><div class="chart-empty">wird geladen…</div></div>'+
-      '<div class="note">Erwartete PV-Leistung – Prognose (Open-Meteo, geneigte Einstrahlung '+PLANNER.TILT+'°/Süd), pro Tagesstunde an den letzten 14 Tagen kalibriert (berücksichtigt die lokale Horizont-Verschattung im Tal, v.a. abends).</div></div>'+
+      '<div class="note">Erwartete PV-Leistung – Prognose (Open-Meteo, geneigte Einstrahlung '+PLANNER.TILT+'°/Süd), pro Tagesstunde an den letzten 14 Tagen kalibriert (berücksichtigt die lokale Horizont-Verschattung im Tal, v.a. abends). Blau: Lufttemperatur 2 m über Boden (Open-Meteo, rechte Achse).</div></div>'+
     '<div class="panel"><h2>Tagesübersicht &amp; Empfehlungen</h2><div id="pl-days"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Geräte heute: 🟠 erst später · Zwischenstufen = 1 bzw. 2 Geräte gleichzeitig · 🟢 alle gleichzeitig (Spitzenleistung im aktuell freien Überschuss) · 🔴 heute nicht mehr. Folgetage: 🟢 gut machbar · 🟠 knapp · 🔴 zu wenig Überschuss. „Heute" wird ab der aktuellen Uhrzeit gerechnet und mit der aktuellen PV-Leistung nachgeführt (Nowcast); Aktualisierung alle 60 s. '+
         'Geräte (Eco): '+PLANNER.devices.map(function(d){ return d.n+' '+d.h+' h, Spitze '+d.peakKw+' kW, '+d.kwh+' kWh'; }).join(' · ')+'. '+
@@ -870,7 +870,7 @@ PLANNER._calcHourFactors=function(){
 PLANNER.ensureForecast=function(){
   var self=this;
   if(self._cache && (Date.now()-self._cache.t)<1800000) return Promise.resolve(self._cache);
-  var fcUrl="https://api.open-meteo.com/v1/forecast?latitude="+self.LAT+"&longitude="+self.LON+"&hourly=global_tilted_irradiance&tilt="+self.TILT+"&azimuth="+self.AZ+"&forecast_days=7&timezone=Europe%2FZurich";
+  var fcUrl="https://api.open-meteo.com/v1/forecast?latitude="+self.LAT+"&longitude="+self.LON+"&hourly=global_tilted_irradiance,temperature_2m&tilt="+self.TILT+"&azimuth="+self.AZ+"&forecast_days=7&timezone=Europe%2FZurich";
   return Promise.all([ self._calcHourFactors(), j(fcUrl) ]).then(function(res){
     self._cache={t:Date.now(), factor:res[0], fc:res[1]}; return self._cache;
   });
@@ -890,7 +890,13 @@ PLANNER.load=function(){
       pts.push({t:dt, v:kw});
       var d=ht[i].slice(0,10); if(!days[d]){ days[d]={kwh:0, surplus:0, peak:0, win:[], date:dt, base:base}; order.push(d); }
       days[d].kwh+=kw; days[d].surplus+=Math.max(0,kw-base); if(kw>days[d].peak)days[d].peak=kw; days[d].win.push({h:dt.getHours(),kw:kw}); }
-    if(g("pl-chart")) lineChart(g("pl-chart"), [{color:"var(--green)", fill:true, pts:pts}], {unit:"kW", dec:1});
+    // Lufttemperatur 2 m ueber Boden (Open-Meteo) als blaue Linie auf der rechten Achse
+    var htemp=hj.hourly.temperature_2m||[], tpts=[];
+    for(var ti=0;ti<ht.length;ti++){ if(htemp[ti]!=null) tpts.push({t:new Date(ht[ti].replace(" ","T")), v:htemp[ti]}); }
+    var plSeries=[{color:"var(--green)", fill:true, pts:pts}], plLegend=null;
+    if(tpts.length){ plSeries.push({color:"var(--blue)", axis:"right", dec:1, pts:tpts});
+      plLegend=[{color:"var(--green)",label:"PV-Leistung (kW)"},{color:"var(--blue)",label:"Temperatur 2 m (°C)"}]; }
+    if(g("pl-chart")) lineChart(g("pl-chart"), plSeries, {unit:"kW", dec:1, unit2:"°C", zero2:false, legend:plLegend});
     // Tageskarten
     var wd=["So","Mo","Di","Mi","Do","Fr","Sa"], today=new Date().toISOString().slice(0,10);
     var nowH=new Date().getHours();
