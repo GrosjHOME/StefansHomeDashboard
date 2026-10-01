@@ -238,6 +238,21 @@ function lineChart(holder, series, opts){
   var xl="";
   if(opts.xTicks){ opts.xTicks.forEach(function(xt){ var tv=(xt.t instanceof Date)?xt.t.getTime():xt.t; if(tv<tMin||tv>tMax)return; var x=X(tv);
       xl+='<text x="'+x+'" y="'+(H-9)+'" text-anchor="middle" font-size="21" fill="var(--muted)">'+xt.label+'</text>'; }); }
+  else if(tMax-tMin>26*3600*1000 && tMax-tMin<=15*86400000){
+    // Mehrtages-Ansicht (z. B. 7 Tage): ein Datum je Tag, mittig um 12:00 unter dem Tagesverlauf
+    // (statt gleichmaessig verteilter Labels, die mal am Tagesanfang, mal mitten im Tag lagen).
+    // Angeschnittene Rand-Tage (z. B. heute bis jetzt): liegt 12:00 ausserhalb, steht das Label
+    // in der Mitte des sichtbaren Teils - aber nur, wenn davon mindestens 8 h sichtbar sind.
+    var dayStep=Math.max(1, Math.ceil(((tMax-tMin)/86400000+1)/8)), dn=new Date(tMin); dn.setHours(12,0,0,0);
+    function dayLab(t,d){ xl+='<text x="'+X(t)+'" y="'+(H-9)+'" text-anchor="middle" font-size="21" fill="var(--muted)">'+d.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"})+'</text>'; }
+    for(; ; dn.setDate(dn.getDate()+dayStep)){
+      var dStart=new Date(dn); dStart.setHours(0,0,0,0); var dEnd=new Date(dStart); dEnd.setDate(dEnd.getDate()+1);
+      if(dStart.getTime()>tMax) break;
+      if(dn.getTime()>=tMin && dn.getTime()<=tMax){ dayLab(dn.getTime(),dn); continue; }
+      var vs=Math.max(tMin,dStart.getTime()), ve=Math.min(tMax,dEnd.getTime());
+      if(dayStep===1 && ve-vs>=8*3600000) dayLab((vs+ve)/2,dn);
+    }
+  }
   else for(var k=0;k<=5;k++){ var tt=tMin+(tMax-tMin)*k/5, x=padL+(W-padL-padR)*k/5;
     var span=tMax-tMin, dd=new Date(tt);
     var lab = span> 26*3600*1000 ? dd.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"}) : dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
