@@ -8,8 +8,9 @@ name: ID.3 SoC (Tibber) -> ThingSpeak
 
 on:
   schedule:
-    - cron: '9,24,39,54 * * * *'   # alle 15 min, OFF-PEAK (:09/:24/:39/:54). GitHub verwirft geplante
-                             # Laeufe zur vollen/halben Stunde (:00/:30) haeufig (Hochlast).
+    - cron: '7,24,41,58 * * * *'   # ~alle 17 min, bewusst abseits der Viertel-Marken (:00/:15/:30/:45).
+                             # Dort verwirft GitHub geplante Laeufe am haeufigsten (Hochlast). Test:
+                             # ob andere Minuten die Trefferquote verbessern - sonst via ThingSpeak-TimeControl.
   workflow_dispatch:
 
 permissions:
