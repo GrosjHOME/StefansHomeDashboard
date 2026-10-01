@@ -45,7 +45,7 @@
   .dot.ok{background:var(--green);} .dot.bad{background:var(--red);} .dot.na{background:#b0b8c0;}
 
   .hero{background:var(--card); border-radius:14px; box-shadow:var(--shadow); padding:18px 20px; margin-bottom:16px;}
-  .hero .lbl{color:var(--muted); font-size:.85rem; text-transform:uppercase; letter-spacing:.04em;}
+  .hero .lbl{color:var(--muted); font-size:.85rem;}
   .hero .val{font-size:2.8rem; font-weight:700; line-height:1.1; margin:2px 0 6px;}
   .hero .val small{font-size:1.1rem; font-weight:600; color:var(--muted);}
   .bar{height:12px; border-radius:6px; background:var(--line); overflow:hidden;}
@@ -780,20 +780,20 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
     {field:"field4",label:"Aktuelle Ladeleistung",unit:"kW",dec:1,scale:0.000001},
     {field:"field7",label:"PV-Ladevorgabe",unit:"kW",dec:1,scale:0.001},
     {field:"field6",label:"Ladestrom-Begrenzung",unit:"A",dec:1},
-    {field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"verbunden, lädt":s===66?"verbunden, lädt nicht":s===65?"nicht verbunden":("Status "+s);}},
+    {field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"Lädt":s===66?"Lädt nicht":s===65?"Getrennt":("Status "+s);}},
     {field:"field4",label:"Geladene Menge",unit:"kWh",dec:1,integrate:true,intScale:0.000001},  // Integral field4 (µW) ueber Zeitraum
     // ID.3-Werte aus Kanal 3514838 (via Tibber Data API, GitHub-Actions-Poller)
     {channel:3514838,field:"field1",label:"Ladezustand Auto",unit:"%",dec:0,staleMin:60},
     {channel:3514838,field:"field2",label:"Reichweite",unit:"km",dec:0},
     {channel:3514838,field:"field4",label:"Ziel-Ladezustand",unit:"%",dec:0},
-    {channel:3514838,field:"field6",label:"Auto-Stecker",map:function(v){return Math.round(v)===1?"verbunden":"getrennt";}},
-    {channel:3514838,field:"field5",label:"Auto-Ladestatus",map:function(v){return Math.round(v)===1?"lädt":"lädt nicht";}}
+    {channel:3514838,field:"field6",label:"Auto-Stecker",map:function(v){return Math.round(v)===1?"Verbunden":"Getrennt";}},
+    {channel:3514838,field:"field5",label:"Auto-Ladestatus",map:function(v){return Math.round(v)===1?"Lädt":"Lädt nicht";}}
   ],
   charts:[
     {title:"Auto-Ladezustand (ID.3)", unit:"%", yMax:100, lines:[{channel:3514838,field:"field1",label:"Ladezustand",color:"var(--green)",dec:0,fill:true},{channel:3514838,field:"field4",label:"Ziel",color:"var(--blue)",dec:0,dash:true}]},
     {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001,fill:true},{field:"field7",label:"PV-Ladevorgabe",color:"var(--blue)",scale:0.001,dash:true},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
-    {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, yTicks:[{v:65,label:"nicht verbunden"},{v:66,label:"verbunden, lädt nicht"},{v:67,label:"verbunden, lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
+    {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, yTicks:[{v:65,label:"Getrennt"},{v:66,label:"Lädt nicht"},{v:67,label:"Lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
   ]});
 
 var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
@@ -806,9 +806,9 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
     {channel:172228,field:"field1",label:"HSH-Auslastung",unit:"%",dec:0}
   ],
   charts:[
-    {title:"Kesseltemperaturen", unit:"°C", zero:false, minmaxField:"field1", lines:[{field:"field1",label:"oben",color:"var(--amber)"},{field:"field2",label:"mitte",color:"var(--blue)"}]},
+    {title:"Kesseltemperaturen", unit:"°C", zero:false, minmaxField:"field1", lines:[{field:"field1",label:"Oben",color:"var(--amber)"},{field:"field2",label:"Mitte",color:"var(--blue)"}]},
     {title:"Abgastemperatur", unit:"°C", zero:false, lines:[{field:"field8",label:"Abgas",color:"var(--red)"}]},
-    {title:"Temperatur vor Schnitzelbunker", unit:"°C", zero:false, threshold:25, lines:[{field:"field3",label:"vor Bunker",color:"#b5651d"}]},
+    {title:"Temperatur vor Schnitzelbunker", unit:"°C", zero:false, threshold:25, lines:[{field:"field3",label:"Vor Bunker",color:"#b5651d"}]},
     {title:"Holzschnitzel-Füllstand", unit:"%", lines:[{field:"field4",label:"Füllstand",color:"var(--green)"}]}
   ]});
 
@@ -823,7 +823,7 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
     {field:"field3",label:"Geladene Menge",unit:"kWh",dec:1,integrate:true}  // Integral field3 (W) ueber Zeitraum
   ],
   charts:[
-    {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"mitte",color:"var(--amber)"},{field:"field2",label:"unten",color:"var(--blue)"}]},
+    {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"Mitte",color:"var(--amber)"},{field:"field2",label:"Unten",color:"var(--blue)"}]},
     {title:"Ladeleistung &amp; Einschaltschwelle", unit:"W", yMax:7000, lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0,fill:true},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?10:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0},{field:"field4",label:"Einschaltschwelle",color:"var(--blue)",dec:0,dash:true}]}
   ]});
 
