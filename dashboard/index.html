@@ -710,13 +710,21 @@ function simpleView(cfg){
   function loadCharts(){
     // Alle Kanaele sammeln, die von Chart-Linien gebraucht werden (Standard: cfg.channel).
     var chans={}; chans[String(cfg.channel)]=cfg.channel;
-    cfg.charts.forEach(function(c){ (c.lines||[]).forEach(function(ln){ if(ln.channel) chans[String(ln.channel)]=ln.channel; }); });
+    cfg.charts.forEach(function(c){ (c.lines||[]).forEach(function(ln){ if(ln.channel) chans[String(ln.channel)]=ln.channel;
+      (ln.uses||[]).forEach(function(u){ chans[String(u)]=u; }); }); });
     var keys=Object.keys(chans);
     Promise.all(keys.map(function(k){ var ch=chans[k];
       return j(api(ch, periodUrl(), String(ch)==="172430")).then(function(d){ return {k:k, feeds:(d&&d.feeds)?d.feeds:[]}; }); }))
     .then(function(results){
       var byChan={}; results.forEach(function(r){ byChan[r.k]=r.feeds; });
       var f=byChan[String(cfg.channel)]||[];
+      // Wert eines Feldes (beliebiger Kanal) zum Zeitpunkt t: letzter Eintrag <= t (Stufe halten).
+      // Fuer berechnete Linien (calc), z. B. Schaltschwellen, die von der PV-Leistung abhaengen.
+      var smp={};
+      function at(ch,field,t){ var key=ch+"|"+field, s=smp[key];
+        if(!s){ s=smp[key]={ts:[],vs:[]}; (byChan[String(ch)]||[]).forEach(function(x){ var v=num(x[field]); if(v!==null){ s.ts.push(new Date(x.created_at).getTime()); s.vs.push(v); } }); }
+        var lo=0, hi=s.ts.length-1, r=-1; while(lo<=hi){ var m=(lo+hi)>>1; if(s.ts[m]<=t){ r=m; lo=m+1; } else hi=m-1; }
+        return r<0 ? (s.vs.length?s.vs[0]:null) : s.vs[r]; }
       var lastTs = f.length ? new Date(f[f.length-1].created_at) : null;
       // Integral-KPIs (z. B. "Geladene Menge"): Leistung (W) ueber den Zeitraum
       // aufintegrieren -> kWh. Heute/24h aus den vorhandenen Chart-Feeds; fuer 7 Tage
@@ -735,7 +743,37 @@ function simpleView(cfg){
         }
       });
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
-        var series=c.lines.map(function(ln){ var pts=[]; var ff=byChan[String(ln.channel||cfg.channel)]||[]; ff.forEach(function(x){ var raw=num(x[ln.field]);
+        var series=c.lines.map(function(ln){ var pts=[]; var ff=byChan[String(ln.channel||cfg.channel)]||[];
+          if(ln.calc){
+            // Berechnete Linie, z. B. Schaltschwellen. Optional calcBase: ein Stufenwert (etwa 58/63 °C).
+            // Mit ln.maxHoldMin bleibt der hoechste Basiswert so lange nach seinem letzten Auftreten
+            // stehen - schwankt die PV-Leistung um eine Grenze (wolkig), entsteht ein ruhiger Block statt
+            // Gezappel, und kurze Phasen gehen nicht verloren. calc bekommt den Wert als 3. Argument.
+            var baseAt=null;
+            if(ln.calcBase){
+              var bt=[], bv=[];
+              ff.forEach(function(x){ var tm=new Date(x.created_at).getTime();
+                var b=ln.calcBase(x, function(ch,field){ return at(ch,field,tm); });
+                if(b===null||b===undefined) return;
+                bt.push(tm); bv.push(b); });
+              var win=(ln.maxHoldMin||0)*60000;
+              baseAt=function(tm){
+                var lo=0, hi=bt.length-1, r=-1; while(lo<=hi){ var m=(lo+hi)>>1; if(bt[m]<=tm){ r=m; lo=m+1; } else hi=m-1; }
+                if(r<0) return bv.length?bv[0]:null;
+                var mx=bv[r]; for(var i=r-1; i>=0 && bt[i]>=tm-win; i--){ if(bv[i]>mx) mx=bv[i]; }   // Maximum im Fenster
+                return mx; };
+            }
+            var cp=[];
+            ff.forEach(function(x){ var t=new Date(x.created_at), tm=t.getTime();
+              var v=ln.calc(x, function(ch,field){ return at(ch,field,tm); }, baseAt?baseAt(tm):null);
+              if(v===null||v===undefined) return;
+              cp.push({t:t, v:v}); });
+            // Gleiche Werte in Folge auf Anfang/Ende reduzieren: Konstanten und Stufen bleiben scharf,
+            // gleitende Abschnitte (z. B. Mitte + 2 K) bleiben vollstaendig erhalten.
+            cp.forEach(function(p,i){ var a=cp[i-1], b=cp[i+1]; if(a && b && a.v===p.v && b.v===p.v) return; pts.push(p); });
+            return {color:ln.color, dash:ln.dash, width:ln.width, axis:ln.axis, dec:ln.dec, pts:pts};
+          }
+          ff.forEach(function(x){ var raw=num(x[ln.field]);
             // Eintraege ohne dieses Feld ueberspringen statt als Luecke zeichnen: z. B. schreibt in den
             // Wallbox-Kanal stuendlich ein Eintrag nur mit field1. derive-Linien (rote Markierung)
             // brauchen die Nullen dagegen bewusst, um nur abschnittsweise zu erscheinen.
@@ -827,7 +865,18 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
     {field:"field3",label:"Geladene Menge",unit:"kWh",dec:1,integrate:true}  // Integral field3 (W) ueber Zeitraum
   ],
   charts:[
-    {title:"Boiler-Temperaturen", unit:"°C", zero:false, lines:[{field:"field1",label:"Mitte",color:"var(--amber)"},{field:"field2",label:"Unten",color:"var(--blue)"}]},
+    // Schaltschwellen der Boiler-Steuerung (beziehen sich auf "Unten"), wie in Boiler_A boilerChargeOk():
+    // Ein unter 45 °C. Aus ueber 58 °C, bzw. 63 °C solange PV > 10 kW und Mitte < 67 °C.
+    // Nicht dargestellt: Inversions-Schutz (Unten > Mitte + 2 K = Sensorfehler) und Schalter
+    // "50 Grad laden" (nur manuelles Laden, wird nicht gemeldet).
+    {title:"Boiler-Temperaturen", unit:"°C", zero:false,
+      note:"Gestrichelt: Schaltschwellen der Steuerung (bezogen auf „Unten“). Laden ein unter 45 °C, Laden aus über 58 °C – bei PV über 10 kW (und Mitte unter 67 °C) erst über 63 °C.",
+      lines:[{field:"field1",label:"Mitte",color:"var(--amber)"},{field:"field2",label:"Unten",color:"var(--blue)"},
+      {label:"Laden ein",color:"var(--muted)",width:1,dash:true,calc:function(){ return 45; }},
+      {label:"Laden aus",color:"var(--muted)",width:1,dash:true,uses:[172430],maxHoldMin:10,
+        calcBase:function(x,at){ var mi=num(x.field1); if(mi===null||mi<=-100) return null; var pv=at(172430,"field1");
+          return (pv!==null && pv>10000 && mi<67) ? 63 : 58; },
+        calc:function(x,at,base){ return base; }}]},
     {title:"Ladeleistung &amp; Einschaltschwelle", unit:"W", yMax:7000, lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0,fill:true},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?10:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0},{field:"field4",label:"Einschaltschwelle",color:"var(--blue)",dec:0,dash:true}]}
   ]});
 
