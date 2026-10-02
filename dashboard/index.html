@@ -736,7 +736,11 @@ function simpleView(cfg){
       });
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
         var series=c.lines.map(function(ln){ var pts=[]; var ff=byChan[String(ln.channel||cfg.channel)]||[]; ff.forEach(function(x){ var raw=num(x[ln.field]);
-            var v = ln.derive ? ln.derive(raw) : (raw===null?null:(ln.scale? raw*ln.scale : raw));
+            // Eintraege ohne dieses Feld ueberspringen statt als Luecke zeichnen: z. B. schreibt in den
+            // Wallbox-Kanal stuendlich ein Eintrag nur mit field1. derive-Linien (rote Markierung)
+            // brauchen die Nullen dagegen bewusst, um nur abschnittsweise zu erscheinen.
+            if(raw===null && !ln.derive) return;
+            var v = ln.derive ? ln.derive(raw) : (ln.scale? raw*ln.scale : raw);
             pts.push({t:new Date(x.created_at), v:v}); });
           return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, bandFrac:ln.bandFrac, axis:ln.axis, dec:ln.dec, fill:ln.fill, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
         if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null){ vv.push(v); ct.push(new Date(x.created_at)); } });
