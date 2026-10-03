@@ -66,6 +66,9 @@
   .sec-head h2{font-size:1rem; margin:0;}
   .sec-head .tag{font-size:.7rem; font-weight:600; color:var(--muted); background:var(--card); padding:2px 8px; border-radius:20px;}
   .sec-head .tag.warn{color:var(--red);}
+  /* In Gruppen: Kacheln behalten ihre Breite (auto-fill statt auto-fit) - eine einzelne
+     Kachel wird nicht ueber die ganze Zeile gezogen, Spalten fluchten ueber alle Gruppen */
+  .sec-head + .kpis{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));}
 
   .panel{background:var(--card); border-radius:14px; box-shadow:var(--shadow); padding:16px 18px; margin-bottom:16px;}
   .panel h2{font-size:1rem; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
@@ -113,6 +116,7 @@
     .hero .val{font-size:2.2rem;}
     .panel{padding:12px 12px;}
     .kpis{gap:8px; grid-template-columns:repeat(auto-fit,minmax(130px,1fr));}
+    .sec-head + .kpis{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));}
     .view-head h1{font-size:1.15rem;}
   }
 </style>
@@ -541,6 +545,8 @@ PV.loadCumYear=function(){
 PV.SOLL_TOL=0.10;      // +-10 % der Soll-Leistung ...
 PV.SOLL_TOL_MIN=0.5;   // ... mindestens +-0.5 kW (morgens/abends waeren 10 % zu eng)
 PV.SOLL_MIN=0.3;       // Soll darunter (Nacht, Daemmerung): keine Bewertung
+PV.NOWCAST_MAX=1.3;    // Nowcast (Rest des Tages x Ist/Prognose bis jetzt): hoechstens x1.3
+                       // (Energie-Chart "heute" und Nutzung-Ansicht rechnen gleich)
 PV.REF_FROM=2014;      // Energie/Monate: laufender Monat gegen Ø/Min/Max ALLER Jahre ab 2014
                        // (bewusst alle - ein Rueckgang der Anlage soll sichtbar bleiben, nicht wegmitteln)
 PV.sollJetzt=function(c){
@@ -782,7 +788,7 @@ PV.loadEnergy=function(){
       var hSpan=PV.DAY_REF_FROM+"–"+String(now.getFullYear()-1).slice(2);
       function band(b, ymd, todayYmd){ if(!hist)return; var t=Math.round((new Date(ymd+"T12:00")-new Date(todayYmd+"T12:00"))/864e5);
         var r=hist(t); if(!r)return; b.lo=r.lo; b.hi=r.hi; hasHist=true;
-        b.tipExtra="Max "+fmt(r.hi,0)+" kWh ("+r.hiDate+") · Min "+fmt(r.lo,0)+" kWh ("+r.loDate+")"; }
+        b.tipExtra=(b.tipExtra?b.tipExtra+"<br>":"")+"Max "+fmt(r.hi,0)+" kWh ("+r.hiDate+") · Min "+fmt(r.lo,0)+" kWh ("+r.loDate+")"; }
       var f=(d&&d.feeds)?d.feeds:[],byDay={}; f.forEach(function(x){ var v=num(x.field2); if(v===null)return; var dt=new Date(x.created_at);
         var key=dt.getFullYear()+"-"+dt.getMonth()+"-"+dt.getDate(); if(!byDay[key]||v>byDay[key].v)byDay[key]={v:v,dt:dt}; });
       var arr=Object.keys(byDay).map(function(k){return byDay[k];}).sort(function(a,b){return a.dt-b.dt;}).slice(-14);
@@ -790,19 +796,27 @@ PV.loadEnergy=function(){
       function ymdOf(dt){ return dt.getFullYear()+"-"+("0"+(dt.getMonth()+1)).slice(-2)+"-"+("0"+dt.getDate()).slice(-2); }
       if(fc && fc.fc && fc.fc.hourly){
         var F=fc.factor, ht=fc.fc.hourly.time, hg=fc.fc.hourly.global_tilted_irradiance;
-        var perDay={}, order=[], nowH=now.getHours(), todayYmd=ymdOf(now), remToday=0;
+        var perDay={}, order=[], nowH=now.getHours(), frac=now.getMinutes()/60, todayYmd=ymdOf(now), remToday=0, pastToday=0;
         for(var i=0;i<ht.length;i++){ var dt=new Date(ht[i].replace(" ","T")); var kw=(hg[i]||0)/1000*(F[dt.getHours()]||0); var ymd=ht[i].slice(0,10);
           if(!(ymd in perDay)){ perDay[ymd]=0; order.push(ymd); } perDay[ymd]+=kw;
-          if(ymd===todayYmd && dt.getHours()>=nowH) remToday+=kw; }
+          // Heute: Prognose bis jetzt und Rest ab jetzt. Die laufende Stunde nur anteilig -
+          // ihr abgelaufener Teil steckt schon im Ist (sonst doppelt gezaehlt).
+          if(ymd===todayYmd){ var hh=dt.getHours();
+            if(hh<nowH) pastToday+=kw; else if(hh===nowH){ pastToday+=kw*frac; remToday+=kw*(1-frac); } else remToday+=kw; } }
         var fut=order.filter(function(y){return y>=todayYmd;}).slice(0,3);  // heute + 2
         var last=bars.length?bars[bars.length-1]:null;
         var lastYmd=(last&&last.dt)?ymdOf(last.dt):null;
         fut.forEach(function(ymd){
           var dObj=new Date(ymd+"T12:00"), lbl=dObj.getDate()+"."+(dObj.getMonth()+1)+".";
           if(ymd===todayYmd && lastYmd===todayYmd){
-            // heute: Ist-Balken behalten, erwarteter Rest bis Tagesprognose oben aufstapeln
-            last.v2=Math.max(0,Math.round(remToday)); last.color="var(--amber)"; last.color2="var(--amber-lt)";
-            last.tip="Heute · bisher "+Math.round(last.v)+" + Prognose-Rest "+Math.round(remToday)+" kWh";
+            // heute: Ist-Balken behalten, erwarteten Rest oben aufstapeln. Nowcast wie in der
+            // Nutzung-Ansicht: Rest x (Ist / Prognose bis jetzt), max. x PV.NOWCAST_MAX - laeuft
+            // die Anlage heute ueber/unter der Prognose, gilt das auch fuer den Rest des Tages.
+            var sc=1; if(pastToday>1) sc=Math.min(last.v/pastToday, PV.NOWCAST_MAX);
+            var rest=remToday*sc;
+            last.v2=Math.max(0,Math.round(rest)); last.color="var(--amber)"; last.color2="var(--amber-lt)";
+            last.tip="Heute · bisher "+Math.round(last.v)+" + Rest "+Math.round(rest)+" kWh";
+            last.tipExtra="Prognose roh ganzer Tag "+Math.round(perDay[ymd])+" kWh · Rest ×"+sc.toFixed(2)+" (Ist/Prognose bis jetzt)";
             band(last, ymd, todayYmd);
           } else {
             var nb={label:lbl, v:0, v2:Math.round(perDay[ymd]||0), color2:"var(--amber-lt)",
@@ -826,10 +840,13 @@ function simpleView(cfg){
 
   // Gruppen-Kopf (cfg.sections): "Stand vor ..." des Kanals; mit staleMin der Gruppe
   // rot "veraltet", wenn der Kanal so lange nichts Neues geliefert hat (z. B. Poller aus).
+  // Mit season (Monate 0-11, in denen die Anlage laeuft) ausserhalb der Saison statt der
+  // roten Warnung neutral "Sommerpause" - z. B. Heizung, die nicht das ganze Jahr laeuft.
   function secStand(ch, ts){ (cfg.sections||[]).forEach(function(s){ if(String(s.channel)!==String(ch))return; var el=g("sec_"+s.key); if(!el)return;
     var t=ts?new Date(ts):null, old=!!s.staleMin && (!t || (Date.now()-t.getTime())>s.staleMin*60000);
-    el.textContent=(old?"⚠ veraltet – ":"")+(t?"Stand "+relTime(t):"keine Daten");
-    el.className="tag"+(old?" warn":""); }); }
+    var inSeason=!s.season || s.season.indexOf(new Date().getMonth())>=0, warn=old && inSeason;
+    el.textContent=(warn?"⚠ veraltet – ":(old?"Sommerpause – ":""))+(t?"Stand "+relTime(t):"keine Daten");
+    el.className="tag"+(warn?" warn":""); }); }
 
   // KPIs immer aktuell (letzter bekannter Wert), unabhaengig vom Zeitraum
   function loadKpis(){
@@ -1018,13 +1035,20 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
   ]});
 
 var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
+  // Zwei Quellen getrennt: Heizungs-Logger (Kanal 172428, laeuft nur in der Heizsaison)
+  // und HSH-Auslastung (stuendlich im Wallbox-Kanal 172228, ganzjaehrig).
+  sections:[
+    // Veraltet-Warnung nur Okt-Apr; Mai-Sep ist ein Stillstand normal ("Sommerpause")
+    {key:"hz",  title:"🔥 Kessel & Schnitzel", channel:172428, staleMin:60, season:[9,10,11,0,1,2,3]},
+    {key:"hsh", title:"📊 HSH-Auslastung", channel:172228}
+  ],
   kpis:[
-    {field:"field1",label:"Kessel oben",unit:"°C",dec:1},
-    {field:"field2",label:"Kessel mitte",unit:"°C",dec:1},
-    {field:"field8",label:"Abgas",unit:"°C",dec:0},
-    {field:"field4",label:"Schnitzel-Füllstand",unit:"%",dec:0},
-    {field:"field3",label:"Temp. vor Schnitzelbunker",unit:"°C",dec:1,warnAbove:25},
-    {channel:172228,field:"field1",label:"HSH-Auslastung",unit:"%",dec:0}
+    {sec:"hz",field:"field1",label:"Kessel oben",unit:"°C",dec:1},
+    {sec:"hz",field:"field2",label:"Kessel mitte",unit:"°C",dec:1},
+    {sec:"hz",field:"field8",label:"Abgas",unit:"°C",dec:0},
+    {sec:"hz",field:"field4",label:"Schnitzel-Füllstand",unit:"%",dec:0},
+    {sec:"hz",field:"field3",label:"Temp. vor Schnitzelbunker",unit:"°C",dec:1,warnAbove:25},
+    {sec:"hsh",channel:172228,field:"field1",label:"HSH-Auslastung",unit:"%",dec:0}
   ],
   charts:[
     {title:"Kesseltemperaturen", unit:"°C", zero:false, minmaxField:"field1", lines:[{field:"field1",label:"Oben",color:"var(--amber)"},{field:"field2",label:"Mitte",color:"var(--blue)"}]},
@@ -1163,8 +1187,8 @@ PLANNER.load=function(){
       if(isToday){
         var ta=PLANNER._todayActual||{}, aSum=0, fSum=0;
         o.win.forEach(function(w){ if(w.h<nowH && w.kw>0.3 && ta[w.h]!=null){ aSum+=ta[w.h]; fSum+=w.kw; } });
-        if(fSum>1){ scale=Math.min(aSum/fSum, 1.3); }
-        else if(curKw!=null){ var fN=0; o.win.forEach(function(w){ if(w.h===nowH) fN=w.kw; }); if(fN>0.3) scale=Math.min(curKw/fN, 1.3); }
+        if(fSum>1){ scale=Math.min(aSum/fSum, PV.NOWCAST_MAX); }
+        else if(curKw!=null){ var fN=0; o.win.forEach(function(w){ if(w.h===nowH) fN=w.kw; }); if(fN>0.3) scale=Math.min(curKw/fN, PV.NOWCAST_MAX); }
       }
       // effektive Stundenleistung: vergangene Stunden = Ist, aktuelle = Momentan,
       // kuenftige = Prognose x Nowcast-Faktor.
