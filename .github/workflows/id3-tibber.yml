@@ -1,5 +1,10 @@
 name: ID.3 SoC (Tibber) -> ThingSpeak
 
+# ABGELOEST durch den Val-Town-Poller (scripts/valtown_id3_tibber.ts, README
+# "ID.3-Poller auf Val Town"): GitHub fuehrte diesen Zeitplan nur ca. alle 5 h aus.
+# Nach erfolgreicher Umstellung wird dieser Workflow deaktiviert (nicht geloescht,
+# als Reserve).
+
 # Pollt den Ladezustand des VW ID.3 ueber die Tibber Data API und schreibt ihn
 # in den ThingSpeak-Kanal 3514838. Laeuft in der Cloud (kein PC noetig).
 # Tibber-Refresh-Tokens rotieren -> der Poller aktualisiert das Secret

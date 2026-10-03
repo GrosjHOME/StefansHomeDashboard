@@ -46,21 +46,52 @@ Ordner `/ (root)`, HTTPS erzwungen.
 
 ## ID.3-Ladezustand (Tibber-Poller)
 
-Der Workflow `.github/workflows/id3-tibber.yml` ruft `scripts/id3_tibber_cloud.py`
-auf: Ladezustand, Reichweite, Ziel-SoC, Stecker und Ladestatus des VW ID.3 über
-die Tibber Data API lesen und in Kanal 3514838 schreiben. Die Zugangsdaten
-liegen als GitHub Secrets; der rotierende Tibber-Refresh-Token wird nach jedem
-Lauf verschlüsselt zurückgeschrieben. Das Dashboard zeigt in der Wallbox-Ansicht
-„⚠ veraltet", wenn seit 60 min kein neuer Wert kam.
+Ein Poller liest Ladezustand, Reichweite, Ziel-SoC, Stecker und Ladestatus des
+VW ID.3 über die Tibber Data API und schreibt sie in Kanal 3514838 (field1 SoC %,
+field2 Reichweite km, field4 Ziel-SoC %, field5 lädt 0/1, field6 Stecker 0/1).
+Das Dashboard zeigt in der Wallbox-Ansicht „⚠ veraltet", wenn seit 60 min kein
+neuer Wert kam.
 
-### Zuverlässig auslösen (ThingSpeak TimeControl)
+Tibber-Refresh-Tokens sind **Einmal-Tokens**: jeder Refresh liefert einen neuen,
+der alte stirbt. Der Poller muss den jeweils neuen Token also selbst sichern.
 
-Der `schedule` im Workflow (alle 15 min) wird von GitHub nur „best effort"
-ausgeführt: am 29./30.09.2026 liefen von ~50 geplanten Läufen nur 3. Manuell
-bzw. per API ausgelöste Läufe (`workflow_dispatch`) startet GitHub dagegen
-sofort. Deshalb gibt eine ThingSpeak-TimeControl den Takt vor; der `schedule`
-bleibt als Reserve. Beides ist kostenlos (öffentliches Repo; ThingSpeak-Gratis-
-Lizenz, das Auslösen verbraucht keine Nachrichten).
+### Auf Val Town (aktiv)
+
+GitHub Actions führt den Zeitplan nur „best effort" aus – gemessen Okt. 2026:
+statt alle 15 min nur etwa **alle 5 h**, egal zu welchen Minuten. Deshalb läuft
+der Poller auf [Val Town](https://www.val.town) (Gratis-Plan: Cron ab 15 min).
+Code: `scripts/valtown_id3_tibber.ts`. Der aktuelle Refresh-Token liegt dort im
+val-eigenen, privaten Blob-Speicher.
+
+1. **Konto** auf val.town anlegen (gratis).
+2. **Neuer Val**, Typ **Cron**, Sichtbarkeit **privat**. Inhalt von
+   `scripts/valtown_id3_tibber.ts` einfügen.
+3. **Zeitplan:** alle 15 Minuten (Cron `*/15 * * * *`).
+4. **Umgebungsvariablen** (Val-Seitenleiste → *Environment variables*):
+   - `TIBBER_CLIENT_ID`, `TIBBER_CLIENT_SECRET` – aus dem Tibber-Developer-Zugang
+     (dieselben wie bisher in den GitHub-Secrets)
+   - `TS_WRITE_KEY` – ThingSpeak → Kanal 3514838 → *API Keys* → *Write API Key*
+   - `TIBBER_REFRESH_TOKEN` – frisch erzeugt mit
+     `powershell -ExecutionPolicy Bypass -File scripts\tibber_token_neu.ps1`
+     (öffnet die Tibber-Anmeldung, legt den Token in die Zwischenablage).
+     GitHub-Secrets lassen sich nicht auslesen, deshalb ein neuer Token.
+5. **Einmal von Hand ausführen** (*Run*): im Log muss
+   „SoC=…% … → ThingSpeak-Eintrag …" stehen.
+6. Danach den **GitHub-Workflow deaktivieren** (Actions → *ID.3 SoC (Tibber) →
+   ThingSpeak* → *Disable workflow*), damit nur noch ein Poller läuft.
+
+`TIBBER_REFRESH_TOKEN` dient nur dem Start: der Val nimmt zuerst den gespeicherten
+Token und fällt nur auf die Umgebungsvariable zurück, wenn dieser ungültig ist.
+**Neustart nach einer gerissenen Kette** (Log: „Kein gültiger Refresh-Token mehr"):
+Schritt 4 mit einem frischen Token wiederholen – sonst nichts.
+
+### Alternative: GitHub-Workflow per ThingSpeak TimeControl auslösen
+
+Bisheriger Weg, nicht mehr aktiv: Der Workflow `.github/workflows/id3-tibber.yml`
+(`scripts/id3_tibber_cloud.py`, Token-Rotation über das GitHub-Secret
+`TIBBER_REFRESH_TOKEN`) läuft per `schedule` zu selten. Manuell bzw. per API
+ausgelöste Läufe (`workflow_dispatch`) startet GitHub dagegen sofort – eine
+ThingSpeak-TimeControl kann den Takt vorgeben (kostenlos):
 
 1. **Token erstellen:** GitHub → Settings → Developer settings → Personal access
    tokens → *Fine-grained tokens* → *Generate new token*.
