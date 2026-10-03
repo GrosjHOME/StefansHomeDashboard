@@ -314,8 +314,10 @@ function barChart(holder, bars, opts){
     if(b.v2>0){ var y2=Y(tp), h2=Y(b.v)-y2; r+='<rect x="'+x+'" y="'+y2+'" width="'+bw+'" height="'+h2+'" rx="'+rx+'" fill="'+(b.color2||"var(--amber-lt)")+'"/>'; }
     [b.lo,b.hi].forEach(function(lv){ if(lv==null)return; var yy=Y(lv);
       r+='<line x1="'+x+'" x2="'+(x+bw)+'" y1="'+yy+'" y2="'+yy+'" stroke="var(--muted)" stroke-width="2"/>'; });
-    var yLab=Math.min(yTop, b.hi!=null?Y(b.hi):yTop);   // Beschriftung ueber dem hoechsten Element
-    if(!many) r+='<text x="'+(x+bw/2)+'" y="'+(yLab-6)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+fmt(b.show!=null?b.show:tp,0)+'</text>';
+    // Beschriftung direkt ueber dem Balken; nur wenn der Max-Strich sie ueberdecken wuerde
+    // (knapp darueber), weicht sie ueber den Strich aus.
+    var yLab=yTop; if(b.hi!=null){ var yh=Y(b.hi); if(yh<=yTop && yh>yTop-26) yLab=yh; }
+    if(!many) r+='<text x="'+(x+bw/2)+'" y="'+(yLab-6)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+fmt(b.show!=null?b.show:tp,opts.dec||0)+'</text>';
     if(b.label) r+='<text x="'+(x+bw/2)+'" y="'+(H-22)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+b.label+'</text>'; });
   var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
     '<text x="6" y="18" font-size="18" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
@@ -329,7 +331,7 @@ function barChart(holder, bars, opts){
     var b=bars[idx], bx=padL+slot*idx+(slot-bw)/2;
     ov.innerHTML='<rect x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+(H-padT-padB)+'" fill="var(--ink)" opacity="0.06"/>'; ov.style.display="";
     var tv=(b.show!=null)?b.show:b.v+(b.v2||0);
-    tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+(b.tip||b.label)+'</div><div>'+fmt(tv,0)+' '+(opts.unit||"")+'</div>'+
+    tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+(b.tip||b.label)+'</div><div>'+fmt(tv,opts.dec||0)+' '+(opts.unit||"")+'</div>'+
       (b.tipExtra?'<div style="color:var(--muted);margin-top:2px">'+b.tipExtra+'</div>':'');
     var px=(bx+bw/2)/W*rect.width; tip.style.left=Math.max(0,Math.min(rect.width-tip.offsetWidth-4, px+8))+"px"; tip.style.top="6px"; tip.style.opacity=1;
   });
@@ -666,13 +668,59 @@ function pvYearTotal(year){
 // Laufender Monat/Jahr gegen die Vorjahre: Ist (orange) + hellgelb aufgestockt bis zum
 // Durchschnitt, feine Striche fuer Min/Max. refs = Vergleichswerte (kWh) aller Vorjahre ab
 // PV.REF_FROM - bewusst alle, damit ein Rueckgang der Anlage sichtbar bleibt.
-function pvRefBand(b, refs, what, span){
+function pvRefBand(b, refs, what, span, unit, dec){
+  unit=unit||"kWh"; dec=dec||0;
   var avg=refs.reduce(function(a,c){ return a+c; },0)/refs.length, mn=Math.min.apply(null,refs), mx=Math.max.apply(null,refs);
-  b.v2=Math.max(0,Math.round(avg-b.v)); b.color2="var(--amber-lt)"; b.lo=mn; b.hi=mx; b.show=b.v;
-  b.tipExtra="Ø "+what+" "+span+": "+fmt(avg,0)+" kWh · Min "+fmt(mn,0)+" · Max "+fmt(mx,0);   // 3. Tooltip-Zeile
+  b.v2=Math.max(0,avg-b.v); b.color2="var(--amber-lt)"; b.lo=mn; b.hi=mx; b.show=b.v;
+  b.tipExtra="Ø "+what+" "+span+": "+fmt(avg,dec)+" "+unit+" · Min "+fmt(mn,dec)+" · Max "+fmt(mx,dec);   // 3. Tooltip-Zeile
   return b;
 }
 function pvRefLegend(span){ return [{color:"var(--amber)",label:"Ist"},{color:"var(--amber-lt)",label:"Ø "+span},{color:"var(--muted)",label:"Min/Max "+span}]; }
+
+// Tagesertraege vergangener Jahre fuer das Vergleichsband im Tage-Modus. Feld 2 = Tages-
+// energie (kumuliert). ACHTUNG: der Zaehler wird nicht genau um Mitternacht zurueckgesetzt,
+// sondern erst zwischen 00:00 und 01:00 - der 00:00-Wert ist noch der Vortag. Darum wird
+// nach Zaehler-Reset getrennt (Abfall = neuer Produktionstag, dessen Maximum = Tagessumme)
+// statt nach Kalenderdatum. Vergangene Tage aendern sich nie -> je Tag gecacht.
+PV.DAY_REF_FROM=2017;  // Tageswerte gibt es erst ab 2017 (ThingSpeak; 2014-16 nur Monatssummen)
+PV.DAY_REF_WIN=3;      // Vergleich: Kalendertag +-3 Tage (ein einzelner Tag ist zu zufaellig)
+PV.DAY_MAX_KWH=300;    // Plausibilitaet: groessere Tageswerte = Messfehler (30 kWp x 10 h)
+function ymdStr(dt){ return dt.getFullYear()+"-"+("0"+(dt.getMonth()+1)).slice(-2)+"-"+("0"+dt.getDate()).slice(-2); }
+// cal = [{yOff, m0, d}] (fortlaufende Kalendertage) -> Promise {"MM-DD": kWh} fuer das Jahr year
+function pvDayTotals(year, cal){
+  var out={}, miss=[];
+  cal.forEach(function(c){ var dt=new Date(year+c.yOff, c.m0, c.d), k=ymdStr(dt), v=lsGet("pv_d_"+k);
+    if(v!==null) out[k.slice(5)]=parseFloat(v); else miss.push(dt); });
+  if(!miss.length) return Promise.resolve(out);
+  var first=new Date(miss[0]); first.setDate(first.getDate()-1);   // Vortag mitladen (Nacht-Uebertrag)
+  var path="/fields/2.json?start="+encodeURIComponent(ymdStr(first)+" 00:00:00")+"&end="+encodeURIComponent(ymdStr(miss[miss.length-1])+" 23:59:59")+
+           "&timescale=60&timezone=Europe%2FZurich";
+  return j(api(PV.CH,path,true)).then(function(d){ var mx={}, seg=null, prev=null;
+    ((d&&d.feeds)||[]).forEach(function(x){ var v=num(x.field2); if(v===null||v<0||v>PV.DAY_MAX_KWH)return;
+      var day=x.created_at.slice(0,10);
+      // neuer Produktionstag: Zaehler faellt (Reset) - oder Datumswechsel nach einem Tag
+      // ohne Ertrag (< 1 kWh, z. B. Schnee), dort ist kein Reset sichtbar
+      if(seg===null || (prev!==null && v<prev-1) || (day!==seg.k && prev!==null && prev<1)){ seg={k:day, max:v};
+        if(mx[seg.k]==null) mx[seg.k]=v; }
+      if(v>seg.max) seg.max=v;
+      if(seg.max>mx[seg.k]) mx[seg.k]=seg.max;
+      prev=v; });
+    miss.forEach(function(dt){ var k=ymdStr(dt); if(mx[k]!=null){ out[k.slice(5)]=mx[k]; lsSet("pv_d_"+k,mx[k]); } });   // nur Vorhandenes cachen
+    return out; });
+}
+// Liefert eine Funktion range(t): Min/Max der Tagesertraege aller Vorjahre im Fenster um
+// "heute + t Tage" (t = 0 heute, 1/2 Prognose-Tage), oder null ohne Daten.
+function pvDayHistory(){
+  var now=new Date(), cy=now.getFullYear(), W=PV.DAY_REF_WIN, cal=[];
+  function at(off){ return new Date(cy, now.getMonth(), now.getDate()+off); }
+  for(var off=-W; off<=2+W; off++){ var dt=at(off); cal.push({yOff:dt.getFullYear()-cy, m0:dt.getMonth(), d:dt.getDate()}); }
+  var ys=[]; for(var y=PV.DAY_REF_FROM; y<cy; y++) ys.push(y);
+  return Promise.all(ys.map(function(y){ return pvDayTotals(y,cal).catch(function(){ return {}; }); })).then(function(rs){
+    var by={}; rs.forEach(function(o){ Object.keys(o).forEach(function(k){ (by[k]=by[k]||[]).push(o[k]); }); });
+    return function(t){ var vals=[]; for(var o=t-W; o<=t+W; o++){ var k=ymdStr(at(o)).slice(5); if(by[k]) vals=vals.concat(by[k]); }
+      return vals.length ? {lo:Math.min.apply(null,vals), hi:Math.max.apply(null,vals), n:vals.length} : null; };
+  });
+}
 
 PV.loadEnergy=function(){
   var holder=document.getElementById("chart-days"); if(!holder)return;
@@ -704,21 +752,29 @@ PV.loadEnergy=function(){
   } else if(PV.energyMode==="jahre"){
     var years=[]; for(var y=2014;y<=now.getFullYear();y++) years.push(y);
     Promise.all(years.map(function(y){ return pvYearTotal(y).then(function(v){return {y:y,v:v};}); })).then(function(res){
-      // Laufendes Jahr gegen alle Vorjahre ab PV.REF_FROM (wie beim laufenden Monat)
+      // Laufendes Jahr gegen alle Vorjahre ab PV.REF_FROM (wie beim laufenden Monat).
+      // Anzeige in MWh (kWh-Werte im 5-stelligen Bereich sprengen die Achsenbeschriftung).
       var cy=now.getFullYear(), span=PV.REF_FROM+"–"+String(cy-1).slice(2), hasRef=false;
-      var refs=res.filter(function(o){ return o.y>=PV.REF_FROM && o.y<cy && o.v!==null && o.v>0; }).map(function(o){ return o.v; });
-      var bars=res.filter(function(o){return o.v!==null&&o.v>0;}).map(function(o){ var b={label:String(o.y),v:o.v};
-        if(o.y===cy && refs.length){ pvRefBand(b, refs, "Jahr", span); hasRef=true; }
+      var refs=res.filter(function(o){ return o.y>=PV.REF_FROM && o.y<cy && o.v!==null && o.v>0; }).map(function(o){ return o.v/1000; });
+      var bars=res.filter(function(o){return o.v!==null&&o.v>0;}).map(function(o){ var b={label:String(o.y),v:o.v/1000};
+        if(o.y===cy && refs.length){ pvRefBand(b, refs, "Jahr", span, "MWh", 1); hasRef=true; }
         return b; });
-      barChart(holder, bars, {unit:"kWh",color:"var(--amber)", legend: hasRef ? pvRefLegend(span) : null});
+      barChart(holder, bars, {unit:"MWh",dec:1,color:"var(--amber)", legend: hasRef ? pvRefLegend(span) : null});
     }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
   } else {
     // Ist-Tageswerte + Prognose (heute + naechste 2 Tage) als hellgelbe Balken
+    // Heute + Prognose-Tage zusaetzlich mit feinen Min/Max-Strichen: Spannweite der Tages-
+    // ertraege aller Vorjahre (ab PV.DAY_REF_FROM) im Fenster +-PV.DAY_REF_WIN Tage.
     Promise.all([
       j(api(PV.CH,"/feeds.json?days=15&average=15",true)),
-      PLANNER.ensureForecast().catch(function(){return null;})
+      PLANNER.ensureForecast().catch(function(){return null;}),
+      pvDayHistory().catch(function(){return null;})
     ]).then(function(res){
-      var d=res[0], fc=res[1];
+      var d=res[0], fc=res[1], hist=res[2], hasHist=false;
+      var hSpan=PV.DAY_REF_FROM+"–"+String(now.getFullYear()-1).slice(2);
+      function band(b, ymd, todayYmd){ if(!hist)return; var t=Math.round((new Date(ymd+"T12:00")-new Date(todayYmd+"T12:00"))/864e5);
+        var r=hist(t); if(!r)return; b.lo=r.lo; b.hi=r.hi; hasHist=true;
+        b.tipExtra="Min/Max ±"+PV.DAY_REF_WIN+" Tage "+hSpan+": "+fmt(r.lo,0)+" / "+fmt(r.hi,0)+" kWh"; }
       var f=(d&&d.feeds)?d.feeds:[],byDay={}; f.forEach(function(x){ var v=num(x.field2); if(v===null)return; var dt=new Date(x.created_at);
         var key=dt.getFullYear()+"-"+dt.getMonth()+"-"+dt.getDate(); if(!byDay[key]||v>byDay[key].v)byDay[key]={v:v,dt:dt}; });
       var arr=Object.keys(byDay).map(function(k){return byDay[k];}).sort(function(a,b){return a.dt-b.dt;}).slice(-14);
@@ -739,13 +795,17 @@ PV.loadEnergy=function(){
             // heute: Ist-Balken behalten, erwarteter Rest bis Tagesprognose oben aufstapeln
             last.v2=Math.max(0,Math.round(remToday)); last.color="var(--amber)"; last.color2="var(--amber-lt)";
             last.tip="Heute · bisher "+Math.round(last.v)+" + Prognose-Rest "+Math.round(remToday)+" kWh";
+            band(last, ymd, todayYmd);
           } else {
-            bars.push({label:lbl, v:0, v2:Math.round(perDay[ymd]||0), color2:"var(--amber-lt)",
-              tip:(ymd===todayYmd?"Heute":lbl)+" · Prognose"});   // Wert steht in der Tooltip-Wertzeile
+            var nb={label:lbl, v:0, v2:Math.round(perDay[ymd]||0), color2:"var(--amber-lt)",
+              tip:(ymd===todayYmd?"Heute":lbl)+" · Prognose"};   // Wert steht in der Tooltip-Wertzeile
+            band(nb, ymd, todayYmd); bars.push(nb);
           }
         });
       }
-      barChart(holder,bars,{unit:"kWh",color:"var(--amber)",legend:[{color:"var(--amber)",label:"Ist"},{color:"var(--amber-lt)",label:"Prognose"}]});
+      var leg=[{color:"var(--amber)",label:"Ist"},{color:"var(--amber-lt)",label:"Prognose"}];
+      if(hasHist) leg.push({color:"var(--muted)",label:"Min/Max ±"+PV.DAY_REF_WIN+" Tage "+hSpan});
+      barChart(holder,bars,{unit:"kWh",color:"var(--amber)",legend:leg});
     }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
   }
 };
