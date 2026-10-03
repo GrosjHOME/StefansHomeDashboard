@@ -538,8 +538,8 @@ PV.loadCumYear=function(){
 PV.SOLL_TOL=0.10;      // +-10 % der Soll-Leistung ...
 PV.SOLL_TOL_MIN=0.5;   // ... mindestens +-0.5 kW (morgens/abends waeren 10 % zu eng)
 PV.SOLL_MIN=0.3;       // Soll darunter (Nacht, Daemmerung): keine Bewertung
-PV.REF_YEARS=5;        // Energie/Monate: laufender Monat gegen Ø/Min/Max der letzten 5 Jahre
-                       // (nicht alle seit 2014 - die Anlage liefert seit 2023 weniger)
+PV.REF_FROM=2014;      // Energie/Monate: laufender Monat gegen Ø/Min/Max ALLER Jahre ab 2014
+                       // (bewusst alle - ein Rueckgang der Anlage soll sichtbar bleiben, nicht wegmitteln)
 PV.sollJetzt=function(c){
   var F=c.factor, ht=c.fc.hourly.time, hg=c.fc.hourly.global_tilted_irradiance, now=Date.now(), a=null, b=null;
   for(var i=0;i<ht.length;i++){ var d=new Date(ht[i]), kw=(hg[i]||0)/1000*(F[d.getHours()]||0);
@@ -672,10 +672,10 @@ PV.loadEnergy=function(){
       for(var m=0;m<=maxM;m++) months.push({y:PV.energyYear,m:m}); }
     else { for(var i=11;i>=0;i--){ var dd=new Date(now.getFullYear(),now.getMonth()-i,1); months.push({y:dd.getFullYear(),m:dd.getMonth()}); } }
     // Laufender Monat: Ist (orange) + hellgelb aufgestockt bis zum Durchschnitt dieses Monats
-    // in den letzten PV.REF_YEARS Jahren, dazu feine Striche fuer Min/Max dieser Jahre.
+    // in allen Vorjahren ab PV.REF_FROM, dazu feine Striche fuer Min/Max dieser Jahre.
     var cy=now.getFullYear(), cm=now.getMonth();
     var showCur=months.some(function(mm){ return mm.y===cy && mm.m===cm; });
-    var refYears=[]; if(showCur){ for(var ry=cy-PV.REF_YEARS; ry<cy; ry++){ if(ry>=2014) refYears.push(ry); } }
+    var refYears=[]; if(showCur){ for(var ry=PV.REF_FROM; ry<cy; ry++) refYears.push(ry); }
     var span=refYears.length ? refYears[0]+"–"+String(refYears[refYears.length-1]).slice(2) : "";
     Promise.all([
       Promise.all(months.map(function(mm){ return pvMonthTotal(mm.y,mm.m).then(function(v){return {y:mm.y,m:mm.m,v:v};}); })),
