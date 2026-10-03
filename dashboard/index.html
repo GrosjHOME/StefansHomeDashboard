@@ -519,14 +519,15 @@ PV.loadCumYear=function(){
 };
 // Balken "Aktuelle Leistung" gegen die Soll-Leistung jetzt. Soll = Planer-Prognose
 // (Open-Meteo-Einstrahlung auf die Modulflaeche x stuendlicher Kalibrierfaktor der letzten
-// 14 Tage), linear zwischen den Stunden interpoliert. Der Balken verlaeuft von Orange
-// (0 kW) zu Gruen am Bandanfang (Soll - Toleranz), danach gruen; das Band um den
+// 14 Tage), linear zwischen den Stunden interpoliert. Der Balken ist orange und geht kurz
+// vor dem Bandanfang (Soll - Toleranz) in Gruen ueber, danach gruen; das Band um den
 // Soll-Strich ist zusaetzlich dezent auf der Spur sichtbar. Nachts/ohne Prognose grau.
 // Hinweis: Die Kalibrierung lernt laufend mit - ein schleichender Leistungsverlust
 // faellt hier NICHT auf (dafuer die Grafik "Tracker-Strom mittags").
 PV.SOLL_TOL=0.10;      // +-10 % der Soll-Leistung ...
 PV.SOLL_TOL_MIN=0.5;   // ... mindestens +-0.5 kW (morgens/abends waeren 10 % zu eng)
 PV.SOLL_MIN=0.3;       // Soll darunter (Nacht, Daemmerung): keine Bewertung
+PV.SOLL_BLEND=2;       // Farbuebergang orange->gruen: so viele Toleranzbreiten vor dem Bandanfang
 PV.sollJetzt=function(c){
   var F=c.factor, ht=c.fc.hourly.time, hg=c.fc.hourly.global_tilted_irradiance, now=Date.now(), a=null, b=null;
   for(var i=0;i<ht.length;i++){ var d=new Date(ht[i]), kw=(hg[i]||0)/1000*(F[d.getHours()]||0);
@@ -546,12 +547,13 @@ PV.updateSoll=function(pKW){
     var tol=Math.max(PV.SOLL_TOL*s, PV.SOLL_TOL_MIN), lo=Math.max(0,s-tol), hi=s+tol, lage;
     if(pKW<lo) lage="unter Soll"; else if(pKW>hi) lage="über Soll"; else lage="im Rahmen";
     function pc(kw){ return Math.max(0,Math.min(100,kw/30*100)); }   // Position auf der 0-30-kW-Spur
-    // Farbverlauf auf dem Ist-Balken: Orange bei 0 kW -> Gruen am Bandanfang (Soll - Toleranz),
-    // danach gruen. Stopps relativ zur Balkenlaenge (0..pKW) und bewusst NICHT auf 100 %
-    // begrenzt: liegt der Bandanfang rechts vom Balkenende, zeigt der Balken nur den orangen
-    // Teil des Verlaufs - die Spitze wird umso gruener, je naeher die Ist- an der Soll-Leistung ist.
+    // Farbverlauf auf dem Ist-Balken: orange bis kurz vor dem Bandanfang (Soll - Toleranz),
+    // auf der Strecke PV.SOLL_BLEND x Toleranz (mind. 1 kW) Uebergang zu Gruen, danach gruen.
+    // Stopps relativ zur Balkenlaenge (0..pKW) und bewusst NICHT auf 100 % begrenzt: liegt
+    // der Uebergang rechts vom Balkenende, bleibt der Balken orange bzw. nur teilweise gruen.
     if(pKW>0){ var st=function(kw){ return Math.min(5000,Math.max(0,kw/pKW*100)).toFixed(2)+"%"; };
-      bar.style.background="linear-gradient(90deg, var(--amber) 0%, var(--green) "+st(lo)+")"; }
+      var bl=Math.max(PV.SOLL_BLEND*tol, 1);
+      bar.style.background="linear-gradient(90deg, var(--amber) 0%, var(--amber) "+st(lo-bl)+", var(--green) "+st(lo)+")"; }
     if(bd){ bd.style.display="block"; bd.style.left=pc(lo)+"%"; bd.style.width=(pc(hi)-pc(lo))+"%"; }
     if(mk){ mk.style.display="block"; mk.style.left=pc(s)+"%"; mk.title="Soll jetzt: "+fmt(s,1)+" kW"; }
     var dv=Math.round((pKW/s-1)*100);
