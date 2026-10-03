@@ -61,6 +61,11 @@
   .kpi .v{font-size:1.45rem; font-weight:700;}
   .kpi .v small{font-size:.8rem; font-weight:600; color:var(--muted);}
   .kpi .stale{font-size:.72rem; font-weight:600; color:var(--red); margin-top:4px;}
+  .kpi .v.txt{font-size:1.1rem; line-height:1.3;}   /* Text-Werte (z. B. "Lädt nicht") kleiner als Zahlen */
+  .sec-head{display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px; margin:2px 2px 10px;}
+  .sec-head h2{font-size:1rem; margin:0;}
+  .sec-head .tag{font-size:.7rem; font-weight:600; color:var(--muted); background:var(--card); padding:2px 8px; border-radius:20px;}
+  .sec-head .tag.warn{color:var(--red);}
 
   .panel{background:var(--card); border-radius:14px; box-shadow:var(--shadow); padding:16px 18px; margin-bottom:16px;}
   .panel h2{font-size:1rem; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
@@ -426,7 +431,7 @@ PV.render=function(main){
     var h=document.getElementById("chart-cumyear"); if(h) h.innerHTML='<div class="chart-empty">wird geladen…</div>';
     PV.loadCumYear(); });
 };
-function kpiCard(k,id,unit){ return '<div class="kpi"><div class="k">'+k+'</div><div class="v"><span id="'+id+'">–</span> <small>'+unit+'</small></div></div>'; }
+function kpiCard(k,id,unit,cls){ return '<div class="kpi"><div class="k">'+k+'</div><div class="v'+(cls?' '+cls:'')+'"><span id="'+id+'">–</span> <small>'+unit+'</small></div></div>'; }
 function panel(title,tag,id){ return '<div class="panel"><h2>'+title+' '+tag+'</h2><div id="'+id+'"><div class="chart-empty">wird geladen…</div></div></div>'; }
 
 // Tracker-Status (Tabelle aktueller Wert + Strom/Spannung-Historie) fuer den globalen Zeitraum
@@ -712,6 +717,13 @@ function simpleView(cfg){
   function g(id){ return document.getElementById(id); }
   function periodUrl(){ return periodQuery(mode); }
 
+  // Gruppen-Kopf (cfg.sections): "Stand vor ..." des Kanals; mit staleMin der Gruppe
+  // rot "veraltet", wenn der Kanal so lange nichts Neues geliefert hat (z. B. Poller aus).
+  function secStand(ch, ts){ (cfg.sections||[]).forEach(function(s){ if(String(s.channel)!==String(ch))return; var el=g("sec_"+s.key); if(!el)return;
+    var t=ts?new Date(ts):null, old=!!s.staleMin && (!t || (Date.now()-t.getTime())>s.staleMin*60000);
+    el.textContent=(old?"⚠ veraltet – ":"")+(t?"Stand "+relTime(t):"keine Daten");
+    el.className="tag"+(old?" warn":""); }); }
+
   // KPIs immer aktuell (letzter bekannter Wert), unabhaengig vom Zeitraum
   function loadKpis(){
     j(api(cfg.channel, "/feeds.json?results=10", false)).then(function(d){
@@ -723,6 +735,7 @@ function simpleView(cfg){
         if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
         if(k.color) el.style.color = (v===null) ? "" : k.color(v); });
       if(g("head-meta")&&last.created_at) g("head-meta").textContent="Aktualisiert "+relTime(new Date(last.created_at));
+      secStand(cfg.channel, last.created_at);
       // Ampel-Faerbung: KPI-Wert nach aktueller PV-Leistung gegenueber der Schwelle
       // (rot = keine PV-Leistung, orange bis zur Schwelle, gruen ab Schwelle)
       if(cfg.kpis.some(function(k){return k.colorPv;})){
@@ -748,6 +761,7 @@ function simpleView(cfg){
             var lastT=f.length?new Date(f[f.length-1].created_at):null, old=!lastT||(Date.now()-lastT.getTime())>o.k.staleMin*60000;
             w.textContent = old ? "⚠ veraltet – "+(lastT?"Stand "+relTime(lastT):"keine Daten") : "";
             w.style.display = old ? "" : "none"; } });
+        secStand(ch, f.length ? f[f.length-1].created_at : null);
       }).catch(function(){});
     });
   }
@@ -843,7 +857,13 @@ function simpleView(cfg){
   return {
     render:function(main){
       mode = "heute";  // bei jedem Mount auf Standard (passt zum aktiven Button)
-      var kp=cfg.kpis.map(function(k,i){ return kpiCard(k.label,"kpi_"+i,k.unit||""); }).join("");
+      // KPI-Kacheln (Text-Werte kleiner). Mit cfg.sections in beschriftete Gruppen getrennt -
+      // je Gruppe eine Quelle mit eigener Aktualitaet ("Stand vor ...", ggf. veraltet).
+      function cards(filter){ return cfg.kpis.map(function(k,i){ return filter(k) ? kpiCard(k.label,"kpi_"+i,k.unit||"",k.map?"txt":"") : ""; }).join(""); }
+      var kp = cfg.sections
+        ? cfg.sections.map(function(s){ return '<div class="sec-head"><h2>'+s.title+'</h2><span class="tag" id="sec_'+s.key+'"></span></div>'+
+            '<div class="kpis">'+cards(function(k){ return k.sec===s.key; })+'</div>'; }).join("")
+        : '<div class="kpis">'+cards(function(){ return true; })+'</div>';
       var charts=cfg.charts.map(function(c,i){
         var items=(c.lines||[]).map(function(ln){ return '<span class="it"><span class="sw" style="border-color:'+ln.color+(ln.dash?';border-top-style:dashed':'')+'"></span>'+(ln.label||'')+'</span>'; });
         if(c.minmaxField) items.push('<span class="it"><span class="sw" style="border-color:var(--muted);border-top-style:dashed"></span>Min/Max</span>');
@@ -855,7 +875,7 @@ function simpleView(cfg){
           '<span class="seg" id="seg-period"><button data-m="heute" class="active">Heute</button><button data-m="24h">24 h</button><button data-m="7tage">7 Tage</button></span>'+
           '<div class="meta" id="head-meta">wird geladen…</div>'+
         '</div></div>'+
-        '<div class="kpis">'+kp+'</div>'+charts+
+        kp+charts+
         '<footer>Datenquelle: ThingSpeak Kanal '+cfg.channel+' · Aktualisierung alle 60 s · <span id="err2" style="color:var(--red)"></span></footer></div>';
       var sp=g("seg-period"); if(sp) sp.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; mode=b.getAttribute("data-m"); segActive(sp,b); loadCharts(); });
     },
@@ -864,24 +884,30 @@ function simpleView(cfg){
 }
 
 var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
+  // Zwei Quellen getrennt: Wallbox live (Kanal 172228, Minutentakt) und Auto (ID.3 via
+  // Tibber Data API, GitHub-Actions-Poller, Kanal 3514838) - mit eigener Aktualitaet.
+  sections:[
+    {key:"wb",   title:"🔌 Wallbox",                 channel:172228},
+    {key:"auto", title:"🚗 Auto (ID.3, via Tibber)", channel:3514838, staleMin:60}
+  ],
   kpis:[
-    {field:"field4",label:"Aktuelle Ladeleistung",unit:"kW",dec:1,scale:0.000001},
-    {field:"field7",label:"PV-Ladevorgabe",unit:"kW",dec:1,scale:0.001},
-    {field:"field6",label:"Ladestrom-Begrenzung",unit:"A",dec:1},
-    {field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"Lädt":s===66?"Lädt nicht":s===65?"Getrennt":("Status "+s);}},
-    {field:"field4",label:"Geladene Menge",unit:"kWh",dec:1,integrate:true,intScale:0.000001},  // Integral field4 (µW) ueber Zeitraum
-    // ID.3-Werte aus Kanal 3514838 (via Tibber Data API, GitHub-Actions-Poller)
-    {channel:3514838,field:"field1",label:"Ladezustand Auto",unit:"%",dec:0,staleMin:60},
-    {channel:3514838,field:"field2",label:"Reichweite",unit:"km",dec:0},
-    {channel:3514838,field:"field4",label:"Ziel-Ladezustand",unit:"%",dec:0},
-    {channel:3514838,field:"field6",label:"Auto-Stecker",map:function(v){return Math.round(v)===1?"Verbunden":"Getrennt";}},
-    {channel:3514838,field:"field5",label:"Auto-Ladestatus",map:function(v){return Math.round(v)===1?"Lädt":"Lädt nicht";}}
+    {sec:"wb",field:"field4",label:"Aktuelle Ladeleistung",unit:"kW",dec:1,scale:0.000001},
+    {sec:"wb",field:"field7",label:"PV-Ladevorgabe",unit:"kW",dec:1,scale:0.001},
+    {sec:"wb",field:"field6",label:"Ladestrom-Begrenzung",unit:"A",dec:1},
+    {sec:"wb",field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"Lädt":s===66?"Lädt nicht":s===65?"Getrennt":("Status "+s);}},
+    {sec:"wb",field:"field4",label:"Geladene Menge",unit:"kWh",dec:1,integrate:true,intScale:0.000001},  // Integral field4 (µW) ueber Zeitraum
+    // Auto-Werte gelten auch beim Laden auswaerts (daher Stecker/Ladestatus trotz Wallbox-"Verbindung")
+    {sec:"auto",channel:3514838,field:"field1",label:"Ladezustand",unit:"%",dec:0},
+    {sec:"auto",channel:3514838,field:"field4",label:"Ziel-Ladezustand",unit:"%",dec:0},
+    {sec:"auto",channel:3514838,field:"field2",label:"Reichweite",unit:"km",dec:0},
+    {sec:"auto",channel:3514838,field:"field6",label:"Stecker",map:function(v){return Math.round(v)===1?"Verbunden":"Getrennt";}},
+    {sec:"auto",channel:3514838,field:"field5",label:"Ladestatus",map:function(v){return Math.round(v)===1?"Lädt":"Lädt nicht";}}
   ],
   charts:[
-    {title:"Auto-Ladezustand (ID.3)", unit:"%", yMax:100, lines:[{channel:3514838,field:"field1",label:"Ladezustand",color:"var(--green)",dec:0,fill:true},{channel:3514838,field:"field4",label:"Ziel",color:"var(--blue)",dec:0,dash:true}]},
     {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001,fill:true},{field:"field7",label:"PV-Ladevorgabe",color:"var(--blue)",scale:0.001,dash:true},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
-    {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, yTicks:[{v:65,label:"Getrennt"},{v:66,label:"Lädt nicht"},{v:67,label:"Lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]}
+    {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, yTicks:[{v:65,label:"Getrennt"},{v:66,label:"Lädt nicht"},{v:67,label:"Lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]},
+    {title:"Auto-Ladezustand (ID.3)", unit:"%", yMax:100, lines:[{channel:3514838,field:"field1",label:"Ladezustand",color:"var(--green)",dec:0,fill:true},{channel:3514838,field:"field4",label:"Ziel",color:"var(--blue)",dec:0,dash:true}]}
   ]});
 
 var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
