@@ -66,6 +66,9 @@
   .sec-head h2{font-size:1rem; margin:0;}
   .sec-head .tag{font-size:.7rem; font-weight:600; color:var(--muted); background:var(--card); padding:2px 8px; border-radius:20px;}
   .sec-head .tag.warn{color:var(--red);}
+  /* In Gruppen: Kacheln behalten ihre Breite (auto-fill statt auto-fit) - eine einzelne
+     Kachel wird nicht ueber die ganze Zeile gezogen, Spalten fluchten ueber alle Gruppen */
+  .sec-head + .kpis{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));}
 
   .panel{background:var(--card); border-radius:14px; box-shadow:var(--shadow); padding:16px 18px; margin-bottom:16px;}
   .panel h2{font-size:1rem; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
@@ -113,6 +116,7 @@
     .hero .val{font-size:2.2rem;}
     .panel{padding:12px 12px;}
     .kpis{gap:8px; grid-template-columns:repeat(auto-fit,minmax(130px,1fr));}
+    .sec-head + .kpis{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));}
     .view-head h1{font-size:1.15rem;}
   }
 </style>
@@ -826,10 +830,13 @@ function simpleView(cfg){
 
   // Gruppen-Kopf (cfg.sections): "Stand vor ..." des Kanals; mit staleMin der Gruppe
   // rot "veraltet", wenn der Kanal so lange nichts Neues geliefert hat (z. B. Poller aus).
+  // Mit season (Monate 0-11, in denen die Anlage laeuft) ausserhalb der Saison statt der
+  // roten Warnung neutral "Sommerpause" - z. B. Heizung, die nicht das ganze Jahr laeuft.
   function secStand(ch, ts){ (cfg.sections||[]).forEach(function(s){ if(String(s.channel)!==String(ch))return; var el=g("sec_"+s.key); if(!el)return;
     var t=ts?new Date(ts):null, old=!!s.staleMin && (!t || (Date.now()-t.getTime())>s.staleMin*60000);
-    el.textContent=(old?"⚠ veraltet – ":"")+(t?"Stand "+relTime(t):"keine Daten");
-    el.className="tag"+(old?" warn":""); }); }
+    var inSeason=!s.season || s.season.indexOf(new Date().getMonth())>=0, warn=old && inSeason;
+    el.textContent=(warn?"⚠ veraltet – ":(old?"Sommerpause – ":""))+(t?"Stand "+relTime(t):"keine Daten");
+    el.className="tag"+(warn?" warn":""); }); }
 
   // KPIs immer aktuell (letzter bekannter Wert), unabhaengig vom Zeitraum
   function loadKpis(){
@@ -1018,13 +1025,20 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
   ]});
 
 var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
+  // Zwei Quellen getrennt: Heizungs-Logger (Kanal 172428, laeuft nur in der Heizsaison)
+  // und HSH-Auslastung (stuendlich im Wallbox-Kanal 172228, ganzjaehrig).
+  sections:[
+    // Veraltet-Warnung nur Okt-Apr; Mai-Sep ist ein Stillstand normal ("Sommerpause")
+    {key:"hz",  title:"🔥 Kessel & Schnitzel", channel:172428, staleMin:60, season:[9,10,11,0,1,2,3]},
+    {key:"hsh", title:"📊 HSH-Auslastung", channel:172228}
+  ],
   kpis:[
-    {field:"field1",label:"Kessel oben",unit:"°C",dec:1},
-    {field:"field2",label:"Kessel mitte",unit:"°C",dec:1},
-    {field:"field8",label:"Abgas",unit:"°C",dec:0},
-    {field:"field4",label:"Schnitzel-Füllstand",unit:"%",dec:0},
-    {field:"field3",label:"Temp. vor Schnitzelbunker",unit:"°C",dec:1,warnAbove:25},
-    {channel:172228,field:"field1",label:"HSH-Auslastung",unit:"%",dec:0}
+    {sec:"hz",field:"field1",label:"Kessel oben",unit:"°C",dec:1},
+    {sec:"hz",field:"field2",label:"Kessel mitte",unit:"°C",dec:1},
+    {sec:"hz",field:"field8",label:"Abgas",unit:"°C",dec:0},
+    {sec:"hz",field:"field4",label:"Schnitzel-Füllstand",unit:"%",dec:0},
+    {sec:"hz",field:"field3",label:"Temp. vor Schnitzelbunker",unit:"°C",dec:1,warnAbove:25},
+    {sec:"hsh",channel:172228,field:"field1",label:"HSH-Auslastung",unit:"%",dec:0}
   ],
   charts:[
     {title:"Kesseltemperaturen", unit:"°C", zero:false, minmaxField:"field1", lines:[{field:"field1",label:"Oben",color:"var(--amber)"},{field:"field2",label:"Mitte",color:"var(--blue)"}]},
