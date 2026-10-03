@@ -8,7 +8,7 @@
 <style>
   :root{
     --bg:#eef2f5; --card:#ffffff; --ink:#1f2933; --muted:#6b7280; --line:#e3e8ee;
-    --amber:#f5a623; --amber-lt:#f7d774; --green:#2e9e5b; --green-lt:#86d295; --blue:#2b83c7; --red:#d64545;
+    --amber:#f5a623; --amber-lt:#f7d774; --green:#2e9e5b; --blue:#2b83c7; --red:#d64545;
     --nav:#ffffff; --shadow:0 1px 3px rgba(20,30,40,.10), 0 1px 2px rgba(20,30,40,.06);
   }
   :root[data-theme="dark"]{
@@ -520,8 +520,8 @@ PV.loadCumYear=function(){
 // Balken "Aktuelle Leistung" gegen die Soll-Leistung jetzt. Soll = Planer-Prognose
 // (Open-Meteo-Einstrahlung auf die Modulflaeche x stuendlicher Kalibrierfaktor der letzten
 // 14 Tage), linear zwischen den Stunden interpoliert. Der Balken ist in Zonen gefaerbt:
-// bis zum Toleranzband orange, im Band um den Soll-Strich gruen, darueber hellgruen;
-// das Band ist zusaetzlich dezent auf der Spur sichtbar. Nachts/ohne Prognose grau.
+// bis zum Toleranzband (Soll - Toleranz) orange, ab dort gruen; das Band um den
+// Soll-Strich ist zusaetzlich dezent auf der Spur sichtbar. Nachts/ohne Prognose grau.
 // Hinweis: Die Kalibrierung lernt laufend mit - ein schleichender Leistungsverlust
 // faellt hier NICHT auf (dafuer die Grafik "Tracker-Strom mittags").
 PV.SOLL_TOL=0.10;      // +-10 % der Soll-Leistung ...
@@ -548,7 +548,7 @@ PV.updateSoll=function(pKW){
     function pc(kw){ return Math.max(0,Math.min(100,kw/30*100)); }   // Position auf der 0-30-kW-Spur
     // Zonen-Verlauf auf dem Ist-Balken: Stopps relativ zu dessen Laenge (0..pKW)
     if(pKW>0){ var st=function(kw){ return Math.max(0,Math.min(100,kw/pKW*100)).toFixed(2)+"%"; };
-      bar.style.background="linear-gradient(90deg, var(--amber) 0 "+st(lo)+", var(--green) "+st(lo)+" "+st(hi)+", var(--green-lt) "+st(hi)+" 100%)"; }
+      bar.style.background="linear-gradient(90deg, var(--amber) 0 "+st(lo)+", var(--green) "+st(lo)+" 100%)"; }
     if(bd){ bd.style.display="block"; bd.style.left=pc(lo)+"%"; bd.style.width=(pc(hi)-pc(lo))+"%"; }
     if(mk){ mk.style.display="block"; mk.style.left=pc(s)+"%"; mk.title="Soll jetzt: "+fmt(s,1)+" kW"; }
     var dv=Math.round((pKW/s-1)*100);
