@@ -8,7 +8,7 @@
 <style>
   :root{
     --bg:#eef2f5; --card:#ffffff; --ink:#1f2933; --muted:#6b7280; --line:#e3e8ee;
-    --amber:#f5a623; --amber-lt:#f7d774; --green:#2e9e5b; --blue:#2b83c7; --red:#d64545;
+    --amber:#f5a623; --amber-lt:#f7d774; --green:#2e9e5b; --green-lt:#86d295; --blue:#2b83c7; --red:#d64545;
     --nav:#ffffff; --shadow:0 1px 3px rgba(20,30,40,.10), 0 1px 2px rgba(20,30,40,.06);
   }
   :root[data-theme="dark"]{
@@ -48,8 +48,10 @@
   .hero .lbl{color:var(--muted); font-size:.85rem;}
   .hero .val{font-size:2.8rem; font-weight:700; line-height:1.1; margin:2px 0 6px;}
   .hero .val small{font-size:1.1rem; font-weight:600; color:var(--muted);}
-  .bar{height:12px; border-radius:6px; background:var(--line); overflow:hidden;}
-  .bar > span{display:block; height:100%; border-radius:6px; background:linear-gradient(90deg,var(--green),var(--amber)); transition:width .6s ease;}
+  .bar{position:relative; height:12px; border-radius:6px; background:var(--line); overflow:hidden;}
+  .bar > span{display:block; height:100%; border-radius:6px; background:var(--muted); transition:width .6s ease, background-color .6s ease;}
+  .bar > .mark{display:none; position:absolute; top:0; bottom:0; width:3px; margin-left:-1.5px; border-radius:2px; background:var(--ink); opacity:.55;}
+  .bar-soll{font-size:.72rem; color:var(--muted); margin-top:4px;}
   .bar-scale{display:flex; justify-content:space-between; font-size:.72rem; color:var(--muted); margin-top:3px;}
 
   .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:16px;}
@@ -383,7 +385,8 @@ PV.render=function(main){
         '<div class="meta"><div id="sd-status"><span class="dot na"></span>SD-Karte</div><div id="updated">wird geladen…</div></div>'+
       '</div></div>'+
     '<div class="hero"><div class="lbl">Aktuelle Leistung</div><div class="val"><span id="power">–</span> <small>kW</small></div>'+
-      '<div class="bar"><span id="power-bar" style="width:0%"></span></div><div class="bar-scale"><span>0</span><span>15 kW</span><span>30 kW</span></div></div>'+
+      '<div class="bar"><span id="power-bar" style="width:0%"></span><i class="mark" id="power-soll"></i></div><div class="bar-scale"><span>0</span><span>15 kW</span><span>30 kW</span></div>'+
+      '<div class="bar-soll" id="power-soll-txt"></div></div>'+
     '<div class="kpis">'+
       kpiCard("Heute","e-today","kWh")+kpiCard("Gestern","e-yesterday","kWh")+kpiCard("Aktueller Monat","e-month","kWh")+
       kpiCard("Letzter Monat","e-lastmonth","kWh")+kpiCard("Dieses Jahr","e-year","kWh")+kpiCard("Ø DC-Spannung","dc-mean","V")+
@@ -513,6 +516,41 @@ PV.loadCumYear=function(){
     }
   }).catch(function(){ if(token===PV.cmpToken) holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
 };
+// Balkenfarbe "Aktuelle Leistung" gegen die Soll-Leistung jetzt. Soll = Planer-Prognose
+// (Open-Meteo-Einstrahlung auf die Modulflaeche x stuendlicher Kalibrierfaktor der letzten
+// 14 Tage), linear zwischen den Stunden interpoliert. Innerhalb der Toleranz gruen,
+// darunter orange, darueber hellgruen; nachts/ohne Prognose grau ohne Bewertung.
+// Hinweis: Die Kalibrierung lernt laufend mit - ein schleichender Leistungsverlust
+// faellt hier NICHT auf (dafuer die Grafik "Tracker-Strom mittags").
+PV.SOLL_TOL=0.10;      // +-10 % der Soll-Leistung ...
+PV.SOLL_TOL_MIN=0.5;   // ... mindestens +-0.5 kW (morgens/abends waeren 10 % zu eng)
+PV.SOLL_MIN=0.3;       // Soll darunter (Nacht, Daemmerung): keine Bewertung
+PV.sollJetzt=function(c){
+  var F=c.factor, ht=c.fc.hourly.time, hg=c.fc.hourly.global_tilted_irradiance, now=Date.now(), a=null, b=null;
+  for(var i=0;i<ht.length;i++){ var d=new Date(ht[i]), kw=(hg[i]||0)/1000*(F[d.getHours()]||0);
+    if(d.getTime()<=now) a={t:d.getTime(),v:kw}; else { b={t:d.getTime(),v:kw}; break; } }
+  if(!a||!b) return null;
+  return a.v+(b.v-a.v)*(now-a.t)/(b.t-a.t);
+};
+PV.updateSoll=function(pKW){
+  function g(id){return document.getElementById(id);}
+  var bar=g("power-bar"), mk=g("power-soll"), tx=g("power-soll-txt"); if(!bar)return;
+  function neutral(){ bar.style.backgroundColor=""; if(mk)mk.style.display="none"; if(tx)tx.textContent=""; }
+  if(pKW===null){ neutral(); return; }
+  PLANNER.ensureForecast().then(function(c){
+    if(!g("power-bar"))return;   // Ansicht inzwischen gewechselt
+    var s=PV.sollJetzt(c);
+    if(s===null || s<PV.SOLL_MIN){ neutral(); return; }
+    var tol=Math.max(PV.SOLL_TOL*s, PV.SOLL_TOL_MIN), col, lage;
+    if(pKW<s-tol){ col="var(--amber)"; lage="unter Soll"; }
+    else if(pKW>s+tol){ col="var(--green-lt)"; lage="über Soll"; }
+    else { col="var(--green)"; lage="im Rahmen"; }
+    bar.style.backgroundColor=col;
+    if(mk){ mk.style.display="block"; mk.style.left=Math.max(0,Math.min(100,s/30*100))+"%"; mk.title="Soll jetzt: "+fmt(s,1)+" kW"; }
+    var dv=Math.round((pKW/s-1)*100);
+    if(tx) tx.textContent="Soll jetzt (Prognose): "+fmt(s,1)+" kW · Ist "+(dv>0?"+":"")+dv+" % – "+lage+" (±"+fmt(tol,1)+" kW)";
+  }).catch(neutral);
+};
 PV.load=function(){
   var errEl=function(){return document.getElementById("err");};
   function g(id){return document.getElementById(id);}
@@ -520,6 +558,7 @@ PV.load=function(){
     var f=(d&&d.feeds)?d.feeds:[]; if(!f.length||!g("power"))return; var last=f[f.length-1];
     var pW=num(last.field1),pKW=pW===null?null:pW/1000;
     g("power").textContent=fmt(pKW,2); g("power-bar").style.width=(pKW===null?0:Math.max(0,Math.min(100,pKW/30*100)))+"%";
+    PV.updateSoll(pKW);
     function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
     g("e-today").textContent=fmt(L("field2"),1); g("e-yesterday").textContent=fmt(L("field5"),1);
     g("e-month").textContent=fmt(L("field3"),0); g("e-lastmonth").textContent=fmt(L("field6"),0);
