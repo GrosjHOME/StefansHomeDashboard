@@ -683,7 +683,8 @@ function pvRefLegend(span){ return [{color:"var(--amber)",label:"Ist"},{color:"v
 // nach Zaehler-Reset getrennt (Abfall = neuer Produktionstag, dessen Maximum = Tagessumme)
 // statt nach Kalenderdatum. Vergangene Tage aendern sich nie -> je Tag gecacht.
 PV.DAY_REF_FROM=2017;  // Tageswerte gibt es erst ab 2017 (ThingSpeak; 2014-16 nur Monatssummen)
-PV.DAY_REF_WIN=3;      // Vergleich: Kalendertag +-3 Tage (ein einzelner Tag ist zu zufaellig)
+PV.DAY_REF_WIN=0;      // Vergleich: 0 = exakt derselbe Kalendertag der Vorjahre (gewuenscht, auch
+                       // wenn zufaelliger); >0 = Fenster +-N Tage (robuster, Fenster ueberlappen)
 PV.DAY_MAX_KWH=300;    // Plausibilitaet: groessere Tageswerte = Messfehler (30 kWp x 10 h)
 function ymdStr(dt){ return dt.getFullYear()+"-"+("0"+(dt.getMonth()+1)).slice(-2)+"-"+("0"+dt.getDate()).slice(-2); }
 // cal = [{yOff, m0, d}] (fortlaufende Kalendertage) -> Promise {"MM-DD": kWh} fuer das Jahr year
@@ -708,10 +709,10 @@ function pvDayTotals(year, cal){
     miss.forEach(function(dt){ var k=ymdStr(dt); if(mx[k]!=null){ out[k.slice(5)]=mx[k]; lsSet("pv_d_"+k,mx[k]); } });   // nur Vorhandenes cachen
     return out; });
 }
-// Liefert eine Funktion range(t): Min/Max der Tagesertraege aller Vorjahre im Fenster um
-// "heute + t Tage" (t = 0 heute, 1/2 Prognose-Tage) samt Datum des Min-/Max-Tages, oder null.
-// Die Fenster benachbarter Tage ueberlappen - derselbe Rekordtag kann daher bei mehreren
-// Balken das Maximum sein (physikalisch sinnvoll: das Moegliche aendert sich kaum).
+// Liefert eine Funktion range(t): Min/Max der Tagesertraege aller Vorjahre fuer "heute + t Tage"
+// (t = 0 heute, 1/2 Prognose-Tage) samt Datum des Min-/Max-Tages, oder null. Mit
+// PV.DAY_REF_WIN > 0 im Fenster +-N Tage (dann kann derselbe Rekordtag bei mehreren Balken
+// das Maximum sein, weil sich die Fenster ueberlappen).
 function pvDayHistory(){
   var now=new Date(), cy=now.getFullYear(), W=PV.DAY_REF_WIN, cal=[], yOffOf={};
   function at(off){ return new Date(cy, now.getMonth(), now.getDate()+off); }
@@ -771,7 +772,7 @@ PV.loadEnergy=function(){
   } else {
     // Ist-Tageswerte + Prognose (heute + naechste 2 Tage) als hellgelbe Balken
     // Heute + Prognose-Tage zusaetzlich mit feinen Min/Max-Strichen: Spannweite der Tages-
-    // ertraege aller Vorjahre (ab PV.DAY_REF_FROM) im Fenster +-PV.DAY_REF_WIN Tage.
+    // ertraege aller Vorjahre (ab PV.DAY_REF_FROM) am selben Kalendertag (PV.DAY_REF_WIN).
     Promise.all([
       j(api(PV.CH,"/feeds.json?days=15&average=15",true)),
       PLANNER.ensureForecast().catch(function(){return null;}),
@@ -811,7 +812,7 @@ PV.loadEnergy=function(){
         });
       }
       var leg=[{color:"var(--amber)",label:"Ist"},{color:"var(--amber-lt)",label:"Prognose"}];
-      if(hasHist) leg.push({color:"var(--muted)",label:"Min/Max ±"+PV.DAY_REF_WIN+" Tage "+hSpan});
+      if(hasHist) leg.push({color:"var(--muted)",label:(PV.DAY_REF_WIN ? "Min/Max ±"+PV.DAY_REF_WIN+" Tage " : "Min/Max gleicher Tag ")+hSpan});
       barChart(holder,bars,{unit:"kWh",color:"var(--amber)",legend:leg});
     }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
   }
