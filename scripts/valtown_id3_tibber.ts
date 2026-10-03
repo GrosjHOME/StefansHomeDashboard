@@ -21,8 +21,13 @@ const TOKEN_URL = "https://thewall.tibber.com/connect/token";
 const BASE = "https://data-api.tibber.com/v1";
 const RT_KEY = "tibber_refresh_token";
 
+// Umgebungsvariable lesen; Leerzeichen/Zeilenumbrueche und versehentlich mitkopierte
+// Anfuehrungszeichen entfernen.
+function clean(v: string | undefined): string {
+  return (v || "").trim().replace(/^["']+|["']+$/g, "").trim();
+}
 function env(k: string): string {
-  const v = (Deno.env.get(k) || "").trim();
+  const v = clean(Deno.env.get(k));
   if (!v) throw new Error(`Umgebungsvariable ${k} fehlt`);
   return v;
 }
@@ -52,18 +57,24 @@ async function saveRefreshToken(token: string) {
 
 // Access-Token holen: zuerst den gespeicherten Refresh-Token, sonst den aus der Umgebung.
 async function getAccessToken(): Promise<string> {
-  const stored = (await blob.getJSON(RT_KEY).catch(() => undefined)) as { token?: string } | undefined;
-  const fromEnv = (Deno.env.get("TIBBER_REFRESH_TOKEN") || "").trim();
-  const candidates = [stored?.token, fromEnv].filter((t, i, a): t is string => !!t && a.indexOf(t) === i);
+  const stored = (await blob.getJSON(RT_KEY).catch(() => undefined)) as { token?: string; saved?: string } | undefined;
+  const fromEnv = clean(Deno.env.get("TIBBER_REFRESH_TOKEN"));
+  // Diagnose ohne den Token preiszugeben: Herkunft + Laenge
+  const candidates = [
+    { rt: stored?.token, src: `gespeicherter Token (vom ${stored?.saved ?? "?"})` },
+    { rt: fromEnv, src: "Token aus TIBBER_REFRESH_TOKEN" },
+  ].filter((c, i, a): c is { rt: string; src: string } => !!c.rt && a.findIndex((x) => x.rt === c.rt) === i);
   if (!candidates.length) throw new Error("Kein Refresh-Token - TIBBER_REFRESH_TOKEN eintragen");
   let lastErr: unknown;
-  for (const rt of candidates) {
+  for (const c of candidates) {
+    console.log(`Versuche ${c.src}, Laenge ${c.rt.length} Zeichen`);
     try {
-      const tok = await refresh(rt);
-      if (tok.refresh_token && tok.refresh_token !== rt) await saveRefreshToken(tok.refresh_token);
+      const tok = await refresh(c.rt);
+      if (tok.refresh_token && tok.refresh_token !== c.rt) await saveRefreshToken(tok.refresh_token);
       else if (!tok.refresh_token) console.warn("WARN: Tibber hat keinen neuen Refresh-Token geliefert");
+      console.log(`OK mit ${c.src}`);
       return tok.access_token;
-    } catch (e) { lastErr = e; console.warn(String(e)); }
+    } catch (e) { lastErr = e; console.warn(`${c.src} abgelehnt: ${e}`); }
   }
   throw new Error("Kein gueltiger Refresh-Token mehr. Neuen erzeugen (scripts/tibber_token_neu.ps1) " +
     "und als TIBBER_REFRESH_TOKEN eintragen. Letzter Fehler: " + String(lastErr));
