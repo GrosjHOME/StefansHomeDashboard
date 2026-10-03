@@ -709,16 +709,23 @@ function pvDayTotals(year, cal){
     return out; });
 }
 // Liefert eine Funktion range(t): Min/Max der Tagesertraege aller Vorjahre im Fenster um
-// "heute + t Tage" (t = 0 heute, 1/2 Prognose-Tage), oder null ohne Daten.
+// "heute + t Tage" (t = 0 heute, 1/2 Prognose-Tage) samt Datum des Min-/Max-Tages, oder null.
+// Die Fenster benachbarter Tage ueberlappen - derselbe Rekordtag kann daher bei mehreren
+// Balken das Maximum sein (physikalisch sinnvoll: das Moegliche aendert sich kaum).
 function pvDayHistory(){
-  var now=new Date(), cy=now.getFullYear(), W=PV.DAY_REF_WIN, cal=[];
+  var now=new Date(), cy=now.getFullYear(), W=PV.DAY_REF_WIN, cal=[], yOffOf={};
   function at(off){ return new Date(cy, now.getMonth(), now.getDate()+off); }
-  for(var off=-W; off<=2+W; off++){ var dt=at(off); cal.push({yOff:dt.getFullYear()-cy, m0:dt.getMonth(), d:dt.getDate()}); }
+  for(var off=-W; off<=2+W; off++){ var dt=at(off); cal.push({yOff:dt.getFullYear()-cy, m0:dt.getMonth(), d:dt.getDate()});
+    yOffOf[ymdStr(dt).slice(5)]=dt.getFullYear()-cy; }
   var ys=[]; for(var y=PV.DAY_REF_FROM; y<cy; y++) ys.push(y);
+  function dstr(e){ return parseInt(e.k.slice(3),10)+"."+parseInt(e.k.slice(0,2),10)+"."+e.y; }   // "5.10.2017"
   return Promise.all(ys.map(function(y){ return pvDayTotals(y,cal).catch(function(){ return {}; }); })).then(function(rs){
-    var by={}; rs.forEach(function(o){ Object.keys(o).forEach(function(k){ (by[k]=by[k]||[]).push(o[k]); }); });
-    return function(t){ var vals=[]; for(var o=t-W; o<=t+W; o++){ var k=ymdStr(at(o)).slice(5); if(by[k]) vals=vals.concat(by[k]); }
-      return vals.length ? {lo:Math.min.apply(null,vals), hi:Math.max.apply(null,vals), n:vals.length} : null; };
+    var by={}; rs.forEach(function(res,i){ Object.keys(res).forEach(function(k){
+      (by[k]=by[k]||[]).push({v:res[k], k:k, y:ys[i]+(yOffOf[k]||0)}); }); });
+    return function(t){ var lo=null, hi=null, n=0;
+      for(var o=t-W; o<=t+W; o++){ (by[ymdStr(at(o)).slice(5)]||[]).forEach(function(e){ n++;
+        if(!lo||e.v<lo.v) lo=e; if(!hi||e.v>hi.v) hi=e; }); }
+      return n ? {lo:lo.v, hi:hi.v, loDate:dstr(lo), hiDate:dstr(hi), n:n} : null; };
   });
 }
 
@@ -774,7 +781,7 @@ PV.loadEnergy=function(){
       var hSpan=PV.DAY_REF_FROM+"–"+String(now.getFullYear()-1).slice(2);
       function band(b, ymd, todayYmd){ if(!hist)return; var t=Math.round((new Date(ymd+"T12:00")-new Date(todayYmd+"T12:00"))/864e5);
         var r=hist(t); if(!r)return; b.lo=r.lo; b.hi=r.hi; hasHist=true;
-        b.tipExtra="Min/Max ±"+PV.DAY_REF_WIN+" Tage "+hSpan+": "+fmt(r.lo,0)+" / "+fmt(r.hi,0)+" kWh"; }
+        b.tipExtra="Max "+fmt(r.hi,0)+" kWh ("+r.hiDate+") · Min "+fmt(r.lo,0)+" kWh ("+r.loDate+")"; }
       var f=(d&&d.feeds)?d.feeds:[],byDay={}; f.forEach(function(x){ var v=num(x.field2); if(v===null)return; var dt=new Date(x.created_at);
         var key=dt.getFullYear()+"-"+dt.getMonth()+"-"+dt.getDate(); if(!byDay[key]||v>byDay[key].v)byDay[key]={v:v,dt:dt}; });
       var arr=Object.keys(byDay).map(function(k){return byDay[k];}).sort(function(a,b){return a.dt-b.dt;}).slice(-14);
