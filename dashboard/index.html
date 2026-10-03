@@ -97,7 +97,9 @@
   tr.sum td{font-weight:700; border-top:2px solid var(--line);}
   .wr-head{font-weight:700; color:var(--blue);}
   .note{font-size:.8rem; color:var(--muted); margin-top:10px;}
-  .pldays{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px;}
+  /* Tageskarten: hoechstens 4 nebeneinander (7 Tage -> 4 + 3, weniger Zeilenumbrueche in den
+     Karten); schmale Bildschirme wie bisher mit weniger Spalten (mind. 180 px je Karte) */
+  .pldays{display:grid; grid-template-columns:repeat(auto-fit,minmax(max(180px, calc((100% - 3*12px)/4)),1fr)); gap:12px;}
   .plday{background:var(--bg); border-radius:12px; padding:12px 14px; border:1px solid var(--line);}
   .plday .pd-date{font-size:.8rem; color:var(--muted); font-weight:600;}
   .plday .pd-kwh{font-size:1.5rem; font-weight:700; margin:2px 0;}
