@@ -1040,7 +1040,11 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
     {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001,fill:true},{field:"field7",label:"PV-Ladevorgabe",color:"var(--blue)",scale:0.001,dash:true},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
     {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
     {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, yTicks:[{v:65,label:"Getrennt"},{v:66,label:"Lädt nicht"},{v:67,label:"Lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]},
-    {title:"Auto-Ladezustand (ID.3)", unit:"%", yMax:100, lines:[{channel:3514838,field:"field1",label:"Ladezustand",color:"var(--green)",dec:0,fill:true},{channel:3514838,field:"field4",label:"Ziel",color:"var(--blue)",dec:0,dash:true}]}
+    // Ladezustand + Ziel (%, links) und Reichweite (km, rechte Achse ab 0)
+    {title:"ID.3 – Ladezustand &amp; Reichweite", unit:"%", yMax:100, unit2:"km", zero2:true,
+      lines:[{channel:3514838,field:"field1",label:"Ladezustand",color:"var(--green)",dec:0,fill:true},
+             {channel:3514838,field:"field4",label:"Ziel",color:"var(--blue)",dec:0,dash:true},
+             {channel:3514838,field:"field2",label:"Reichweite",color:"var(--amber)",dec:0,axis:"right"}]}
   ]});
 
 var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
@@ -1374,6 +1378,33 @@ switchView(location.hash.slice(1) || "pv");
 if("serviceWorker" in navigator && location.protocol.indexOf("http")===0){
   window.addEventListener("load", function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });
 }
+
+// Neue Dashboard-Version von selbst laden: Eine installierte App bleibt oft tagelang
+// offen und wuerde sonst bei der alten Version bleiben (die Daten kommen trotzdem).
+// Geprueft wird beim Zurueckwechseln in die App (nach >= 5 min im Hintergrund) und
+// alle 6 h, falls sie dauernd sichtbar offen ist (z. B. am PC). Verglichen wird der
+// Fingerabdruck dieser Seite beim Server (ETag bzw. Last-Modified von GitHub Pages);
+// hat er sich seit dem Laden geaendert, laedt die App neu - die Adresse mit #Tab bleibt.
+(function(){
+  if(location.protocol.indexOf("http")!==0) return;   // nicht als lokale Datei
+  var HIDDEN_MIN_MS=5*60000, PERIOD_MS=6*3600000, url=location.pathname, base=null, hiddenAt=0;
+  function stamp(r){ return r.ok ? (r.headers.get("ETag")||r.headers.get("Last-Modified")) : null; }
+  // Fingerabdruck der GELADENEN Version: aus dem Browser-Cache (dieselbe Datei, die die
+  // Seite gerade benutzt) - nicht vom Server, sonst ginge ein Update in den ersten
+  // Minuten nach dem Deploy verloren.
+  fetch(url,{cache:"force-cache"}).then(function(r){ base=stamp(r); }).catch(function(){});
+  function check(){
+    if(!base) return;
+    fetch(url,{method:"HEAD",cache:"no-store"}).then(function(r){
+      var s=stamp(r); if(s && s!==base) location.reload();
+    }).catch(function(){});   // offline o. ae.: naechstes Mal
+  }
+  document.addEventListener("visibilitychange",function(){
+    if(document.hidden){ hiddenAt=Date.now(); return; }
+    if(hiddenAt && Date.now()-hiddenAt>=HIDDEN_MIN_MS) check();
+  });
+  setInterval(function(){ if(!document.hidden) check(); }, PERIOD_MS);
+})();
 </script>
 </body>
 </html>
