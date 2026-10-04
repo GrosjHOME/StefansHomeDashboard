@@ -27,18 +27,8 @@ aktualisiert sich alle 60 s · am Handy als App-Kachel nutzbar
 
 ```mermaid
 flowchart LR
-  subgraph Haus["Haus Wittenbach"]
-    PV["PV-Anlage<br/>Arduino-Logger"]
-    WB["Wallbox<br/>Arduino-Steuerung"]
-    HZ["Heizung<br/>Arduino-Logger"]
-    BO["Boiler<br/>Arduino-Steuerung"]
-  end
-  ID3["VW ID.3"] --> TIB["Tibber Data API"] --> VT["Val Town<br/>Cron alle 15 min"]
-  PV --> TS[("ThingSpeak")]
-  WB --> TS
-  HZ --> TS
-  BO --> TS
-  VT --> TS
+  AR["Arduino-Steuerungen im Haus<br/>PV · Wallbox · Heizung · Boiler"] --> TS[("ThingSpeak")]
+  ID3["VW ID.3"] --> TIB["Tibber Data API"] --> VT["Val Town<br/>alle 15 min"] --> TS
   TS --> D["Dashboard<br/>GitHub Pages"]
   OM["Open-Meteo<br/>Einstrahlung + Wetter"] --> D
 ```
