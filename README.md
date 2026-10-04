@@ -6,11 +6,11 @@ mit Geräte-Empfehlungen. Rein clientseitig, ohne Build: eine HTML-Datei, die di
 Daten direkt aus ThingSpeak und Open-Meteo lädt.
 
 **➜ [Dashboard öffnen](https://grosjhome.github.io/StefansHomeDashboard/)** ·
-aktualisiert sich alle 60 s · am Handy als App-Kachel nutzbar
+aktualisiert sich alle 60 s · als App installierbar (Android, Windows, iOS)
 
 **Inhalt:** [Ansichten](#ansichten) · [Datenfluss](#datenfluss) ·
 [Projektstruktur](#projektstruktur) · [ThingSpeak-Kanäle](#thingspeak-kanäle) ·
-[Deployment](#deployment) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
+[Deployment](#deployment) · [Als App installieren](#als-app-installieren-pwa) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
 [Nutzung](#nutzung) · [Herkunft](#herkunft)
 
 ## Ansichten
@@ -40,6 +40,9 @@ Open-Meteo (Einstrahlung, Wetter) ───────────────�
 | Pfad | Zweck |
 |---|---|
 | `dashboard/index.html` | Das Dashboard: Single-Page-App mit Tabs, Dark-Mode, eigene Charts direkt aus der ThingSpeak-API (keine iframes), Auto-Refresh alle 60 s |
+| `dashboard/manifest.webmanifest` | PWA-Manifest: App-Name, Icons, Farben, Startadresse |
+| `dashboard/sw.js` | Service Worker: macht die Seite installierbar, startet auch ohne Netz |
+| `dashboard/icons/` | App-Icons (SVG-Quellen + PNGs 192/512, randlos für Android, Apple-Icon) |
 | `index.html` | Weiterleitung auf `dashboard/` |
 | `thingspeak-dashboard/` | Früheres Dashboard mit ThingSpeak-iframes (Frameset) |
 | `scripts/valtown_id3_tibber.ts` | ID.3-Poller für Val Town – **aktiv** |
@@ -69,7 +72,25 @@ HTTPS erzwungen.
   eigene Workflow-Datei braucht es dafür nicht.
 - Live-URL: <https://grosjhome.github.io/StefansHomeDashboard/> – die Root-`index.html`
   leitet auf `dashboard/` weiter.
-- Am Handy: URL in Chrome öffnen → *Zum Startbildschirm hinzufügen*.
+
+### Als App installieren (PWA)
+
+Das Dashboard ist eine **Progressive Web App**: einmal installiert, öffnet es wie
+eine eigene App – mit Icon, eigenem Fenster und ohne Browserleiste. Updates kommen
+automatisch mit jedem Push nach `main`, kein Store nötig.
+
+| Gerät | So geht's |
+|---|---|
+| **Android** | Live-URL in **Chrome** öffnen → Menü ⋮ → **App installieren** (bzw. *Zum Startbildschirm hinzufügen* → *Installieren*). Die App „Zuhause" erscheint in der App-Liste. |
+| **Windows** | Live-URL in **Edge** öffnen → Menü … → **Apps** → **Diese Website als App installieren** (in Chrome: Installieren-Symbol in der Adressleiste). Danach im Startmenü und anheftbar an die Taskleiste. |
+| **iPhone/iPad** | Live-URL in **Safari** öffnen → Teilen → **Zum Home-Bildschirm**. |
+
+Technik: `manifest.webmanifest` (Name „Grosjeans Zuhause", Kurzname „Zuhause",
+Modus *standalone*) und `sw.js`. Der Service Worker lädt immer **zuerst aus dem
+Netz** – Änderungen sind also sofort da; der Zwischenspeicher dient nur als
+Rückfall ohne Verbindung (die Seite startet dann, die Live-Daten fehlen).
+Daten-APIs anderer Server (ThingSpeak, Open-Meteo) fasst er nicht an. Bei
+Änderungen an `sw.js` die Cache-Version (`zuhause-v1`) hochzählen.
 
 > [!NOTE]
 > Pages verlangt bei diesem Konto ein **öffentliches** Repo. Im Code liegen nur
