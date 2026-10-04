@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
+<!-- PWA: als App installierbar (Manifest + Service Worker sw.js, Icons in icons/) -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#059669">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Zuhause">
 <title>Grosjeans Zuhause – Dashboard</title>
 <style>
   :root{
@@ -1361,6 +1368,12 @@ function switchView(v){
 document.getElementById("tabs").addEventListener("click",function(e){ var a=e.target.closest("a[data-view]"); if(!a)return; e.preventDefault(); switchView(a.getAttribute("data-view")); });
 window.addEventListener("hashchange",function(){ switchView(location.hash.slice(1)); });
 switchView(location.hash.slice(1) || "pv");
+
+// PWA: Service Worker registrieren (macht die Seite als App installierbar). Geht nur
+// ueber http(s), nicht als lokale Datei (file://) - dort einfach ueberspringen.
+if("serviceWorker" in navigator && location.protocol.indexOf("http")===0){
+  window.addEventListener("load", function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });
+}
 </script>
 </body>
 </html>
