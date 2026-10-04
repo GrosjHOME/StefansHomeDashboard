@@ -25,12 +25,14 @@ aktualisiert sich alle 60 s · am Handy als App-Kachel nutzbar
 
 ## Datenfluss
 
-```mermaid
-flowchart LR
-  AR["Arduino-Steuerungen im Haus<br/>PV · Wallbox · Heizung · Boiler"] --> TS[("ThingSpeak")]
-  ID3["VW ID.3"] --> TIB["Tibber Data API"] --> VT["Val Town<br/>alle 15 min"] --> TS
-  TS --> D["Dashboard<br/>GitHub Pages"]
-  OM["Open-Meteo<br/>Einstrahlung + Wetter"] --> D
+```text
+Arduino-Steuerungen ──────────────────┐
+(PV, Wallbox, Heizung, Boiler)        │
+                                      ├──> ThingSpeak ──┐
+VW ID.3 ──> Tibber ──> Val Town ──────┘                 │
+            (Data API) (alle 15 min)                    ├──> Dashboard (GitHub Pages)
+                                                        │
+Open-Meteo (Einstrahlung, Wetter) ──────────────────────┘
 ```
 
 ## Projektstruktur
