@@ -1,82 +1,143 @@
-# Stefans Home Dashboard
+# 🏠 Stefans Home Dashboard
 
-Web-Dashboard für das Smart Home (rein clientseitig, kein Build). Zeigt die
-Live-Daten aus den ThingSpeak-Kanälen für PV-Anlage, Wallbox, Holzschnitzel-
-heizung und Boiler.
+Live-Dashboard für die Haustechnik in Wittenbach (Lauperswil BE): PV-Anlage,
+Wallbox mit E-Auto, Holzschnitzelheizung und Boiler – dazu eine Solarprognose
+mit Geräte-Empfehlungen. Rein clientseitig, ohne Build: eine HTML-Datei, die die
+Daten direkt aus ThingSpeak und Open-Meteo lädt.
 
-**Live:** https://grosjhome.github.io/StefansHomeDashboard/
+**➜ [Dashboard öffnen](https://grosjhome.github.io/StefansHomeDashboard/)** ·
+aktualisiert sich alle 60 s · als App installierbar (Android, Windows, iOS)
 
-## Struktur
+**Inhalt:** [Ansichten](#ansichten) · [Datenfluss](#datenfluss) ·
+[Projektstruktur](#projektstruktur) · [ThingSpeak-Kanäle](#thingspeak-kanäle) ·
+[Deployment](#deployment) · [Als App installieren](#als-app-installieren-pwa) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
+[Nutzung](#nutzung) · [Herkunft](#herkunft)
 
-    dashboard/              -> Dashboard: Single-Page-App mit Tab-Navigation
-      index.html               (PV / Wallbox / Heizung / Boiler), Dark-Mode-
-                               Umschalter, Charts direkt aus der ThingSpeak-API
-                               (kein iframe), zwei-Achsen-Support, Auto-Refresh
-                               alle 60 s.
-    thingspeak-dashboard/   -> Bisheriges Dashboard mit ThingSpeak-iframes
-      index.html               (klassisches Frameset + Navigation, frame_*.html).
-    index.html              -> Weiterleitung auf dashboard/index.html.
-    scripts/                -> ID.3-Poller (Tibber -> ThingSpeak), siehe unten:
-      valtown_id3_tibber.ts    Poller fuer Val Town (aktiv)
-      tibber_token_neu.ps1     frischen Tibber-Refresh-Token erzeugen
-      id3_tibber_cloud.py      frueherer GitHub-Actions-Poller (Reserve)
-      thingspeak_trigger_id3.m ThingSpeak-TimeControl-Ausloeser (Alternative)
-    .github/workflows/
-      id3-tibber.yml        -> GitHub-Workflow des frueheren Pollers (deaktiviert)
+## Ansichten
+
+| Tab | Was man sieht |
+|---|---|
+| ☀️&nbsp;**PV&#8209;Anlage** | Aktuelle Leistung gegen die Soll-Leistung aus der Prognose (Soll-Strich, Toleranzband ±10 %, Farbverlauf orange → grün) · Energie heute/gestern/Monat/Jahr · Leistungsverlauf · Energie nach Tagen (mit 3-Tage-Prognose und Min/Max desselben Kalendertags der Vorjahre), Monaten und Jahren (laufende Periode gegen Ø und Min/Max **aller** Jahre ab 2014) · PV-Arbeit je Jahr · Strom und Spannung je MPP-Tracker · Tracker-Strom mittags zur Verlust-Diagnose |
+| 🚗&nbsp;**Wallbox** | Zwei Gruppen mit eigener Aktualität: **Wallbox** (Ladeleistung, PV-Ladevorgabe, Ladestrom-Begrenzung, Verbindung, geladene Menge) und **Auto** (VW ID.3 via Tibber: Ladezustand, Ziel, Reichweite, Stecker, Ladestatus) · Verläufe |
+| 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **HSH-Auslastung** · Verläufe |
+| 💧&nbsp;**Boiler** | Temperaturen Mitte/Unten mit den Schaltschwellen der Steuerung (Laden ein < 45 °C, aus > 58 bzw. 63 °C) · Ladeleistung gegen Einschaltschwelle und PV · geladene Menge |
+| 🗓️&nbsp;**Nutzung** | 7-Tage-Solarprognose (Open-Meteo, stündlich an den letzten 14 Tagen kalibriert, heute mit Nowcast) · Tageskarten mit Empfehlungen für Waschmaschine, Geschirrspüler, Tumbler, Auto und Boiler |
+
+## Datenfluss
+
+```text
+Arduino-Steuerungen ──────────────────┐
+(PV, Wallbox, Heizung, Boiler)        │
+                                      ├──> ThingSpeak ──┐
+VW ID.3 ──> Tibber ──> Val Town ──────┘                 │
+            (Data API) (alle 15 min)                    ├──> Dashboard (GitHub Pages)
+                                                        │
+Open-Meteo (Einstrahlung, Wetter) ──────────────────────┘
+```
+
+## Projektstruktur
+
+| Pfad | Zweck |
+|---|---|
+| `dashboard/index.html` | Das Dashboard: Single-Page-App mit Tabs, Dark-Mode, eigene Charts direkt aus der ThingSpeak-API (keine iframes), Auto-Refresh alle 60 s |
+| `dashboard/manifest.webmanifest` | PWA-Manifest: App-Name, Icons, Farben, Startadresse |
+| `dashboard/sw.js` | Service Worker: macht die Seite installierbar, startet auch ohne Netz |
+| `dashboard/icons/` | App-Icons (SVG-Quellen + PNGs 192/512, randlos für Android, Apple-Icon) |
+| `index.html` | Weiterleitung auf `dashboard/` |
+| `thingspeak-dashboard/` | Früheres Dashboard mit ThingSpeak-iframes (Frameset) |
+| `scripts/valtown_id3_tibber.ts` | ID.3-Poller für Val Town – **aktiv** |
+| `scripts/tibber_token_neu.ps1` | Frischen Tibber-Refresh-Token erzeugen |
+| `scripts/id3_tibber_cloud.py` | Früherer GitHub-Actions-Poller (Reserve) |
+| `scripts/thingspeak_trigger_id3.m` | ThingSpeak-TimeControl-Auslöser (Alternative) |
+| `.github/workflows/id3-tibber.yml` | GitHub-Workflow des früheren Pollers – **deaktiviert** |
 
 ## ThingSpeak-Kanäle
 
-    172430  PV-Anlage                (Read-Key im Code)
-    172228  Wallbox / HSH-Auslastung
-    172428  Holzschnitzel-Heizung
-    502977  Boiler
-    3510388 Tracker-Tagesmittel      (2. Account, Mittags-Mittelwert je MPP-Tracker)
-    3514838 ID.3 (E-Auto)            (Ladezustand via Tibber, siehe unten)
+| Kanal | Inhalt | Hinweis |
+|---|---|---|
+| 172430 | PV-Anlage | Read-Key im Code |
+| 172228 | Wallbox, HSH-Auslastung | |
+| 172428 | Holzschnitzelheizung | sendet nur in der Heizsaison |
+| 502977 | Boiler | |
+| 3510388 | Tracker-Tagesmittel | 2. Account, Mittags-Mittelwert je MPP-Tracker |
+| 3514838 | VW ID.3 (E-Auto) | Ladezustand via Tibber, siehe unten |
 
-## Deployment (GitHub Pages)
+## Deployment
 
-Die Seite wird über **GitHub Pages** ausgeliefert – Quelle: Branch `main`,
-Ordner `/ (root)`, HTTPS erzwungen.
+Ausgeliefert über **GitHub Pages** – Quelle: Branch `main`, Ordner `/ (root)`,
+HTTPS erzwungen.
 
-- Jeder Push nach `main` löst automatisch den eingebauten Pages-Build aus
-  (`pages build and deployment`, sichtbar im Actions-Tab). Nach 1–2 Minuten ist
-  die neue Version live. **Keine eigene Workflow-Datei** im Repo – der einfache
-  Branch-Deploy genügt für die statische Seite.
-- Live-URL: https://grosjhome.github.io/StefansHomeDashboard/
-  (die Root-`index.html` leitet auf `dashboard/` weiter).
-- Am Handy: URL in Chrome öffnen → „Zum Startbildschirm hinzufügen", dann
-  verhält sich das Dashboard wie eine App-Kachel.
+- Jeder Push nach `main` löst den eingebauten Pages-Build aus (*pages build and
+  deployment* im Actions-Tab); nach 1–2 Minuten ist die neue Version live. Eine
+  eigene Workflow-Datei braucht es dafür nicht.
+- Live-URL: <https://grosjhome.github.io/StefansHomeDashboard/> – die Root-`index.html`
+  leitet auf `dashboard/` weiter.
 
-> Hinweis: Pages benötigt bei diesem Konto ein **öffentliches** Repo. Das Repo
-> ist daher öffentlich; im Code liegen nur ThingSpeak-**Lese**-Keys (keine
-> Schreib-Keys, keine Passwörter).
+### Als App installieren (PWA)
+
+Das Dashboard ist eine **Progressive Web App**: einmal installiert, öffnet es wie
+eine eigene App – mit Icon, eigenem Fenster und ohne Browserleiste. Updates kommen
+automatisch mit jedem Push nach `main`, kein Store nötig.
+
+| Gerät | So geht's |
+|---|---|
+| **Android** | Live-URL in **Chrome** öffnen → Menü ⋮ → **App installieren** (bzw. *Zum Startbildschirm hinzufügen* → *Installieren*). Die App „Zuhause" erscheint in der App-Liste. |
+| **Windows** | Live-URL in **Edge** öffnen → Menü … → **Apps** → **Diese Website als App installieren** (in Chrome: Installieren-Symbol in der Adressleiste). Danach im Startmenü und anheftbar an die Taskleiste. |
+| **iPhone/iPad** | Live-URL in **Safari** öffnen → Teilen → **Zum Home-Bildschirm**. |
+
+Technik: `manifest.webmanifest` (Name „Grosjeans Zuhause", Kurzname „Zuhause",
+Modus *standalone*) und `sw.js`. Der Service Worker lädt immer **zuerst aus dem
+Netz** – Änderungen sind also sofort da; der Zwischenspeicher dient nur als
+Rückfall ohne Verbindung (die Seite startet dann, die Live-Daten fehlen).
+Daten-APIs anderer Server (ThingSpeak, Open-Meteo) fasst er nicht an. Bei
+Änderungen an `sw.js` die Cache-Version (`zuhause-v1`) hochzählen.
+
+> [!NOTE]
+> Pages verlangt bei diesem Konto ein **öffentliches** Repo. Im Code liegen nur
+> ThingSpeak-**Lese**-Keys – keine Schreib-Keys, keine Passwörter.
 
 ## ID.3-Ladezustand (Tibber-Poller)
 
-Ein Poller liest Ladezustand, Reichweite, Ziel-SoC, Stecker und Ladestatus des
-VW ID.3 über die Tibber Data API und schreibt sie in Kanal 3514838 (field1 SoC %,
-field2 Reichweite km, field4 Ziel-SoC %, field5 lädt 0/1, field6 Stecker 0/1).
-Das Dashboard zeigt in der Wallbox-Ansicht „⚠ veraltet", wenn seit 60 min kein
-neuer Wert kam.
+Ein Poller liest die Daten des VW ID.3 über die Tibber Data API und schreibt sie
+in Kanal 3514838. Das Dashboard zeigt in der Wallbox-Ansicht „⚠ veraltet", wenn
+seit 60 min kein neuer Wert kam.
 
-Tibber-Refresh-Tokens sind **Einmal-Tokens**: jeder Refresh liefert einen neuen,
-der alte stirbt. Der Poller muss den jeweils neuen Token also selbst sichern.
+| Feld | Inhalt |
+|---|---|
+| field1 | Ladezustand (SoC) in % |
+| field2 | Reichweite in km |
+| field4 | Ziel-Ladezustand in % |
+| field5 | Ladestatus (1 = lädt) |
+| field6 | Stecker (1 = verbunden) |
+
+> [!IMPORTANT]
+> Tibber-Refresh-Tokens sind **Einmal-Tokens**: jeder Refresh liefert einen neuen,
+> der alte stirbt. Der Poller sichert deshalb nach jedem Lauf den neuen Token.
 
 ### Auf Val Town (aktiv seit 03.10.2026)
 
 GitHub Actions führt Zeitpläne nur „best effort" aus – gemessen Okt. 2026: statt
-alle 15 min nur etwa **alle 5 h**, egal zu welchen Minuten. Deshalb läuft der
-Poller auf [Val Town](https://www.val.town) (Gratis-Plan: Cron ab 15 min).
+alle 15 min nur etwa **alle 5 h**. Deshalb läuft der Poller auf
+[Val Town](https://www.val.town) (Gratis-Plan, Cron ab 15 min). Seit der
+Umstellung kommt zuverlässig alle 15 min ein Wert (96 statt ~5 pro Tag).
 
 | | |
 |---|---|
-| Ort | val.town, Konto `steffgrosjean`, Val **VW**, Datei `main.ts` |
-| Takt | Cron-Trigger alle 15 Minuten |
-| Quelltext | `scripts/valtown_id3_tibber.ts` – das Repo ist die Vorlage: Änderungen hier machen und dann in den Val kopieren |
-| Token-Speicher | val-eigener Blob-Speicher, Schlüssel `tibber_refresh_token` |
-| Neuer Token | `scripts/tibber_token_neu.ps1` |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **VW**, Datei `main.ts` |
+| **Takt** | Cron-Trigger alle 15 Minuten |
+| **Quelltext** | `scripts/valtown_id3_tibber.ts` – das Repo ist die Vorlage: hier ändern, dann in den Val kopieren |
+| **Token-Speicher** | val-eigener Blob-Speicher, Schlüssel `tibber_refresh_token` |
+| **Neuer Token** | `scripts/tibber_token_neu.ps1` |
 
-#### Was ein Lauf macht
+**Kontrolle im Betrieb**
+
+- **Dashboard** → Wallbox → Gruppe „🚗 Auto (ID.3, via Tibber)": „Stand vor …"
+  unter 15 min; nach 60 min ohne neuen Wert rot „⚠ veraltet".
+- **Val Town**: jeder Lauf mit Log in der Run-Historie des Vals.
+- **ThingSpeak** Kanal 3514838: ein Eintrag alle 15 min.
+
+<details>
+<summary><b>Was ein Lauf macht</b></summary>
 
 1. **Refresh-Token wählen:** zuerst den im Blob gespeicherten; wird der abgelehnt,
    den aus der Umgebungsvariable `TIBBER_REFRESH_TOKEN`.
@@ -91,19 +152,27 @@ Poller auf [Val Town](https://www.val.town) (Gratis-Plan: Cron ab 15 min).
    ausgegeben, nur seine Herkunft und Länge.
 
 `TIBBER_REFRESH_TOKEN` dient damit nur dem **Start bzw. Neustart**: Im Betrieb
-lebt die Token-Kette im Blob, die Umgebungsvariable wird nicht mehr gebraucht
-(Val Town kann Umgebungsvariablen vom Code aus nicht ändern).
+lebt die Token-Kette im Blob (Val Town kann Umgebungsvariablen vom Code aus nicht
+ändern).
 
-#### Öffentlich oder privat?
+</details>
+
+<details>
+<summary><b>Öffentlich oder privat?</b></summary>
 
 Im Gratis-Plan kann ein Val nur **Public** sein. Sichtbar ist damit nur der
-**Code** – der steht ohnehin öffentlich auf GitHub. **Privat bleiben** die
-Umgebungsvariablen (andere sehen nur ihre Namen, nicht die Werte), der
-Blob-Speicher (gehört zu diesem Val/Konto; wer den Code kopiert, hat einen
-eigenen, leeren Speicher), und auslösen kann den Val von aussen niemand – ein
-Cron-Val hat keine Web-Adresse.
+**Code** – der steht ohnehin öffentlich auf GitHub. **Privat bleiben**:
 
-#### Einrichtung Schritt für Schritt
+- die **Umgebungsvariablen** – andere sehen nur ihre Namen, nicht die Werte,
+- der **Blob-Speicher** – er gehört zu diesem Val; wer den Code kopiert, hat einen
+  eigenen, leeren Speicher,
+- die **Auslösung** – ein Cron-Val hat keine Web-Adresse, von aussen kann ihn
+  niemand starten.
+
+</details>
+
+<details>
+<summary><b>Einrichtung Schritt für Schritt</b></summary>
 
 1. **Konto** auf val.town anlegen (gratis).
 2. **New val** → Name z. B. `VW` → Sichtbarkeit **Public** (*Private*/*Unlisted*
@@ -125,18 +194,20 @@ Cron-Val hat keine Web-Adresse.
 
 6. **Refresh-Token erzeugen** – in einem eigenen Terminalfenster, da das Skript
    Eingaben verlangt:
-   ```
+
+   ```powershell
    powershell -ExecutionPolicy Bypass -File scripts\tibber_token_neu.ps1
    ```
+
    - Client-ID und Client-Secret eingeben → der Browser öffnet die
      Tibber-Anmeldung → anmelden und zustimmen.
    - Der Browser landet auf „localhost – Seite nicht erreichbar". **Das ist
      richtig.** Die **komplette Adresse** aus der Adresszeile kopieren
      (`http://localhost:8123/callback?code=…&state=…`) und **im Skript**
      einfügen – nicht in Val Town.
-   - **Achtung:** Der Wert hinter `code=` ist **nicht** der Refresh-Token, nur
-     ein Einmal-Code (wenige Minuten gültig). Ihn direkt in Val Town einzutragen
-     führt zu `invalid_grant`. Erst das Skript tauscht ihn bei Tibber gegen den
+   - ⚠️ **Der Wert hinter `code=` ist nicht der Refresh-Token**, nur ein
+     Einmal-Code (wenige Minuten gültig). Ihn direkt in Val Town einzutragen führt
+     zu `invalid_grant`. Erst das Skript tauscht ihn bei Tibber gegen den
      Refresh-Token.
    - Meldung „OK: neuer Refresh-Token ist in der Zwischenablage" → den Inhalt der
      Zwischenablage als `TIBBER_REFRESH_TOKEN` einfügen (nur einfügen, nichts
@@ -150,16 +221,12 @@ Cron-Val hat keine Web-Adresse.
    (`*/15 * * * *`; Val-Town-Crons rechnen in UTC, für einen 15-min-Takt egal) →
    *Paused* aufheben.
 9. **GitHub-Workflow deaktivieren** (Actions → *ID.3 SoC (Tibber) → ThingSpeak* →
-   *Disable workflow*), damit nur ein Poller läuft. *Erledigt am 03.10.2026.*
+   *Disable workflow*), damit nur ein Poller läuft. ✅ *Erledigt am 03.10.2026.*
 
-#### Kontrolle im Betrieb
+</details>
 
-- **Dashboard** → Wallbox → Gruppe „🚗 Auto (ID.3, via Tibber)": „Stand vor …"
-  unter 15 min. Nach 60 min ohne neuen Wert rot „⚠ veraltet".
-- **Val Town:** jeder Lauf mit Log in der Run-Historie des Vals.
-- **ThingSpeak** Kanal 3514838: ein Eintrag alle 15 min.
-
-#### Fehlerbilder
+<details>
+<summary><b>Fehlerbilder und Neustart</b></summary>
 
 | Im Log | Ursache | Abhilfe |
 |---|---|---|
@@ -170,22 +237,29 @@ Cron-Val hat keine Web-Adresse.
 | `Kein Fahrzeug mit Ladezustand gefunden` | ID.3 in der Tibber-App nicht (mehr) verbunden | in der Tibber-App neu verbinden („Volkswagen") |
 | „Länge N Zeichen" auffällig kurz | Token beim Kopieren abgeschnitten | neu erzeugen und einfügen |
 
-Jeder Lauf erneuert den Token, solange der Cron läuft, bleibt die Kette also
-lebendig. Pausiert der Val länger, kann der letzte Token ablaufen – dann hilft
-der Neustart über Schritt 6.
+Jeder Lauf erneuert den Token – solange der Cron läuft, bleibt die Kette lebendig.
+Pausiert der Val länger, kann der letzte Token ablaufen; dann hilft der Neustart
+über Schritt 6.
 
-### Alternative: GitHub-Workflow (deaktiviert, Reserve)
+</details>
+
+### Reserve: GitHub-Workflow (deaktiviert)
 
 Der frühere Weg: Workflow `.github/workflows/id3-tibber.yml` mit
 `scripts/id3_tibber_cloud.py`, Token-Rotation über das GitHub-Secret
 `TIBBER_REFRESH_TOKEN`. **Seit 03.10.2026 deaktiviert**, weil GitHub den
-`schedule` nur etwa alle 5 h ausführt. Nur reaktivieren, wenn Val Town ausfällt:
-dann im GitHub-Secret `TIBBER_REFRESH_TOKEN` einen frischen Token eintragen (die
-alte Kette ist tot) und den Val-Cron pausieren, damit nicht beide schreiben.
+`schedule` nur etwa alle 5 h ausführt.
 
-Damit der Workflow dann trotzdem im 15-min-Takt läuft, kann ihn eine
-ThingSpeak-TimeControl per `workflow_dispatch` auslösen – solche Läufe startet
-GitHub sofort (kostenlos):
+> [!WARNING]
+> Nur reaktivieren, wenn Val Town ausfällt: dann im GitHub-Secret
+> `TIBBER_REFRESH_TOKEN` einen frischen Token eintragen (die alte Kette ist tot)
+> und den Val-Cron pausieren, damit nicht beide schreiben.
+
+<details>
+<summary><b>Reserve im 15-min-Takt: per ThingSpeak TimeControl auslösen</b></summary>
+
+Per API ausgelöste Läufe (`workflow_dispatch`) startet GitHub sofort – eine
+ThingSpeak-TimeControl kann so den Takt vorgeben (kostenlos):
 
 1. **Token erstellen:** GitHub → Settings → Developer settings → Personal access
    tokens → *Fine-grained tokens* → *Generate new token*.
@@ -203,19 +277,22 @@ GitHub sofort (kostenlos):
    TimeControl*: Frequency *Recurring*, Recurrence *Minute*, alle **15** Minuten,
    Action *MATLAB Analysis* → die Analyse aus Schritt 2. Fuzzy Time aus.
 
-**Wichtig:** Mit der Gratis-Lizenz deaktiviert ThingSpeak wiederkehrende
-TimeControls, wenn man sich 60 Tage nicht eingeloggt hat – spätestens dann
-zeigt das Dashboard „⚠ veraltet".
+Mit der Gratis-Lizenz deaktiviert ThingSpeak wiederkehrende TimeControls, wenn
+man sich 60 Tage nicht eingeloggt hat – spätestens dann zeigt das Dashboard
+„⚠ veraltet".
+
+</details>
 
 ## Nutzung
 
-Einfach die Live-URL öffnen. Die Seite aktualisiert sich automatisch alle 60 s.
-Alternativ statisch selbst hosten (der Datenabruf läuft über die öffentliche
-ThingSpeak-API). Ein direktes Öffnen als lokale Datei (`file://`) funktioniert
-auf Android-Browsern nicht mehr – dafür ist das Pages-Hosting da.
+Einfach die [Live-URL](https://grosjhome.github.io/StefansHomeDashboard/) öffnen –
+die Seite aktualisiert sich alle 60 s. Alternativ statisch selbst hosten (der
+Datenabruf läuft über die öffentliche ThingSpeak-API). Ein direktes Öffnen als
+lokale Datei (`file://`) funktioniert auf Android-Browsern nicht mehr – dafür ist
+das Pages-Hosting da.
 
 ## Herkunft
 
 Ausgegliedert aus dem Firmware-Repo `GrosjHOME/PV-Anlage` (das Haus-Dashboard
-gehörte thematisch nicht ins PV-Firmware-Repo). Die Git-Historie des `HP/`-
-Ordners wurde per `git subtree split` übernommen.
+gehörte thematisch nicht ins PV-Firmware-Repo). Die Git-Historie des `HP/`-Ordners
+wurde per `git subtree split` übernommen.
