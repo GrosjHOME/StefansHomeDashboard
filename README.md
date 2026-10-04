@@ -17,11 +17,11 @@ aktualisiert sich alle 60 s · am Handy als App-Kachel nutzbar
 
 | Tab | Was man sieht |
 |---|---|
-| ☀️ **PV-Anlage** | Aktuelle Leistung gegen die Soll-Leistung aus der Prognose (Soll-Strich, Toleranzband ±10 %, Farbverlauf orange → grün) · Energie heute/gestern/Monat/Jahr · Leistungsverlauf · Energie nach Tagen (mit 3-Tage-Prognose und Min/Max desselben Kalendertags der Vorjahre), Monaten und Jahren (laufende Periode gegen Ø und Min/Max **aller** Jahre ab 2014) · PV-Arbeit je Jahr · Strom und Spannung je MPP-Tracker · Tracker-Strom mittags zur Verlust-Diagnose |
-| 🚗 **Wallbox** | Zwei Gruppen mit eigener Aktualität: **Wallbox** (Ladeleistung, PV-Ladevorgabe, Ladestrom-Begrenzung, Verbindung, geladene Menge) und **Auto** (VW ID.3 via Tibber: Ladezustand, Ziel, Reichweite, Stecker, Ladestatus) · Verläufe |
-| 🔥 **Heizung** | **Kessel & Schnitzel** (Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **HSH-Auslastung** · Verläufe |
-| 💧 **Boiler** | Temperaturen Mitte/Unten mit den Schaltschwellen der Steuerung (Laden ein < 45 °C, aus > 58 bzw. 63 °C) · Ladeleistung gegen Einschaltschwelle und PV · geladene Menge |
-| 🗓️ **Nutzung** | 7-Tage-Solarprognose (Open-Meteo, stündlich an den letzten 14 Tagen kalibriert, heute mit Nowcast) · Tageskarten mit Empfehlungen für Waschmaschine, Geschirrspüler, Tumbler, Auto und Boiler |
+| ☀️&nbsp;**PV&#8209;Anlage** | Aktuelle Leistung gegen die Soll-Leistung aus der Prognose (Soll-Strich, Toleranzband ±10 %, Farbverlauf orange → grün) · Energie heute/gestern/Monat/Jahr · Leistungsverlauf · Energie nach Tagen (mit 3-Tage-Prognose und Min/Max desselben Kalendertags der Vorjahre), Monaten und Jahren (laufende Periode gegen Ø und Min/Max **aller** Jahre ab 2014) · PV-Arbeit je Jahr · Strom und Spannung je MPP-Tracker · Tracker-Strom mittags zur Verlust-Diagnose |
+| 🚗&nbsp;**Wallbox** | Zwei Gruppen mit eigener Aktualität: **Wallbox** (Ladeleistung, PV-Ladevorgabe, Ladestrom-Begrenzung, Verbindung, geladene Menge) und **Auto** (VW ID.3 via Tibber: Ladezustand, Ziel, Reichweite, Stecker, Ladestatus) · Verläufe |
+| 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **HSH-Auslastung** · Verläufe |
+| 💧&nbsp;**Boiler** | Temperaturen Mitte/Unten mit den Schaltschwellen der Steuerung (Laden ein < 45 °C, aus > 58 bzw. 63 °C) · Ladeleistung gegen Einschaltschwelle und PV · geladene Menge |
+| 🗓️&nbsp;**Nutzung** | 7-Tage-Solarprognose (Open-Meteo, stündlich an den letzten 14 Tagen kalibriert, heute mit Nowcast) · Tageskarten mit Empfehlungen für Waschmaschine, Geschirrspüler, Tumbler, Auto und Boiler |
 
 ## Datenfluss
 
