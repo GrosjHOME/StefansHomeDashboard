@@ -92,6 +92,16 @@ Rückfall ohne Verbindung (die Seite startet dann, die Live-Daten fehlen).
 Daten-APIs anderer Server (ThingSpeak, Open-Meteo) fasst er nicht an. Bei
 Änderungen an `sw.js` die Cache-Version (`zuhause-v1`) hochzählen.
 
+**Updates kommen von selbst:** Die Live-Daten laufen alle 60 s. Eine neue
+Dashboard-Version lädt die App selbst – beim **Zurückwechseln** in die App (nach
+mindestens 5 min im Hintergrund) und **alle 6 h**, falls sie dauernd sichtbar offen
+ist. Dazu vergleicht sie den Fingerabdruck der Seite (ETag von GitHub Pages) mit
+dem beim Laden; nur wenn er sich geändert hat, lädt sie neu (gleicher Tab). Nach
+einem Merge dauert es durch Pages-Build und Browser-Cache bis zu ~15 min.
+App-Name und Icon aktualisieren Android/Windows selbst (kann bis zu einem Tag
+dauern); auf dem iPhone muss die App dafür neu zum Home-Bildschirm hinzugefügt
+werden.
+
 > [!NOTE]
 > Pages verlangt bei diesem Konto ein **öffentliches** Repo. Im Code liegen nur
 > ThingSpeak-**Lese**-Keys – keine Schreib-Keys, keine Passwörter.
