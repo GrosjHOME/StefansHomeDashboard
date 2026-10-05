@@ -72,8 +72,10 @@ object WidgetAnsicht {
         // ganzes Widget antippen = neu laden
         val neu = Intent(ctx, ZuhauseWidget::class.java).setAction(ZuhauseWidget.AKTION_NEU_LADEN)
         v.setOnClickPendingIntent(R.id.root, PendingIntent.getBroadcast(ctx, 0, neu, flags))
-        // Pfeil = Dashboard oeffnen (ist die PWA installiert, oeffnet Android sie direkt)
-        val oeffnen = Intent(Intent.ACTION_VIEW, Uri.parse(DASHBOARD))
-        v.setOnClickPendingIntent(R.id.oeffnen, PendingIntent.getActivity(ctx, 1, oeffnen, flags))
+        // Kopfzeile (Titel, Uhrzeit, Knopf ↗) = Dashboard oeffnen - grosse Tippflaeche;
+        // ist die PWA installiert, oeffnet Android sie direkt
+        val oeffnen = PendingIntent.getActivity(ctx, 1, Intent(Intent.ACTION_VIEW, Uri.parse(DASHBOARD)), flags)
+        v.setOnClickPendingIntent(R.id.kopf, oeffnen)
+        v.setOnClickPendingIntent(R.id.oeffnen, oeffnen)
     }
 }

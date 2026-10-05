@@ -10,7 +10,7 @@ aktualisiert sich alle 60 s · als App installierbar (Android, Windows, iOS)
 
 **Inhalt:** [Ansichten](#ansichten) · [Datenfluss](#datenfluss) ·
 [Projektstruktur](#projektstruktur) · [ThingSpeak-Kanäle](#thingspeak-kanäle) ·
-[Deployment](#deployment) · [Als App installieren](#als-app-installieren-pwa) · [Android-Widget](#android-widget-43) ·
+[Deployment](#deployment) · [Als App installieren](#als-app-installieren-pwa) · [Android-Widget](#android-widget-32) ·
 [PV-Morgenprognose](#pv-morgenprognose-val-town) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
 [Nutzung](#nutzung) · [Herkunft](#herkunft)
 
@@ -44,7 +44,7 @@ Open-Meteo (Einstrahlung, Wetter) ───────────────�
 | `dashboard/manifest.webmanifest` | PWA-Manifest: App-Name, Icons, Farben, Startadresse |
 | `dashboard/sw.js` | Service Worker: macht die Seite installierbar, startet auch ohne Netz |
 | `dashboard/icons/` | App-Icons (SVG-Quellen + PNGs 192/512, randlos für Android, Apple-Icon) |
-| `android-widget/` | Android-App mit 4×3-Widget (Live-Werte), gebaut von `.github/workflows/android-widget.yml` |
+| `android-widget/` | Android-App mit 3×2-Widget (Live-Werte), gebaut von `.github/workflows/android-widget.yml` |
 | `index.html` | Weiterleitung auf `dashboard/` |
 | `thingspeak-dashboard/` | Früheres Dashboard mit ThingSpeak-iframes (Frameset) |
 | `scripts/valtown_id3_tibber.ts` | ID.3-Poller für Val Town – **aktiv** |
@@ -109,10 +109,10 @@ werden.
 > Pages verlangt bei diesem Konto ein **öffentliches** Repo. Im Code liegen nur
 > ThingSpeak-**Lese**-Keys – keine Schreib-Keys, keine Passwörter.
 
-## Android-Widget (4×3)
+## Android-Widget (3×2)
 
 Eine PWA kann unter Android kein Widget mit Live-Daten liefern. Dafür gibt es die
-kleine App in `android-widget/`: Sie besteht nur aus einem **4×3-Widget** für den
+kleine App in `android-widget/`: Sie besteht nur aus einem **3×2-Widget** für den
 Startbildschirm und zeigt
 
 | Zeile | Quelle |
@@ -125,7 +125,7 @@ Startbildschirm und zeigt
 
 **Aktualisierung:** von selbst alle **15 min** (das kürzeste, was Android im
 Hintergrund erlaubt, und nur mit Netz). **Antippen** des Widgets lädt sofort neu.
-Rechts oben zeigt es die Uhrzeit des Stands. Das Symbol **↗** öffnet das Dashboard.
+Rechts oben zeigt es die Uhrzeit des Stands. Die **Kopfzeile** (Titel, Uhrzeit, Knopf **↗**) öffnet das Dashboard.
 
 **Installation:**
 
@@ -137,7 +137,7 @@ Rechts oben zeigt es die Uhrzeit des Stands. Das Symbol **↗** öffnet das Dash
 3. Die App **„Zuhause Widget"** einmal öffnen. Dabei wird die Hintergrund-Aktualisierung
    eingeplant.
 4. Auf dem Startbildschirm lange drücken, dann *Widgets* → **Zuhause Widget** → auf
-   4×3 ziehen. Die Grösse lässt sich danach anpassen.
+   3×2 ziehen. Die Grösse lässt sich danach anpassen.
 5. Ist der **Datensparmodus** an, sperrt Android der App im Hintergrund das Internet.
    Das Widget zeigt dann „Datensparmodus" statt Werten. Abhilfe: In der App
    *App-Einstellungen öffnen* → *Mobile Daten* → **Uneingeschränkte Datennutzung**
