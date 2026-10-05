@@ -180,7 +180,7 @@ jedem Wetter-Update. Fehlt die Morgenprognose, rechnet der Balken wie bisher liv
 | **Dateien** | `prognose.ts` (Trigger **HTTP**: Rechnung + Abruf) und `morgens.ts` (Trigger **Cron** `0 3-7 * * *`) |
 | **Quelltext** | `scripts/valtown_pv_prognose/` – hier ändern, dann in den Val kopieren |
 | **Speicher** | Blob `pv_prognose_YYYY-MM-DD` je Tag (bleibt erhalten, `?datum=…` liefert ältere Tage) |
-| **Im Dashboard** | `PV.PROGNOSE_URL` in `dashboard/index.html` = Web-Adresse von `prognose.ts` |
+| **Web-Adresse** | <https://steffgrosjean--23dbba40c0d911f1a70c1607ee4eb77e.web.val.run/> – im Dashboard `PV.PROGNOSE_URL` |
 
 **Rechnung:**
 - **Einstrahlung:** Open-Meteo liefert die Einstrahlung auf die Modulfläche (60°,
