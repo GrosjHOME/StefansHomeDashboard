@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Farben wie im Dashboard (dunkler Modus) - Android waehlt sie automatisch -->
+<resources>
+    <color name="karte">#F218212B</color>
+    <color name="ink">#E6EDF3</color>
+    <color name="muted">#95A1AD</color>
+    <color name="akzent">#3FBF75</color>
+</resources>

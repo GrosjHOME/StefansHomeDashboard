@@ -1,0 +1,68 @@
+# Baut die Android-Widget-App (android-widget/) und stellt die APK als GitHub-Release
+# "widget-latest" bereit - feste Download-Adresse fuer das Handy:
+#   https://github.com/GrosjHOME/StefansHomeDashboard/releases/download/widget-latest/Zuhause-Widget.apk
+name: Android-Widget bauen
+
+on:
+  push:
+    paths:
+      - "android-widget/**"
+      - ".github/workflows/android-widget.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write          # Schluessel einchecken + Release anlegen
+
+concurrency:
+  group: android-widget
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      # Fester Signatur-Schluessel: einmalig erzeugen und einchecken, damit jedes Update
+      # mit derselben Signatur gebaut wird (sonst muesste man die App jedes Mal neu
+      # installieren). Hobby-App mit oeffentlichen Daten - siehe README.
+      - name: Signatur-Schluessel (einmalig)
+        working-directory: android-widget
+        run: |
+          if [ ! -f keystore/zuhause-widget.jks ]; then
+            mkdir -p keystore
+            keytool -genkeypair -keystore keystore/zuhause-widget.jks -alias zuhause \
+              -keyalg RSA -keysize 2048 -validity 36500 \
+              -storepass zuhause-widget -keypass zuhause-widget -dname "CN=Zuhause Widget"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add keystore/zuhause-widget.jks
+            git commit -m "Android-Widget: Signatur-Schluessel erzeugt"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: APK bauen
+        working-directory: android-widget
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: APK als Release "widget-latest" veroeffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android-widget/app/build/outputs/apk/release/app-release.apk Zuhause-Widget.apk
+          gh release delete widget-latest --yes --cleanup-tag || true
+          gh release create widget-latest Zuhause-Widget.apk \
+            --target "$(git rev-parse HEAD)" \
+            --title "Zuhause-Widget (Android)" \
+            --notes "Build ${{ github.run_number }} vom Branch ${GITHUB_REF_NAME} (Commit $(git rev-parse --short HEAD)). Installation: siehe README, Abschnitt Android-Widget."

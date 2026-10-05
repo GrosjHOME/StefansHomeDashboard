@@ -60,7 +60,10 @@
   .bar > .band{display:none; position:absolute; z-index:0; top:0; bottom:0; background:var(--green); opacity:.18;}
   .bar > .mark{display:none; position:absolute; z-index:2; top:0; bottom:0; width:3px; margin-left:-1.5px; border-radius:2px; background:var(--ink); opacity:.55;}
   .bar-soll{font-size:.72rem; color:var(--muted); margin-top:4px;}
-  .bar-scale{display:flex; justify-content:space-between; font-size:.72rem; color:var(--muted); margin-top:3px;}
+  .bar-scale{position:relative; display:flex; justify-content:space-between; font-size:.72rem; color:var(--muted); margin-top:3px;}
+  /* Mittlere Skalenbeschriftung: am Soll-Strich (bzw. 15 kW in der Mitte, wenn kein Soll) */
+  .bar-scale .mid{position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap;}
+  .bar-scale .mid.soll{color:var(--ink); font-weight:600;}
 
   .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:16px;}
   .kpi{background:var(--card); border-radius:12px; box-shadow:var(--shadow); padding:14px 16px;}
@@ -413,7 +416,7 @@ PV.render=function(main){
         '<div class="meta"><div id="sd-status"><span class="dot na"></span>SD-Karte</div><div id="updated">wird geladen…</div></div>'+
       '</div></div>'+
     '<div class="hero"><div class="lbl">Aktuelle Leistung</div><div class="val"><span id="power">–</span> <small>kW</small></div>'+
-      '<div class="bar"><i class="band" id="power-band"></i><span id="power-bar" style="width:0%"></span><i class="mark" id="power-soll"></i></div><div class="bar-scale"><span>0</span><span>15 kW</span><span>30 kW</span></div>'+
+      '<div class="bar"><i class="band" id="power-band"></i><span id="power-bar" style="width:0%"></span><i class="mark" id="power-soll"></i></div><div class="bar-scale"><span>0</span><span class="mid" id="power-scale-mid">15 kW</span><span>30 kW</span></div>'+
       '<div class="bar-soll" id="power-soll-txt"></div></div>'+
     '<div class="kpis">'+
       kpiCard("Heute","e-today","kWh")+kpiCard("Gestern","e-yesterday","kWh")+kpiCard("Aktueller Monat","e-month","kWh")+
@@ -568,7 +571,9 @@ PV.sollJetzt=function(c){
 PV.updateSoll=function(pKW){
   function g(id){return document.getElementById(id);}
   var bar=g("power-bar"), mk=g("power-soll"), bd=g("power-band"), tx=g("power-soll-txt"); if(!bar)return;
-  function neutral(){ bar.style.background=""; if(mk)mk.style.display="none"; if(bd)bd.style.display="none"; if(tx)tx.textContent=""; }
+  var sm=g("power-scale-mid");
+  function neutral(){ bar.style.background=""; if(mk)mk.style.display="none"; if(bd)bd.style.display="none"; if(tx)tx.textContent="";
+    if(sm){ sm.textContent="15 kW"; sm.style.left="50%"; sm.className="mid"; } }   // ohne Soll: feste Mitte
   if(pKW===null){ neutral(); return; }
   PLANNER.ensureForecast().then(function(c){
     if(!g("power-bar"))return;   // Ansicht inzwischen gewechselt
@@ -585,8 +590,11 @@ PV.updateSoll=function(pKW){
       bar.style.background="linear-gradient(90deg, var(--amber) 0%, var(--amber) "+st(lo)+", var(--green) "+st(s)+")"; }
     if(bd){ bd.style.display="block"; bd.style.left=pc(lo)+"%"; bd.style.width=(pc(hi)-pc(lo))+"%"; }
     if(mk){ mk.style.display="block"; mk.style.left=pc(s)+"%"; mk.title="Soll jetzt: "+fmt(s,1)+" kW"; }
+    // Skala: mittlere Beschriftung an den Soll-Strich; am Rand etwas nach innen, damit sie nicht
+    // mit "0" bzw. "30 kW" kollidiert (der Strich selbst bleibt exakt).
+    if(sm){ sm.textContent="Soll "+fmt(s,1)+" kW"; sm.style.left=Math.max(12,Math.min(85,pc(s)))+"%"; sm.className="mid soll"; }
     var dv=Math.round((pKW/s-1)*100);
-    if(tx) tx.textContent="Soll jetzt (Prognose): "+fmt(s,1)+" kW · Ist "+(dv>0?"+":"")+dv+" % – "+lage+" (±"+fmt(tol,1)+" kW)";
+    if(tx) tx.textContent="Soll "+fmt(s,1)+" kW · Ist "+(dv>0?"+":"")+dv+" % – "+lage+" (±"+fmt(tol,1)+" kW)";
   }).catch(neutral);
 };
 PV.load=function(){

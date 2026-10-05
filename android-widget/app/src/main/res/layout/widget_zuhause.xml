@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget "Zuhause" (Ziel 4x3): Kopfzeile + vier Zeilen. Ganzes Widget antippen = neu laden,
+     Pfeil oben rechts = Dashboard oeffnen. Werte setzt WidgetAnsicht.kt. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/titel"
+            android:textColor="@color/ink"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/stand"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/laedt"
+            android:textColor="@color/muted"
+            android:textSize="12sp" />
+        <TextView
+            android:id="@+id/oeffnen"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="12dp"
+            android:paddingEnd="2dp"
+            android:text="↗"
+            android:textColor="@color/akzent"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout style="@style/Zeile">
+        <TextView style="@style/Bezeichnung" android:text="☀️  PV" />
+        <TextView android:id="@+id/pv" style="@style/Wert" android:textColor="@color/akzent" />
+    </LinearLayout>
+
+    <LinearLayout style="@style/Zeile">
+        <TextView style="@style/Bezeichnung" android:text="💧  Boiler" />
+        <TextView android:id="@+id/boiler" style="@style/Wert" />
+    </LinearLayout>
+
+    <LinearLayout style="@style/Zeile">
+        <TextView style="@style/Bezeichnung" android:text="🚗  Auto" />
+        <TextView android:id="@+id/auto" style="@style/Wert" />
+    </LinearLayout>
+
+    <LinearLayout style="@style/Zeile">
+        <TextView style="@style/Bezeichnung" android:text="🔋  ID.3" />
+        <TextView android:id="@+id/id3" style="@style/Wert" />
+    </LinearLayout>
+</LinearLayout>
