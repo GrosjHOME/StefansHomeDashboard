@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Widget-Definition: Standardgroesse 4x3 Felder, in der Groesse veraenderbar.
+<!-- Widget-Definition: Standardgroesse 3x2 Felder, in der Groesse veraenderbar.
      updatePeriodMillis=0: die Aktualisierung plant WorkManager (alle 15 min). -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_beschreibung"
     android:initialLayout="@layout/widget_zuhause"
     android:previewLayout="@layout/widget_zuhause"
-    android:minWidth="250dp"
-    android:minHeight="180dp"
-    android:minResizeWidth="180dp"
-    android:minResizeHeight="110dp"
-    android:targetCellWidth="4"
-    android:targetCellHeight="3"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="160dp"
+    android:minResizeHeight="100dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen" />

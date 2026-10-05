@@ -17,7 +17,7 @@ import androidx.work.WorkerParameters
 import java.util.concurrent.TimeUnit
 
 /**
- * 4x3-Widget "Zuhause": PV, Boiler, Auto (Wallbox) und ID.3.
+ * 3x2-Widget "Zuhause": PV, Boiler, Auto (Wallbox) und ID.3.
  * Aktualisiert sich etwa alle 15 min (Android-Minimum fuer Hintergrundarbeit) und sofort
  * beim Antippen; der Pfeil oben rechts oeffnet das Dashboard.
  */
