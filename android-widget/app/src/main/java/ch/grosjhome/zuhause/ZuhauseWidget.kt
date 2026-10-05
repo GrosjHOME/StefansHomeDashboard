@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -68,7 +69,11 @@ object Aktualisierung {
 
 class AktualisierungsArbeit(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
     override fun doWork(): Result {
-        val werte = Daten.laden()
+        var werte = Daten.laden()
+        // Haeufigste Ursache fuer "nichts geladen": Datensparmodus sperrt Hintergrund-Daten
+        val cm = applicationContext.getSystemService(ConnectivityManager::class.java)
+        if (werte.leer && cm.restrictBackgroundStatus == ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED)
+            werte = werte.copy(fehler = "Datensparmodus")
         WidgetAnsicht.zeige(applicationContext, werte)
         Protokoll.merke(applicationContext, werte)
         // Nichts geladen: noch zweimal versuchen (WorkManager wartet 30 s, dann 60 s)

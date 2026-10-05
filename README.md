@@ -135,6 +135,14 @@ Rechts oben zeigt es die Uhrzeit des Stands. Das Symbol **↗** öffnet das Dash
    eingeplant.
 4. Auf dem Startbildschirm lange drücken, dann *Widgets* → **Zuhause Widget** → auf
    4×3 ziehen. Die Grösse lässt sich danach anpassen.
+5. Ist der **Datensparmodus** an, sperrt Android der App im Hintergrund das Internet.
+   Das Widget zeigt dann „Datensparmodus" statt Werten. Abhilfe: In der App
+   *App-Einstellungen öffnen* → *Mobile Daten* → **Uneingeschränkte Datennutzung**
+   einschalten.
+
+**Fehlersuche:** In der App zeigt **Jetzt testen**, ob der Abruf grundsätzlich
+klappt. Darunter stehen die letzte Hintergrund-Aktualisierung und mögliche
+Einschränkungen durch Datensparmodus oder Akku.
 
 **Updates:** Jeder Push mit Änderungen in `android-widget/` baut über den Workflow
 `.github/workflows/android-widget.yml` eine neue APK und ersetzt das Release
