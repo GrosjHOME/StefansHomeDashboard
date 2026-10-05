@@ -22,6 +22,7 @@ data class Werte(
     val wallbox: Int?,         // Wallbox-Status (field8: 65 getrennt, 66 laedt nicht, 67 laedt)
     val soc: Double?,          // ID.3 Ladezustand in % (Kanal 3514838, field1)
     val reichweiteKm: Double?, // ID.3 Reichweite in km (field2)
+    val zielSoc: Double?,      // ID.3 Soll-Ladezustand in % (field4, in der App eingestellt)
     val geraete: Planer.Ergebnis?, // wie viele Geraete jetzt laufen duerfen (null = Prognose fehlt)
     val zeit: Long,            // Zeitpunkt des Abrufs
     val fehler: String?        // erster Fehler beim Abruf (kurz, deutsch), null = alles geladen
@@ -96,6 +97,7 @@ object Daten {
             wallbox = status,
             soc = letzter(auto, "field1"),
             reichweiteKm = letzter(auto, "field2"),
+            zielSoc = letzter(auto, "field4"),
             geraete = geraete,
             zeit = System.currentTimeMillis(),
             fehler = fehler
@@ -120,7 +122,8 @@ object Daten {
         else -> kw(kwWert)                // 67 = laedt (oder Status unbekannt)
     }
 
-    fun id3(soc: Double?, km: Double?): String =
+    /** "64 → 80 % · 230 km" (Ist → Soll); ohne Soll "64 % · 230 km". */
+    fun id3(soc: Double?, ziel: Double?, km: Double?): String =
         if (soc == null) "–"
-        else "${soc.roundToInt()} %" + (if (km != null) " · ${km.roundToInt()} km" else "")
+        else "${soc.roundToInt()}" + (if (ziel != null) " → ${ziel.roundToInt()}" else "") + " %" + (if (km != null) " · ${km.roundToInt()} km" else "")
 }

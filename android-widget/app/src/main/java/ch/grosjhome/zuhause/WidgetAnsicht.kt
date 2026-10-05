@@ -26,7 +26,7 @@ object WidgetAnsicht {
         v.setTextViewText(R.id.pv, Daten.kw(w.pvKw))
         v.setTextViewText(R.id.boiler, Daten.boiler(w.boilerW))
         v.setTextViewText(R.id.auto, Daten.auto(w.autoKw, w.wallbox))
-        v.setTextViewText(R.id.id3, Daten.id3(w.soc, w.reichweiteKm))
+        v.setTextViewText(R.id.id3, Daten.id3(w.soc, w.zielSoc, w.reichweiteKm))
         geraete(v, w.geraete)
         // Kopfzeile: Uhrzeit; bei Fehler der Grund (ganz leer) bzw. ein Hinweis (teilweise)
         v.setTextViewText(R.id.stand, when {

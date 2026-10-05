@@ -119,7 +119,7 @@ Startbildschirm und zeigt
 | ☀️ PV-Leistung | Kanal 172430 |
 | 💧 Boiler (Ladeleistung, „Wartet auf PV", „Aus") | Kanal 502977 |
 | 🚗 Auto / Wallbox (Ladeleistung, „Lädt nicht", „Getrennt") | Kanal 172228 |
-| 🔋 ID.3 Ladezustand · Reichweite | Kanal 3514838 |
+| 🔋 ID.3 Ladezustand → Soll-Ladezustand · Reichweite | Kanal 3514838 |
 
 **Aktualisierung:** von selbst alle **15 min** (das kürzeste, was Android im
 Hintergrund erlaubt, und nur mit Netz). **Antippen** des Widgets lädt sofort neu.
