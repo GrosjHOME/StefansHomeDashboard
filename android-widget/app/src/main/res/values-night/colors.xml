@@ -5,4 +5,5 @@
     <color name="ink">#E6EDF3</color>
     <color name="muted">#95A1AD</color>
     <color name="akzent">#3FBF75</color>
+    <color name="link_bg">#333FBF75</color>
 </resources>

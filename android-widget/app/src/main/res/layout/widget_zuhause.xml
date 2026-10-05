@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Widget "Zuhause" (Ziel 3x2, kompakt): Kopfzeile, Geraete-Zeile + vier Werte-Zeilen.
-     Ganzes Widget antippen = neu laden, Pfeil oben rechts = Dashboard oeffnen.
+<!-- Widget "Zuhause" (Ziel 3x2): Kopfzeile, Geraete-Zeile + vier Werte-Zeilen.
+     Kopfzeile antippen (Titel, Uhrzeit, Knopf ↗) = Dashboard oeffnen, Rest = neu laden.
      Werte setzt WidgetAnsicht.kt. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
@@ -8,12 +8,13 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg"
     android:orientation="vertical"
-    android:paddingStart="12dp"
-    android:paddingTop="8dp"
-    android:paddingEnd="12dp"
-    android:paddingBottom="8dp">
+    android:paddingStart="14dp"
+    android:paddingTop="10dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="14dp">
 
     <LinearLayout
+        android:id="@+id/kopf"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
@@ -25,7 +26,7 @@
             android:maxLines="1"
             android:text="@string/titel"
             android:textColor="@color/ink"
-            android:textSize="13sp"
+            android:textSize="15sp"
             android:textStyle="bold" />
         <TextView
             android:id="@+id/stand"
@@ -35,16 +36,21 @@
             android:maxLines="1"
             android:text="@string/laedt"
             android:textColor="@color/muted"
-            android:textSize="11sp" />
+            android:textSize="12sp" />
         <TextView
             android:id="@+id/oeffnen"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingStart="10dp"
-            android:paddingEnd="2dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/link_bg"
+            android:includeFontPadding="false"
+            android:paddingStart="12dp"
+            android:paddingTop="3dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="3dp"
             android:text="↗"
             android:textColor="@color/akzent"
-            android:textSize="15sp"
+            android:textSize="20sp"
             android:textStyle="bold" />
     </LinearLayout>
 
@@ -54,7 +60,7 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingTop="2dp"
+        android:paddingTop="4dp"
         android:paddingBottom="2dp">
         <TextView
             android:id="@+id/geraete_zahl"
@@ -64,52 +70,50 @@
             android:maxLines="1"
             android:text="–"
             android:textColor="@color/akzent"
-            android:textSize="24sp"
+            android:textSize="30sp"
             android:textStyle="bold" />
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:orientation="vertical"
-            android:paddingStart="8dp">
+            android:paddingStart="10dp">
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="@string/geraete_titel"
                 android:textColor="@color/ink"
-                android:textSize="12sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
             <TextView
                 android:id="@+id/geraete_info"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:textColor="@color/muted"
-                android:textSize="11sp" />
+                android:textSize="12sp" />
         </LinearLayout>
     </LinearLayout>
 
     <LinearLayout style="@style/Zeile">
-        <TextView style="@style/Bezeichnung" android:text="☀️ PV" />
+        <TextView style="@style/Bezeichnung" android:text="☀️  PV" />
         <TextView android:id="@+id/pv" style="@style/Wert" android:textColor="@color/akzent" />
     </LinearLayout>
 
     <LinearLayout style="@style/Zeile">
-        <TextView style="@style/Bezeichnung" android:text="💧 Boiler" />
+        <TextView style="@style/Bezeichnung" android:text="💧  Boiler" />
         <TextView android:id="@+id/boiler" style="@style/Wert" />
     </LinearLayout>
 
     <LinearLayout style="@style/Zeile">
-        <TextView style="@style/Bezeichnung" android:text="🚗 Auto" />
+        <TextView style="@style/Bezeichnung" android:text="🚗  Auto" />
         <TextView android:id="@+id/auto" style="@style/Wert" />
     </LinearLayout>
 
     <LinearLayout style="@style/Zeile">
-        <TextView style="@style/Bezeichnung" android:text="🔋 ID.3" />
+        <TextView style="@style/Bezeichnung" android:text="🔋  ID.3" />
         <TextView android:id="@+id/id3" style="@style/Wert" />
     </LinearLayout>
 </LinearLayout>

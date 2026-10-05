@@ -125,7 +125,7 @@ Startbildschirm und zeigt
 
 **Aktualisierung:** von selbst alle **15 min** (das kürzeste, was Android im
 Hintergrund erlaubt, und nur mit Netz). **Antippen** des Widgets lädt sofort neu.
-Rechts oben zeigt es die Uhrzeit des Stands. Das Symbol **↗** öffnet das Dashboard.
+Rechts oben zeigt es die Uhrzeit des Stands. Die **Kopfzeile** (Titel, Uhrzeit, Knopf **↗**) öffnet das Dashboard.
 
 **Installation:**
 
