@@ -68,8 +68,28 @@ object Aktualisierung {
 
 class AktualisierungsArbeit(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
     override fun doWork(): Result {
-        val werte = try { Daten.laden() } catch (e: Exception) { null }
+        val werte = Daten.laden()
         WidgetAnsicht.zeige(applicationContext, werte)
-        return Result.success()
+        Protokoll.merke(applicationContext, werte)
+        // Nichts geladen: noch zweimal versuchen (WorkManager wartet 30 s, dann 60 s)
+        return if (werte.leer && runAttemptCount < 2) Result.retry() else Result.success()
+    }
+}
+
+/** Letzte Hintergrund-Aktualisierung merken - die App zeigt sie zur Fehlersuche an. */
+object Protokoll {
+    private const val DATEI = "protokoll"
+
+    fun merke(ctx: Context, w: Werte) {
+        ctx.getSharedPreferences(DATEI, Context.MODE_PRIVATE).edit()
+            .putLong("zeit", w.zeit)
+            .putString("ergebnis", if (w.fehler == null) "OK" else if (w.leer) "Fehler: ${w.fehler}" else "teilweise (${w.fehler})")
+            .apply()
+    }
+
+    fun text(ctx: Context): String {
+        val p = ctx.getSharedPreferences(DATEI, Context.MODE_PRIVATE)
+        val zeit = p.getLong("zeit", 0)
+        return if (zeit == 0L) "noch keine" else WidgetAnsicht.uhrzeit(zeit) + " – " + p.getString("ergebnis", "?")
     }
 }
