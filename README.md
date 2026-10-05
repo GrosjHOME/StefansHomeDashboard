@@ -43,6 +43,7 @@ Open-Meteo (Einstrahlung, Wetter) ───────────────�
 | `dashboard/manifest.webmanifest` | PWA-Manifest: App-Name, Icons, Farben, Startadresse |
 | `dashboard/sw.js` | Service Worker: macht die Seite installierbar, startet auch ohne Netz |
 | `dashboard/icons/` | App-Icons (SVG-Quellen + PNGs 192/512, randlos für Android, Apple-Icon) |
+| `android-widget/` | Android-App mit 4×3-Widget (Live-Werte), gebaut von `.github/workflows/android-widget.yml` |
 | `index.html` | Weiterleitung auf `dashboard/` |
 | `thingspeak-dashboard/` | Früheres Dashboard mit ThingSpeak-iframes (Frameset) |
 | `scripts/valtown_id3_tibber.ts` | ID.3-Poller für Val Town – **aktiv** |
@@ -105,6 +106,53 @@ werden.
 > [!NOTE]
 > Pages verlangt bei diesem Konto ein **öffentliches** Repo. Im Code liegen nur
 > ThingSpeak-**Lese**-Keys – keine Schreib-Keys, keine Passwörter.
+
+## Android-Widget (4×3)
+
+Eine PWA kann unter Android kein Widget mit Live-Daten liefern. Dafür gibt es die
+kleine App in `android-widget/`: Sie besteht nur aus einem **4×3-Widget** für den
+Startbildschirm und zeigt
+
+| Zeile | Quelle |
+|---|---|
+| ☀️ PV-Leistung | Kanal 172430 |
+| 💧 Boiler (Ladeleistung, „Wartet auf PV", „Aus") | Kanal 502977 |
+| 🚗 Auto / Wallbox (Ladeleistung, „Lädt nicht", „Getrennt") | Kanal 172228 |
+| 🔋 ID.3 Ladezustand · Reichweite | Kanal 3514838 |
+
+**Aktualisierung:** von selbst alle **15 min** (das kürzeste, was Android im
+Hintergrund erlaubt, und nur mit Netz). **Antippen** des Widgets lädt sofort neu.
+Rechts oben zeigt es die Uhrzeit des Stands. Das Symbol **↗** öffnet das Dashboard.
+
+**Installation:**
+
+1. Auf dem Handy die APK laden:
+   <https://github.com/GrosjHOME/StefansHomeDashboard/releases/download/widget-latest/Zuhause-Widget.apk>
+2. Öffnen und Installation erlauben. Android fragt einmalig, ob der Browser
+   bzw. Dateimanager *Apps aus unbekannten Quellen* installieren darf.
+   Play Protect warnt eventuell vor einer unbekannten App: *Trotzdem installieren*.
+3. Die App **„Zuhause Widget"** einmal öffnen. Dabei wird die Hintergrund-Aktualisierung
+   eingeplant.
+4. Auf dem Startbildschirm lange drücken, dann *Widgets* → **Zuhause Widget** → auf
+   4×3 ziehen. Die Grösse lässt sich danach anpassen.
+
+**Updates:** Jeder Push mit Änderungen in `android-widget/` baut über den Workflow
+`.github/workflows/android-widget.yml` eine neue APK und ersetzt das Release
+`widget-latest`. Die neue APK einfach über die alte installieren; das Widget
+bleibt dabei erhalten.
+
+Technik: Kotlin, `AppWidgetProvider` + `RemoteViews`, WorkManager für den
+15-min-Takt, keine weiteren Bibliotheken. Ab Android 10. Hell/Dunkel folgt dem
+System.
+
+> [!NOTE]
+> Der **Signatur-Schlüssel** `android-widget/keystore/zuhause-widget.jks` ist
+> absichtlich eingecheckt. Das Passwort steht in `app/build.gradle.kts`. So
+> entsteht jede APK mit derselben Signatur, und Updates lassen sich über die
+> installierte Version installieren. Für eine selbst installierte Hobby-App, die
+> nur öffentliche Daten zeigt, ist das in Ordnung. Für den Play Store taugt der
+> Schlüssel nicht. Der Workflow erzeugt ihn beim ersten Build selbst, falls er
+> fehlt.
 
 ## ID.3-Ladezustand (Tibber-Poller)
 
