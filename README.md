@@ -10,14 +10,15 @@ aktualisiert sich alle 60 s · als App installierbar (Android, Windows, iOS)
 
 **Inhalt:** [Ansichten](#ansichten) · [Datenfluss](#datenfluss) ·
 [Projektstruktur](#projektstruktur) · [ThingSpeak-Kanäle](#thingspeak-kanäle) ·
-[Deployment](#deployment) · [Als App installieren](#als-app-installieren-pwa) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
+[Deployment](#deployment) · [Als App installieren](#als-app-installieren-pwa) · [Android-Widget](#android-widget-43) ·
+[PV-Morgenprognose](#pv-morgenprognose-val-town) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
 [Nutzung](#nutzung) · [Herkunft](#herkunft)
 
 ## Ansichten
 
 | Tab | Was man sieht |
 |---|---|
-| ☀️&nbsp;**PV&#8209;Anlage** | Aktuelle Leistung gegen die Soll-Leistung aus der Prognose (Soll-Strich, Toleranzband ±10 %, Farbverlauf orange → grün) · Energie heute/gestern/Monat/Jahr · Leistungsverlauf · Energie nach Tagen (mit 3-Tage-Prognose und Min/Max desselben Kalendertags der Vorjahre), Monaten und Jahren (laufende Periode gegen Ø und Min/Max **aller** Jahre ab 2014) · PV-Arbeit je Jahr · Strom und Spannung je MPP-Tracker · Tracker-Strom mittags zur Verlust-Diagnose |
+| ☀️&nbsp;**PV&#8209;Anlage** | Aktuelle Leistung gegen die Soll-Leistung aus der Prognose (Soll-Strich, Toleranzband ±10 %, Farbverlauf orange → grün) · Energie heute/gestern/Monat/Jahr · Leistungsverlauf (heute mit der Morgenprognose von 05:00, blau gestrichelt) · Energie nach Tagen (mit 3-Tage-Prognose und Min/Max desselben Kalendertags der Vorjahre), Monaten und Jahren (laufende Periode gegen Ø und Min/Max **aller** Jahre ab 2014) · PV-Arbeit je Jahr · Strom und Spannung je MPP-Tracker · Tracker-Strom mittags zur Verlust-Diagnose |
 | 🚗&nbsp;**Wallbox** | Zwei Gruppen mit eigener Aktualität: **Wallbox** (Ladeleistung, PV-Ladevorgabe, Ladestrom-Begrenzung, Verbindung, geladene Menge) und **Auto** (VW ID.3 via Tibber: Ladezustand, Ziel, Reichweite, Stecker, Ladestatus) · Verläufe |
 | 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **HSH-Auslastung** · Verläufe |
 | 💧&nbsp;**Boiler** | Temperaturen Mitte/Unten mit den Schaltschwellen der Steuerung (Laden ein < 45 °C, aus > 58 bzw. 63 °C) · Ladeleistung gegen Einschaltschwelle und PV · geladene Menge |
@@ -47,6 +48,7 @@ Open-Meteo (Einstrahlung, Wetter) ───────────────�
 | `index.html` | Weiterleitung auf `dashboard/` |
 | `thingspeak-dashboard/` | Früheres Dashboard mit ThingSpeak-iframes (Frameset) |
 | `scripts/valtown_id3_tibber.ts` | ID.3-Poller für Val Town – **aktiv** |
+| `scripts/valtown_pv_prognose/` | PV-Morgenprognose für Val Town (05:00, 15-min-Raster) |
 | `scripts/tibber_token_neu.ps1` | Frischen Tibber-Refresh-Token erzeugen |
 | `scripts/id3_tibber_cloud.py` | Früherer GitHub-Actions-Poller (Reserve) |
 | `scripts/thingspeak_trigger_id3.m` | ThingSpeak-TimeControl-Auslöser (Alternative) |
@@ -115,10 +117,11 @@ Startbildschirm und zeigt
 
 | Zeile | Quelle |
 |---|---|
+| **Geräte jetzt einschalten** (gross, zuoberst): „2 von 3" + freie Leistung | gleiche Rechnung wie „Jetzt: n von 3 gleichzeitig" im Tab Nutzung (Open-Meteo-Prognose, 14-Tage-Kalibrierung, Nowcast, Boiler/Auto mit Vorrang) |
 | ☀️ PV-Leistung | Kanal 172430 |
 | 💧 Boiler (Ladeleistung, „Wartet auf PV", „Aus") | Kanal 502977 |
 | 🚗 Auto / Wallbox (Ladeleistung, „Lädt nicht", „Getrennt") | Kanal 172228 |
-| 🔋 ID.3 Ladezustand · Reichweite | Kanal 3514838 |
+| 🔋 ID.3 Ladezustand → Soll-Ladezustand · Reichweite | Kanal 3514838 |
 
 **Aktualisierung:** von selbst alle **15 min** (das kürzeste, was Android im
 Hintergrund erlaubt, und nur mit Netz). **Antippen** des Widgets lädt sofort neu.
@@ -135,6 +138,14 @@ Rechts oben zeigt es die Uhrzeit des Stands. Das Symbol **↗** öffnet das Dash
    eingeplant.
 4. Auf dem Startbildschirm lange drücken, dann *Widgets* → **Zuhause Widget** → auf
    4×3 ziehen. Die Grösse lässt sich danach anpassen.
+5. Ist der **Datensparmodus** an, sperrt Android der App im Hintergrund das Internet.
+   Das Widget zeigt dann „Datensparmodus" statt Werten. Abhilfe: In der App
+   *App-Einstellungen öffnen* → *Mobile Daten* → **Uneingeschränkte Datennutzung**
+   einschalten.
+
+**Fehlersuche:** In der App zeigt **Jetzt testen**, ob der Abruf grundsätzlich
+klappt. Darunter stehen die letzte Hintergrund-Aktualisierung und mögliche
+Einschränkungen durch Datensparmodus oder Akku.
 
 **Updates:** Jeder Push mit Änderungen in `android-widget/` baut über den Workflow
 `.github/workflows/android-widget.yml` eine neue APK und ersetzt das Release
@@ -153,6 +164,60 @@ System.
 > nur öffentliche Daten zeigt, ist das in Ordnung. Für den Play Store taugt der
 > Schlüssel nicht. Der Workflow erzeugt ihn beim ersten Build selbst, falls er
 > fehlt.
+
+## PV-Morgenprognose (Val Town)
+
+Jeden Morgen um **05:00** rechnet ein Val auf Val Town die PV-Leistung für den
+ganzen Tag in **15-Minuten-Schritten** und friert sie ein. Das Dashboard zeigt sie
+in der Grafik **Leistung** (Ansicht *Heute*) als **blau gestrichelte Linie** und
+nimmt sie als **Soll** am Balken *Aktuelle Leistung*. So bleibt den ganzen Tag
+sichtbar, was am Morgen erwartet wurde. Die Live-Prognose ändert sich dagegen mit
+jedem Wetter-Update. Fehlt die Morgenprognose, rechnet der Balken wie bisher live.
+
+| | |
+|---|---|
+| **Ort** | val.town, Konto `steffgrosjean`, Val **PV-Prognose** |
+| **Dateien** | `prognose.ts` (Trigger **HTTP**: Rechnung + Abruf) und `morgens.ts` (Trigger **Cron** `0 3-7 * * *`) |
+| **Quelltext** | `scripts/valtown_pv_prognose/` – hier ändern, dann in den Val kopieren |
+| **Speicher** | Blob `pv_prognose_YYYY-MM-DD` je Tag (bleibt erhalten, `?datum=…` liefert ältere Tage) |
+| **Web-Adresse** | <https://steffgrosjean--23dbba40c0d911f1a70c1607ee4eb77e.web.val.run/> – im Dashboard `PV.PROGNOSE_URL` |
+
+**Rechnung:**
+- **Einstrahlung:** Open-Meteo liefert die Einstrahlung auf die Modulfläche (60°,
+  Süd) im 15-min-Raster.
+- **Umrechnung in kW:** Je Tagesstunde gilt der Median von *Ist-Leistung ÷
+  Einstrahlung* der letzten 15 Tage, zwischen den Stunden linear interpoliert.
+  Darin stecken die Verschattung im Tal und die Begrenzung der Wechselrichter.
+- **Zeitzuordnung:** Open-Meteo-Strahlung ist das Mittel des *vorangehenden*
+  Intervalls (Stempel 13:15 = 13:00–13:15), ThingSpeak-Stundenmittel tragen den
+  Stempel des Intervall*beginns*. Die Rechnung ordnet beide passend zu.
+
+**Zeitplan:** Der Cron läuft stündlich von 03 bis 07 Uhr UTC. Er rechnet beim
+ersten Lauf ab 05:00 Ortszeit, also im Sommer wie im Winter um 05:00. Die
+weiteren Läufe holen die Rechnung nur nach, falls ein Lauf gescheitert ist. Fragt
+das Dashboard nach 05:00 und es gibt noch keine Prognose, rechnet `prognose.ts`
+sofort. Die Legende zeigt dann die tatsächliche Uhrzeit.
+
+<details>
+<summary><b>Einrichtung Schritt für Schritt</b></summary>
+
+1. In Val Town **New Val** anlegen, Name **PV-Prognose**.
+2. Datei **`prognose.ts`** anlegen, den Inhalt von
+   `scripts/valtown_pv_prognose/prognose.ts` einfügen und als Trigger **HTTP**
+   wählen. Den Vorlagen-Code vorher ganz ersetzen.
+3. Datei **`morgens.ts`** anlegen, den Inhalt von
+   `scripts/valtown_pv_prognose/morgens.ts` einfügen und als Trigger **Cron** mit
+   dem Ausdruck `0 3-7 * * *` wählen.
+4. Umgebungsvariablen braucht es keine. Der PV-Lese-Key ist derselbe öffentliche
+   wie im Dashboard.
+5. Test: die Web-Adresse von `prognose.ts` im Browser öffnen. Nach 05:00 kommt
+   JSON mit `datum`, `tagesKwh` und 96 `punkte`.
+6. Diese Adresse in `dashboard/index.html` bei `PV.PROGNOSE_URL` eintragen.
+
+Der Val ist öffentlich (Gratis-Plan). Die Web-Adresse liefert nur die Prognose,
+also öffentliche Daten. Mehr als eine Rechnung pro Tag kann niemand auslösen.
+
+</details>
 
 ## ID.3-Ladezustand (Tibber-Poller)
 
