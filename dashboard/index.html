@@ -594,7 +594,7 @@ PV.updateSoll=function(pKW){
     // mit "0" bzw. "30 kW" kollidiert (der Strich selbst bleibt exakt).
     if(sm){ sm.textContent="Soll "+fmt(s,1)+" kW"; sm.style.left=Math.max(12,Math.min(85,pc(s)))+"%"; sm.className="mid soll"; }
     var dv=Math.round((pKW/s-1)*100);
-    if(tx) tx.textContent="Soll jetzt (Prognose): "+fmt(s,1)+" kW · Ist "+(dv>0?"+":"")+dv+" % – "+lage+" (±"+fmt(tol,1)+" kW)";
+    if(tx) tx.textContent="Soll "+fmt(s,1)+" kW · Ist "+(dv>0?"+":"")+dv+" % – "+lage+" (±"+fmt(tol,1)+" kW)";
   }).catch(neutral);
 };
 PV.load=function(){
