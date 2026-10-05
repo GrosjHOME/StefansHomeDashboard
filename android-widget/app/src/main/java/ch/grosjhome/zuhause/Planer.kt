@@ -2,7 +2,10 @@ package ch.grosjhome.zuhause
 
 import android.content.Context
 import org.json.JSONArray
+import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.time.ZonedDateTime
 import kotlin.math.max
 import kotlin.math.min
@@ -35,15 +38,21 @@ object Planer {
         "https://api.open-meteo.com/v1/forecast?latitude=46.966&longitude=7.742" +
                 "&hourly=global_tilted_irradiance&tilt=60&azimuth=0&$zeitraum&timezone=Europe%2FZurich"
 
-    /** Einstrahlung auf die geneigte Flaeche: "YYYY-MM-DDTHH" (Ortszeit) -> W/m² */
+    /**
+     * Einstrahlung auf die geneigte Flaeche: "YYYY-MM-DDTHH" (Ortszeit, Stundenbeginn) -> W/m².
+     * Open-Meteo-Strahlung ist das Mittel der VORANGEHENDEN Stunde (Stempel 13:00 = 12-13 Uhr),
+     * daher gehoert Wert i+1 zur Stunde, die bei Stempel i beginnt - wie die ThingSpeak-Stundenmittel.
+     */
     private fun gti(url: String): Map<String, Double> {
         val h = Daten.json(url).getJSONObject("hourly")
         val t = h.getJSONArray("time")
         val g = h.getJSONArray("global_tilted_irradiance")
         val m = HashMap<String, Double>()
-        for (i in 0 until t.length()) if (!g.isNull(i)) m[t.getString(i).take(13)] = g.getDouble(i)
+        for (i in 0 until t.length() - 1) if (!g.isNull(i + 1)) m[t.getString(i).take(13)] = g.getDouble(i + 1)
         return m
     }
+
+    private val UTC_STEMPEL = DateTimeFormatter.ofPattern("yyyy-MM-dd'%20'HH:mm:ss").withZone(ZoneOffset.UTC)
 
     private fun stundenmittel(kanal: Int, tage: Int, key: String? = null): JSONArray =
         Daten.feeds(kanal, "days=$tage&average=60&timezone=Europe/Zurich", key)
@@ -67,24 +76,31 @@ object Planer {
      */
     private fun faktoren(ctx: Context): DoubleArray {
         val p = ctx.getSharedPreferences("planer", Context.MODE_PRIVATE)
-        val alt = p.getString("faktoren", null)
-        if (alt != null && System.currentTimeMillis() - p.getLong("faktoren_zeit", 0) < 6 * 3_600_000L)
+        val alt = p.getString("faktoren_v2", null)
+        if (alt != null && System.currentTimeMillis() - p.getLong("faktoren_v2_zeit", 0) < 6 * 3_600_000L)
             return alt.split(",").map { it.toDouble() }.toDoubleArray()
 
         val g = gti(omUrl("past_days=14&forecast_days=0"))
-        val ist = stundenmittel(PV_KANAL, 14, Daten.PV_READ_KEY)
+        // ThingSpeak mittelt hoechstens ~8000 Rohwerte (~8 Tage) -> drei 5-Tage-Fenster (UTC)
+        val jetzt = System.currentTimeMillis()
+        val tag = 86_400_000L
+        val fenster = (0 until 3).map { k ->
+            val ende = jetzt - k * 5 * tag
+            Daten.feeds(PV_KANAL, "average=60&start=" + UTC_STEMPEL.format(Instant.ofEpochMilli(ende - 5 * tag)) +
+                    "&end=" + UTC_STEMPEL.format(Instant.ofEpochMilli(ende)), Daten.PV_READ_KEY)
+        }
         val proStunde = Array(24) { ArrayList<Double>() }
-        for (i in 0 until ist.length()) {
+        for (ist in fenster) for (i in 0 until ist.length()) {
             val x = ist.getJSONObject(i)
-            val k = x.getString("created_at").take(13)
-            val e = g[k] ?: continue
+            val lokal = Instant.parse(x.getString("created_at")).atZone(ZONE)   // created_at in UTC
+            val e = g[lokal.toLocalDateTime().toString().take(13)] ?: continue
             if (e < 40) continue
             val a = x.optString("field1", "").toDoubleOrNull() ?: continue
-            proStunde[k.substring(11, 13).toInt()].add((a / 1000) / (e / 1000))
+            proStunde[lokal.hour].add((a / 1000) / (e / 1000))
         }
         val f = DoubleArray(24) { h -> proStunde[h].sorted().let { if (it.isEmpty()) 0.0 else it[it.size / 2] } }
         if (f.none { it > 0 }) for (h in 8..17) f[h] = 25.0   // Rueckfall ohne Ist-Daten
-        p.edit().putString("faktoren", f.joinToString(",")).putLong("faktoren_zeit", System.currentTimeMillis()).apply()
+        p.edit().putString("faktoren_v2", f.joinToString(",")).putLong("faktoren_v2_zeit", System.currentTimeMillis()).apply()
         return f
     }
 
