@@ -115,6 +115,7 @@ Startbildschirm und zeigt
 
 | Zeile | Quelle |
 |---|---|
+| **Geräte jetzt einschalten** (gross, zuoberst): „2 von 3" + freie Leistung | gleiche Rechnung wie „Jetzt: n von 3 gleichzeitig" im Tab Nutzung (Open-Meteo-Prognose, 14-Tage-Kalibrierung, Nowcast, Boiler/Auto mit Vorrang) |
 | ☀️ PV-Leistung | Kanal 172430 |
 | 💧 Boiler (Ladeleistung, „Wartet auf PV", „Aus") | Kanal 502977 |
 | 🚗 Auto / Wallbox (Ladeleistung, „Lädt nicht", „Getrennt") | Kanal 172228 |

@@ -5,6 +5,7 @@
     <string name="laedt">lädt …</string>
     <string name="widget_beschreibung">PV, Boiler, Auto und ID.3 live</string>
     <string name="dashboard_oeffnen">Dashboard öffnen</string>
+    <string name="geraete_titel">Geräte jetzt einschalten</string>
     <string name="jetzt_testen">Jetzt testen</string>
     <string name="app_einstellungen">App-Einstellungen öffnen</string>
     <string name="anleitung">So fügst du das Widget hinzu:\n\n1. Auf dem Startbildschirm lange auf eine freie Stelle drücken.\n2. „Widgets“ wählen.\n3. „Zuhause Widget“ suchen und auf den Startbildschirm ziehen (4×3).\n\nGanzes Widget antippen = sofort aktualisieren · ↗ = Dashboard öffnen.\nVon selbst aktualisiert es sich etwa alle 15 Minuten (öfter erlaubt Android nicht).</string>

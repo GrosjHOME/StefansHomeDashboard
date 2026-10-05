@@ -69,7 +69,7 @@ object Aktualisierung {
 
 class AktualisierungsArbeit(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
     override fun doWork(): Result {
-        var werte = Daten.laden()
+        var werte = Daten.laden(applicationContext)
         // Haeufigste Ursache fuer "nichts geladen": Datensparmodus sperrt Hintergrund-Daten
         val cm = applicationContext.getSystemService(ConnectivityManager::class.java)
         if (werte.leer && cm.restrictBackgroundStatus == ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED)

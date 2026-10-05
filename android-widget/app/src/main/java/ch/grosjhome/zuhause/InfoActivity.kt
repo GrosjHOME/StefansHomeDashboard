@@ -64,10 +64,11 @@ class InfoActivity : Activity() {
     private fun testen() {
         zeigeStatus("läuft …")
         Thread {
-            val w = Daten.laden()
+            val w = Daten.laden(this)
             WidgetAnsicht.zeige(this, w)
             val ergebnis = if (w.fehler == null)
-                "OK – PV ${Daten.kw(w.pvKw)}, ID.3 ${Daten.id3(w.soc, w.reichweiteKm)}"
+                "OK – PV ${Daten.kw(w.pvKw)}, ID.3 ${Daten.id3(w.soc, w.reichweiteKm)}, Geräte " +
+                        (w.geraete?.let { "${it.jetzt} von ${it.von}" } ?: "– (Prognose fehlt)")
             else if (w.leer) "Fehler: ${w.fehler}" else "teilweise (${w.fehler})"
             runOnUiThread { zeigeStatus(ergebnis) }
         }.start()

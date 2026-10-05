@@ -1,5 +1,6 @@
 package ch.grosjhome.zuhause
 
+import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -10,6 +11,7 @@ import java.net.URL
 import java.net.UnknownHostException
 import java.util.Locale
 import javax.net.ssl.SSLException
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 /** Live-Werte fuer das Widget - aus denselben ThingSpeak-Kanaelen wie das Dashboard. */
@@ -20,6 +22,7 @@ data class Werte(
     val wallbox: Int?,         // Wallbox-Status (field8: 65 getrennt, 66 laedt nicht, 67 laedt)
     val soc: Double?,          // ID.3 Ladezustand in % (Kanal 3514838, field1)
     val reichweiteKm: Double?, // ID.3 Reichweite in km (field2)
+    val geraete: Planer.Ergebnis?, // wie viele Geraete jetzt laufen duerfen (null = Prognose fehlt)
     val zeit: Long,            // Zeitpunkt des Abrufs
     val fehler: String?        // erster Fehler beim Abruf (kurz, deutsch), null = alles geladen
 ) {
@@ -29,22 +32,24 @@ data class Werte(
 
 object Daten {
     // Derselbe Lese-Key wie im (oeffentlichen) Dashboard; nur Lesen, kein Schreiben.
-    private const val PV_READ_KEY = "6GIAGINL9VN4CTL8"
+    const val PV_READ_KEY = "6GIAGINL9VN4CTL8"
 
-    private fun feeds(kanal: Int, anzahl: Int, key: String? = null): JSONArray {
-        val url = "https://api.thingspeak.com/channels/$kanal/feeds.json?results=$anzahl" +
-                (if (key != null) "&api_key=$key" else "")
+    fun json(url: String): JSONObject {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 10_000
-        c.readTimeout = 10_000
+        c.readTimeout = 15_000
         try {
             if (c.responseCode != 200) throw IOException("HTTP ${c.responseCode}")
-            val text = c.inputStream.bufferedReader().use { it.readText() }
-            return JSONObject(text).getJSONArray("feeds")
+            return JSONObject(c.inputStream.bufferedReader().use { it.readText() })
         } finally {
             c.disconnect()
         }
     }
+
+    /** ThingSpeak-Feeds eines Kanals, abfrage z. B. "results=3" oder "days=1&average=60&...". */
+    fun feeds(kanal: Int, abfrage: String, key: String? = null): JSONArray =
+        json("https://api.thingspeak.com/channels/$kanal/feeds.json?$abfrage" +
+                (if (key != null) "&api_key=$key" else "")).getJSONArray("feeds")
 
     /** Letzter vorhandene Wert eines Feldes - nicht jeder Eintrag enthaelt alle Felder. */
     private fun letzter(f: JSONArray?, feld: String): Double? {
@@ -66,22 +71,32 @@ object Daten {
     }
 
     /** Jeder Kanal einzeln: faellt einer aus, bleiben die anderen Werte trotzdem sichtbar. */
-    fun laden(): Werte {
+    fun laden(ctx: Context): Werte {
         var fehler: String? = null
         fun hole(kanal: Int, anzahl: Int, key: String? = null): JSONArray? =
-            try { feeds(kanal, anzahl, key) } catch (e: Exception) { if (fehler == null) fehler = kurz(e); null }
+            try { feeds(kanal, "results=$anzahl", key) } catch (e: Exception) { if (fehler == null) fehler = kurz(e); null }
 
         val pv = hole(172430, 3, PV_READ_KEY)
         val boiler = hole(502977, 3)
         val wallbox = hole(172228, 10)   // stuendlich kommt ein Eintrag nur mit field1 -> mehrere holen
         val auto = hole(3514838, 3)
+        val pvKw = letzter(pv, "field1")?.div(1000)
+        val boilerW = letzter(boiler, "field3")
+        val autoKw = letzter(wallbox, "field4")?.times(1e-6)
+        val status = letzter(wallbox, "field8")?.roundToInt()
+        // Geraete-Empfehlung: Boiler und Auto (nur wenn die Wallbox laedt) haben Vorrang
+        val geraete = try {
+            Planer.rechne(ctx, pvKw, max(0.0, (boilerW ?: 0.0) / 1000),
+                if (status == 67) max(0.0, autoKw ?: 0.0) else 0.0)
+        } catch (e: Exception) { null }
         return Werte(
-            pvKw = letzter(pv, "field1")?.div(1000),
-            boilerW = letzter(boiler, "field3"),
-            autoKw = letzter(wallbox, "field4")?.times(1e-6),
-            wallbox = letzter(wallbox, "field8")?.roundToInt(),
+            pvKw = pvKw,
+            boilerW = boilerW,
+            autoKw = autoKw,
+            wallbox = status,
             soc = letzter(auto, "field1"),
             reichweiteKm = letzter(auto, "field2"),
+            geraete = geraete,
             zeit = System.currentTimeMillis(),
             fehler = fehler
         )

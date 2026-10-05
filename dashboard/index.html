@@ -1110,6 +1110,8 @@ var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
   // Haushaltsgeraete, Eco-Programme (Datenblaetter: Samsung 7 kg Eco 40-60, Sharp Eco,
   // Elin Waermepumpentrockner 8 kg). h = Laufdauer, peakKw = Spitzenleistung (Aufheizen bzw.
   // Kompressor) fuer "wie viele gleichzeitig", kwh = Energie je Durchgang fuer die Tagespruefung.
+  // Geraete, Grundlast, Boiler-Referenz und die "Jetzt: n von 3"-Rechnung stehen auch im
+  // Android-Widget (android-widget/.../Planer.kt) - Aenderungen dort nachziehen.
   devices:[ {n:"Waschmaschine", h:3, peakKw:2, kwh:0.7}, {n:"Geschirrspüler", h:3.5, peakKw:2, kwh:0.85}, {n:"Tumbler", h:3, peakKw:0.9, kwh:1.45} ],
   car:{ n:"Auto (VW ID.3)", cap:58, minKw:1.3, maxKw:11, kwhPer100:19 },  // Verbrauch 19 kWh/100km
   // Haushalts-Grundlast (kW) je Monat Jan..Dez, tagsueber (von PV gedeckt, daher
