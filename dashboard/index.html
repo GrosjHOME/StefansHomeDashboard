@@ -117,6 +117,18 @@
   .plday .pd-win{font-size:.78rem; color:var(--muted); margin-bottom:6px;}
   .plday .pd-rec{font-size:.85rem; line-height:1.35;}
   footer{font-size:.78rem; color:var(--muted); text-align:center; margin-top:8px;}
+  /* PV-Tab auf breiten Bildschirmen: ganze Breite, zwei Spalten mit zusammengehoerenden Paaren
+     (Leistung | Energie, Jahre | Strom + Spannung, DC | Mittags-Strom). Darunter bleibt alles einspaltig. */
+  @media (min-width:1500px){
+    .wrap.wide{max-width:2400px; padding-left:24px; padding-right:24px;}
+    .pv-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:16px; align-items:start;
+      grid-template-areas:"hero kpi" "leist energ" "jahr strom" "jahr spann" "dc verl";}
+    .pv-grid .a-hero{grid-area:hero; align-self:stretch; display:flex; flex-direction:column; justify-content:center;}
+    .pv-grid .a-kpi{grid-area:kpi; grid-template-columns:repeat(4,minmax(0,1fr));}
+    .pv-grid .a-leist{grid-area:leist;} .pv-grid .a-energ{grid-area:energ;}
+    .pv-grid .a-jahr{grid-area:jahr; align-self:stretch;} .pv-grid .a-strom{grid-area:strom;} .pv-grid .a-spann{grid-area:spann;}
+    .pv-grid .a-dc{grid-area:dc;} .pv-grid .a-verl{grid-area:verl;}
+  }
   @media (max-width:560px){
     .wrap{padding:12px 12px 24px;}
     .nav{gap:8px 12px; padding:8px 12px;}
@@ -415,43 +427,48 @@ PV.render=function(main){
   PV.period="heute";  // bei jedem Mount auf Standard (passt zum aktiven Button)
   PV.energyMode="tage"; PV.energyYear=null; PV.cmpMode="kumuliert";
   var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 Monate</option>'; for(var _y=_cy;_y>=2014;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
-  main.innerHTML='<div class="wrap">'+
+  main.innerHTML='<div class="wrap wide">'+
     '<div class="view-head"><h1>☀️ PV-Anlage</h1>'+
       '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
         '<span class="seg" id="seg-period"><button data-m="heute" class="active">Heute</button><button data-m="24h">24 h</button><button data-m="7tage">7 Tage</button></span>'+
         '<div class="meta"><div id="sd-status"><span class="dot na"></span>SD-Karte</div><div id="updated">wird geladen…</div></div>'+
       '</div></div>'+
-    '<div class="hero"><div class="lbl">Aktuelle Leistung</div><div class="val"><span id="power">–</span> <small>kW</small></div>'+
+    '<div class="pv-grid"><div class="hero a-hero"><div class="lbl">Aktuelle Leistung</div><div class="val"><span id="power">–</span> <small>kW</small></div>'+
       '<div class="bar"><i class="band" id="power-band"></i><span id="power-bar" style="width:0%"></span><i class="mark" id="power-soll"></i></div><div class="bar-scale"><span>0</span><span class="mid" id="power-scale-mid">15 kW</span><span>30 kW</span></div>'+
       '<div class="bar-soll" id="power-soll-txt"></div></div>'+
-    '<div class="kpis">'+
+    '<div class="kpis a-kpi">'+
       kpiCard("Heute","e-today","kWh")+kpiCard("Gestern","e-yesterday","kWh")+kpiCard("Aktueller Monat","e-month","kWh")+
       kpiCard("Letzter Monat","e-lastmonth","kWh")+kpiCard("Dieses Jahr","e-year","kWh")+kpiCard("Ø DC-Spannung","dc-mean","V")+
       kpiCard("Peak","e-peak","kW")+kpiCard("Sonnenstunden","e-sun","h")+'</div>'+
-    '<div class="panel"><h2>Leistung <span class="tag" id="power-tag"></span></h2><div id="chart-power"><div class="chart-empty">wird geladen…</div></div></div>'+
-    '<div class="panel"><h2>Energie <span class="head-ctl"><select id="energy-year" style="display:none;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px">'+yearOpts+'</select><span class="seg" id="seg-energy"><button data-m="tage" class="active">Tage</button><button data-m="monate">Monate</button><button data-m="jahre">Jahre</button></span></span></h2><div id="chart-days"><div class="chart-empty">wird geladen…</div></div></div>'+
-    '<div class="panel"><h2>PV-Arbeit je Jahr <span class="seg" id="seg-cmp"><button data-m="kumuliert" class="active">Kumuliert</button><button data-m="alle">Alle Monate</button><button data-m="gruppiert">Monate aller Jahre</button></span></h2><div id="chart-cumyear"><div class="chart-empty">wird geladen…</div></div>'+
+    '<div class="panel a-leist"><h2>Leistung <span class="tag" id="power-tag"></span></h2><div id="chart-power"><div class="chart-empty">wird geladen…</div></div></div>'+
+    '<div class="panel a-energ"><h2>Energie <span class="head-ctl"><select id="energy-year" style="display:none;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px">'+yearOpts+'</select><span class="seg" id="seg-energy"><button data-m="tage" class="active">Tage</button><button data-m="monate">Monate</button><button data-m="jahre">Jahre</button></span></span></h2><div id="chart-days"><div class="chart-empty">wird geladen…</div></div></div>'+
+    '<div class="panel a-jahr"><h2>PV-Arbeit je Jahr <span class="seg" id="seg-cmp"><button data-m="kumuliert" class="active">Kumuliert</button><button data-m="alle">Alle Monate</button><button data-m="gruppiert">Monate aller Jahre</button></span></h2><div id="chart-cumyear"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note" id="cmp-note"></div></div>'+
-    '<div class="panel"><h2>Strom je MPP-Tracker <span class="tag" id="strom-tag"></span></h2>'+
+    '<div class="panel a-strom"><h2>Strom je MPP-Tracker <span class="tag" id="strom-tag"></span></h2>'+
       '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
       '<span class="it">— WR 5 · - - - WR 6</span></div><div id="chart-strom"><div class="chart-empty">wird geladen…</div></div></div>'+
-    '<div class="panel"><h2>Spannung je MPP-Tracker <span class="tag" id="spannung-tag"></span></h2>'+
+    '<div class="panel a-spann"><h2>Spannung je MPP-Tracker <span class="tag" id="spannung-tag"></span></h2>'+
       '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
       '<span class="it">— WR 5 · - - - WR 6</span></div><div id="chart-spannung"><div class="chart-empty">wird geladen…</div></div></div>'+
-    '<div class="panel"><h2>DC je MPP-Tracker <span class="tag" id="status-time"></span></h2><div id="tracker-holder"><div class="chart-empty">wird geladen…</div></div>'+
+    '<div class="panel a-dc"><h2>DC je MPP-Tracker <span class="tag" id="status-time"></span></h2><div id="tracker-holder"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Tracker 1 &amp; 2 = je 2 Strings parallel, Tracker 3 = 1 String (halb so viele Module – so ausgelegt, daher ~halber Strom).</div></div>'+
-    '<div class="panel"><h2>Tracker-Strom mittags (11–13 h) <span class="tag">Verlust-Diagnose</span></h2>'+
+    '<div class="panel a-verl"><h2>Tracker-Strom mittags (11–13 h) <span class="tag">Verlust-Diagnose</span></h2>'+
       '<div class="legend"><span class="it"><span class="sw" style="border-color:var(--green)"></span>Tracker 1</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--blue)"></span>Tracker 2</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--amber)"></span>Tracker 3</span>'+
       '<span class="it">— WR 5 · - - - WR 6</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--red)"></span>Mittags-PAC (kW, rechts)</span></div><div id="chart-verlust"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Tages-Mittel des Tracker-Stroms im Mittagsfenster (11–13 h) – ein Punkt pro Tag aus dem dedizierten Log-Kanal (volle Historie). Zum Erkennen eines schleichenden Rückgangs über Wochen/Monate; Feld „Mittags-PAC" dient später der Normierung gegen die Einstrahlung.</div></div>'+
-    '<footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
+    '</div><footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
+  // Jahresvergleich an die Hoehe von Strom + Spannung anpassen, sobald diese geladen sind oder
+  // sich die Fensterbreite aendert (nur zweispaltig wirksam, siehe PV.fitJahr)
+  if(PV._ro) PV._ro.disconnect();
+  if(window.ResizeObserver){ PV._ro=new ResizeObserver(function(){ requestAnimationFrame(PV.fitJahr); });
+    [".a-strom",".a-spann"].forEach(function(s){ var e=main.querySelector(s); if(e) PV._ro.observe(e); }); }
   var spd=document.getElementById("seg-period"); if(spd) spd.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.period=b.getAttribute("data-m"); segActive(spd,b); PV.loadPower(); PV.loadTrackers(); PV.loadPeakSun(); });
   function parseEnergyYear(v){ return v?parseInt(v,10):null; }
   var se=document.getElementById("seg-energy"); if(se) se.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.energyMode=b.getAttribute("data-m"); segActive(se,b);
@@ -514,6 +531,25 @@ var CMP_NOTES={
   alle:"Alle Monatssummen seit 2014 chronologisch, jedes Jahr in eigener Farbe.",
   gruppiert:"Je Monat die Jahre nebeneinander – zeigt, wie ein Monat im Vergleich zu den Vorjahren abschneidet."
 };
+// Zweispaltig (ab 1500 px) steht der Jahresvergleich neben Strom + Spannung: seine Hoehe wird so
+// angepasst, dass beide Spalten unten buendig abschliessen (sonst Luecke bzw. Ueberhang).
+// Einspaltig: feste Hoehe 600. Ausgeloest nach dem Zeichnen und wenn Strom/Spannung die Groesse aendern.
+PV.cumH=600;
+PV.fitJahr=function(){
+  var c=PV._cum; if(!c || !document.body.contains(c.holder)) return;
+  var want=600;
+  if(window.matchMedia("(min-width:1500px)").matches){
+    var q=function(s){ return document.querySelector(s); }, st=q(".a-strom"), sp=q(".a-spann"), pn=q(".a-jahr"), nt=q("#cmp-note"), svg=c.holder.querySelector("svg");
+    if(!st||!sp||!pn||!nt||!svg) return;
+    var target=sp.getBoundingClientRect().bottom-st.getBoundingClientRect().top;       // Hoehe der rechten Spalte
+    var natural=nt.getBoundingClientRect().bottom+parseFloat(getComputedStyle(nt).marginBottom||0)+
+      parseFloat(getComputedStyle(pn).paddingBottom||0)-pn.getBoundingClientRect().top;  // Inhalt des Jahres-Panels
+    var r=svg.getBoundingClientRect(); if(!r.width) return;
+    want=Math.max(400, Math.round((r.height+target-natural)*1000/r.width));            // viewBox-Breite 1000
+  }
+  if(Math.abs(want-PV.cumH)<4) return;
+  PV.cumH=want; c.opts.height=want; lineChart(c.holder, c.lines, c.opts);
+};
 PV.loadCumYear=function(){
   var holder=document.getElementById("chart-cumyear"); if(!holder)return;
   var mode=PV.cmpMode, token=++PV.cmpToken;
@@ -554,7 +590,9 @@ PV.loadCumYear=function(){
       var cl=yearsData[n-1].year===curY ? lines[n-1] : null, lp=cl ? cl.pts[cl.pts.length-1] : null;
       if(lp && lp.t.getMonth()<11)
         lines.push({color:cl.color,width:2,dash:true,noTip:true,pts:[lp,{t:new Date(2000,11,15),v:lp.v}]});
-      lineChart(holder, lines, {unit:"MWh",xTicks:xt,legend:legend,zero:true,dec:1,height:600});
+      PV._cum={holder:holder, lines:lines, opts:{unit:"MWh",xTicks:xt,legend:legend,zero:true,dec:1,height:PV.cumH}};
+      lineChart(holder, lines, PV._cum.opts);
+      PV.fitJahr();
     }
   }).catch(function(){ if(token===PV.cmpToken) holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
 };
