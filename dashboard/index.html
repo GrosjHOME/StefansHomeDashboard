@@ -336,7 +336,8 @@ function barChart(holder, bars, opts){
   // Optional: b.lo/b.hi = feine Striche (z. B. Min/Max der Vorjahre), b.show = angezeigter
   // Wert (Beschriftung + Tooltip) statt der Stapelsumme, b.tipExtra = 3. Tooltip-Zeile.
   function total(b){ return b.v+(b.v2||0); }
-  function top(b){ return Math.max(total(b), b.hi||0); }
+  // b.mark = blauer Strich, etwas breiter als der Balken (z. B. Morgenprognose des Tages)
+  function top(b){ return Math.max(total(b), b.hi||0, b.mark||0); }
   var vMax=niceMax(Math.max.apply(null,bars.map(top)));
   function Y(v){ return padT+(H-padT-padB)*(1-v/vMax); }
   var slot=(W-padL-padR)/n, bw=slot*0.6, grid="",yl="";
@@ -350,9 +351,11 @@ function barChart(holder, bars, opts){
     if(b.v2>0){ var y2=Y(tp), h2=Y(b.v)-y2; r+='<rect x="'+x+'" y="'+y2+'" width="'+bw+'" height="'+h2+'" rx="'+rx+'" fill="'+(b.color2||"var(--amber-lt)")+'"/>'; }
     [b.lo,b.hi].forEach(function(lv){ if(lv==null)return; var yy=Y(lv);
       r+='<line x1="'+x+'" x2="'+(x+bw)+'" y1="'+yy+'" y2="'+yy+'" stroke="var(--muted)" stroke-width="2"/>'; });
-    // Beschriftung direkt ueber dem Balken; nur wenn der Max-Strich sie ueberdecken wuerde
-    // (knapp darueber), weicht sie ueber den Strich aus.
-    var yLab=yTop; if(b.hi!=null){ var yh=Y(b.hi); if(yh<=yTop && yh>yTop-26) yLab=yh; }
+    if(b.mark!=null){ var ym=Y(b.mark), ex=bw*0.12;
+      r+='<line x1="'+(x-ex)+'" x2="'+(x+bw+ex)+'" y1="'+ym+'" y2="'+ym+'" stroke="var(--blue)" stroke-width="3" stroke-linecap="round"/>'; }
+    // Beschriftung direkt ueber dem Balken; nur wenn der Max-Strich bzw. der Prognose-Strich sie
+    // ueberdecken wuerde (knapp darueber), weicht sie ueber den Strich aus.
+    var yLab=yTop; [b.hi,b.mark].forEach(function(lv){ if(lv==null)return; var yh=Y(lv); if(yh<=yLab && yh>yLab-26) yLab=yh; });
     if(!many) r+='<text x="'+(x+bw/2)+'" y="'+(yLab-6)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+fmt(b.show!=null?b.show:tp,opts.dec||0)+'</text>';
     if(b.label) r+='<text x="'+(x+bw/2)+'" y="'+(H-22)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+b.label+'</text>'; });
   var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
@@ -640,6 +643,16 @@ PV.morgenPrognose=function(){
   PV._morgen={datum:heute, p:null, t:Date.now(), pr:pr};
   return pr;
 };
+// Gespeicherte Morgenprognosen (?liste=60) -> {YYYY-MM-DD: {kwh, erstellt}}, 30 min gecacht.
+// Fuer "Prognose gegen Ist" in Energie -> Tage. Aeltere Server-Version ohne Liste -> null.
+PV._liste=null;
+PV.prognoseListe=function(){
+  if(!PV.PROGNOSE_URL) return Promise.resolve(null);
+  var c=PV._liste; if(c && Date.now()-c.t<1800000) return Promise.resolve(c.m);
+  return j(PV.PROGNOSE_URL+"?liste=60").then(function(r){ var m=null;
+    if(r && r.tage){ m={}; r.tage.forEach(function(x){ m[x.datum]={kwh:x.kwh, erstellt:x.erstellt}; }); }
+    PV._liste={t:Date.now(), m:m}; return m; }).catch(function(){ return null; });
+};
 // Prognose-Leistung (kW) zu einem Zeitpunkt, zwischen den 15-min-Punkten linear
 PV.morgenBei=function(p, ms){
   var a=p.punkte; if(!a.length || ms<a[0][0] || ms>a[a.length-1][0]) return null;
@@ -891,9 +904,10 @@ PV.loadEnergy=function(){
     Promise.all([
       j(api(PV.CH,"/feeds.json?days=15&average=15",true)),
       PLANNER.ensureForecast().catch(function(){return null;}),
-      pvDayHistory().catch(function(){return null;})
+      pvDayHistory().catch(function(){return null;}),
+      PV.prognoseListe()
     ]).then(function(res){
-      var d=res[0], fc=res[1], hist=res[2], hasHist=false;
+      var d=res[0], fc=res[1], hist=res[2], ml=res[3], hasHist=false;
       var hSpan=PV.DAY_REF_FROM+"–"+String(now.getFullYear()-1).slice(2);
       function band(b, ymd, todayYmd){ if(!hist)return; var t=Math.round((new Date(ymd+"T12:00")-new Date(todayYmd+"T12:00"))/864e5);
         var r=hist(t); if(!r)return; b.lo=r.lo; b.hi=r.hi; hasHist=true;
@@ -934,7 +948,17 @@ PV.loadEnergy=function(){
           }
         });
       }
+      // Morgenprognose je Tag (Val PV-Prognose) als blauer Strich; abgeschlossene Tage mit Abweichung
+      // Ist gegen Prognose, in der Legende die mittlere Abweichung (Betrag) dieser Tage
+      var devs=[], anyMark=false;
+      if(ml){ var tY=ymdOf(now);
+        bars.forEach(function(b){ if(!b.dt) return; var ymd=ymdOf(b.dt), mp=ml[ymd]; if(!mp) return;
+          b.mark=mp.kwh; anyMark=true; var txt="Prognose "+hhmm(Date.parse(mp.erstellt))+" Uhr: "+mp.kwh+" kWh";
+          if(ymd<tY && mp.kwh>0){ var dv=Math.round((b.v/mp.kwh-1)*100); devs.push(Math.abs(dv)); txt+=" · Ist "+(dv>0?"+":"")+dv+" %"; }
+          b.tipExtra=txt+(b.tipExtra?"<br>"+b.tipExtra:""); }); }
       var leg=[{color:"var(--amber)",label:"Ist"},{color:"var(--amber-lt)",label:"Prognose"}];
+      if(anyMark){ var avg=devs.reduce(function(a,x){return a+x;},0)/(devs.length||1);
+        leg.push({color:"var(--blue)",label:"Prognose 05:00"+(devs.length?" (Ø Abweichung ±"+Math.round(avg)+" % über "+devs.length+" Tag"+(devs.length>1?"e":"")+")":"")}); }
       if(hasHist) leg.push({color:"var(--muted)",label:(PV.DAY_REF_WIN ? "Min/Max ±"+PV.DAY_REF_WIN+" Tage " : "Min/Max gleicher Tag ")+hSpan});
       barChart(holder,bars,{unit:"kWh",color:"var(--amber)",legend:leg});
     }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });

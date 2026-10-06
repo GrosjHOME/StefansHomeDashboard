@@ -11,7 +11,7 @@ aktualisiert sich alle 60 s · als App installierbar (Android, Windows, iOS)
 **Inhalt:** [Ansichten](#ansichten) · [Datenfluss](#datenfluss) ·
 [Projektstruktur](#projektstruktur) · [ThingSpeak-Kanäle](#thingspeak-kanäle) ·
 [Deployment](#deployment) · [Als App installieren](#als-app-installieren-pwa) · [Android-Widget](#android-widget-32) ·
-[PV-Morgenprognose](#pv-morgenprognose-val-town) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
+[PV-Morgenprognose](#pv-morgenprognose-val-town) · [Wächter](#wächter-val-town) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
 [Nutzung](#nutzung) · [Herkunft](#herkunft)
 
 ## Ansichten
@@ -49,6 +49,7 @@ Open-Meteo (Einstrahlung, Wetter) ───────────────�
 | `thingspeak-dashboard/` | Früheres Dashboard mit ThingSpeak-iframes (Frameset) |
 | `scripts/valtown_id3_tibber.ts` | ID.3-Poller für Val Town – **aktiv** |
 | `scripts/valtown_pv_prognose/` | PV-Morgenprognose für Val Town (05:00, 15-min-Raster) |
+| `scripts/valtown_waechter/` | Wächter für Val Town: E-Mail bei Störungen |
 | `scripts/tibber_token_neu.ps1` | Frischen Tibber-Refresh-Token erzeugen |
 | `scripts/id3_tibber_cloud.py` | Früherer GitHub-Actions-Poller (Reserve) |
 | `scripts/thingspeak_trigger_id3.m` | ThingSpeak-TimeControl-Auslöser (Alternative) |
@@ -216,6 +217,51 @@ sofort. Die Legende zeigt dann die tatsächliche Uhrzeit.
 
 Der Val ist öffentlich (Gratis-Plan). Die Web-Adresse liefert nur die Prognose,
 also öffentliche Daten. Mehr als eine Rechnung pro Tag kann niemand auslösen.
+
+</details>
+
+**Prognose gegen Ist:** In *Energie → Tage* steht auf jedem Tagesbalken ein
+**blauer Strich** auf der Höhe der Morgenprognose dieses Tages. Der Tooltip zeigt
+Prognose und Abweichung, die Legende die mittlere Abweichung der abgeschlossenen
+Tage. Die Werte kommen aus `prognose.ts?liste=60`.
+
+## Wächter (Val Town)
+
+Ein eigener Val prüft alle 30 Minuten, ob alles läuft, und schickt bei Störungen
+eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
+`std/email` schickt nur an den Kontoinhaber.
+
+| Prüfung | Störung, wenn … |
+|---|---|
+| PV-Anlage, Wallbox, Boiler (Kanäle 172430, 172228, 502977) | seit 45 min kein neuer Wert |
+| ID.3 (Kanal 3514838) | seit 90 min kein neuer Wert, z. B. Tibber-Token-Kette gerissen |
+| Heizung (Kanal 172428) | in der Heizsaison (Okt–Apr) seit 2 h kein neuer Wert |
+| SD-Karte der PV-Steuerung | Feld 7 meldet Fehler |
+| PV-Morgenprognose | ab 06:00 keine Prognose von heute oder nicht um 05:00 erstellt |
+
+**Wann eine Mail kommt:**
+- **Neue Störung:** Eine Störung zählt erst, wenn sie zwei Läufe hintereinander
+  besteht. Einzelne Aussetzer lösen keinen Alarm aus.
+- **Wieder in Ordnung:** Eine Mail meldet, was behoben ist.
+- **Erinnerung:** Einmal täglich, solange etwas gestört ist.
+
+| | |
+|---|---|
+| **Ort** | val.town, Konto `steffgrosjean`, Val **Zuhause-Waechter**, Datei `waechter.ts` |
+| **Takt** | Cron-Trigger alle 30 Minuten |
+| **Quelltext** | `scripts/valtown_waechter/waechter.ts` |
+| **Speicher** | Blob `waechter_status` (gemeldete Störungen, Zeit der letzten Mail) |
+
+<details>
+<summary><b>Einrichtung Schritt für Schritt</b></summary>
+
+1. In Val Town **New Val** anlegen, Name **Zuhause-Waechter**.
+2. Datei **`waechter.ts`** anlegen, den Inhalt von
+   `scripts/valtown_waechter/waechter.ts` einfügen und als Trigger **Cron** alle
+   **30 Minuten** wählen.
+3. Umgebungsvariablen braucht es keine.
+4. Test: **Run**. Im Log steht "alles in Ordnung" oder die gefundenen Probleme.
+   Die erste Mail kommt erst beim zweiten Lauf mit derselben Störung.
 
 </details>
 
