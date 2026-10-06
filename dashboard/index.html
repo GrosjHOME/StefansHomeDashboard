@@ -336,7 +336,7 @@ function barChart(holder, bars, opts){
   // Optional: b.lo/b.hi = feine Striche (z. B. Min/Max der Vorjahre), b.show = angezeigter
   // Wert (Beschriftung + Tooltip) statt der Stapelsumme, b.tipExtra = 3. Tooltip-Zeile.
   function total(b){ return b.v+(b.v2||0); }
-  // b.mark = blauer Strich, etwas breiter als der Balken (z. B. Morgenprognose des Tages)
+  // b.mark = blauer Strich in Balkenbreite (z. B. Morgenprognose des Tages)
   function top(b){ return Math.max(total(b), b.hi||0, b.mark||0); }
   var vMax=niceMax(Math.max.apply(null,bars.map(top)));
   function Y(v){ return padT+(H-padT-padB)*(1-v/vMax); }
@@ -351,8 +351,8 @@ function barChart(holder, bars, opts){
     if(b.v2>0){ var y2=Y(tp), h2=Y(b.v)-y2; r+='<rect x="'+x+'" y="'+y2+'" width="'+bw+'" height="'+h2+'" rx="'+rx+'" fill="'+(b.color2||"var(--amber-lt)")+'"/>'; }
     [b.lo,b.hi].forEach(function(lv){ if(lv==null)return; var yy=Y(lv);
       r+='<line x1="'+x+'" x2="'+(x+bw)+'" y1="'+yy+'" y2="'+yy+'" stroke="var(--muted)" stroke-width="2"/>'; });
-    if(b.mark!=null){ var ym=Y(b.mark), ex=bw*0.12;
-      r+='<line x1="'+(x-ex)+'" x2="'+(x+bw+ex)+'" y1="'+ym+'" y2="'+ym+'" stroke="var(--blue)" stroke-width="3" stroke-linecap="round"/>'; }
+    if(b.mark!=null){ var ym=Y(b.mark);
+      r+='<line x1="'+x+'" x2="'+(x+bw)+'" y1="'+ym+'" y2="'+ym+'" stroke="var(--blue)" stroke-width="3"/>'; }
     // Beschriftung direkt ueber dem Balken; nur wenn der Max-Strich bzw. der Prognose-Strich sie
     // ueberdecken wuerde (knapp darueber), weicht sie ueber den Strich aus.
     var yLab=yTop; [b.hi,b.mark].forEach(function(lv){ if(lv==null)return; var yh=Y(lv); if(yh<=yLab && yh>yLab-26) yLab=yh; });
