@@ -128,6 +128,11 @@
     .pv-grid .a-leist{grid-area:leist;} .pv-grid .a-energ{grid-area:energ;}
     .pv-grid .a-jahr{grid-area:jahr; align-self:stretch;} .pv-grid .a-strom{grid-area:strom;} .pv-grid .a-spann{grid-area:spann;}
     .pv-grid .a-dc{grid-area:dc;} .pv-grid .a-verl{grid-area:verl;}
+    /* Wallbox/Heizung/Boiler: Kennzahl-Gruppen nebeneinander, Grafiken paarweise */
+    .kp-grid{display:grid; grid-template-columns:var(--cols); column-gap:16px; align-items:start;}
+    .ch-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:16px; align-items:stretch;}
+    /* Nutzung: Prognose-Grafik volle Breite (autoW), die 7 Tageskarten in einer Reihe */
+    .plan-wide .pldays{grid-template-columns:repeat(7,minmax(0,1fr));}
   }
   @media (max-width:560px){
     .wrap{padding:12px 12px 24px;}
@@ -216,7 +221,10 @@ function lineChart(holder, series, opts){
   if(all.length<1){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
   // Linker Rand waechst mit der laengsten Text-Beschriftung der Y-Achse (Schrift 21 px, ~11.5 px/Zeichen)
   var longestTick=Math.max.apply(null,[0].concat((opts.yTicks||[]).map(function(tk){ return tk.label!=null?String(tk.label).length:0; })));
-  var W=1000,H=(opts.height||300),padL=Math.max(opts.padL||58, Math.ceil(longestTick*11.5)+16),padR=(hasRight?70:16),padT=28,padB=36;
+  // opts.autoW: Zeichenbreite = Pixelbreite (mind. 1000), damit Schrift und Hoehe bei sehr breiten
+  // Charts (volle Bildschirmbreite) nicht mitwachsen
+  var W=opts.autoW?Math.max(1000,Math.round(holder.clientWidth||0)):1000;
+  var H=(opts.height||300),padL=Math.max(opts.padL||58, Math.ceil(longestTick*11.5)+16),padR=(hasRight?70:16),padT=28,padB=36;
   var tMin=Math.min.apply(null,all.map(function(p){return p.t.getTime();}));
   var tMax=Math.max.apply(null,all.map(function(p){return p.t.getTime();}));
   var singleT=(tMax===tMin); if(singleT)tMax=tMin+1;  // nur ein Zeitpunkt -> mittig
@@ -1085,9 +1093,12 @@ function simpleView(cfg){
       // KPI-Kacheln (Text-Werte kleiner). Mit cfg.sections in beschriftete Gruppen getrennt -
       // je Gruppe eine Quelle mit eigener Aktualitaet ("Stand vor ...", ggf. veraltet).
       function cards(filter){ return cfg.kpis.map(function(k,i){ return filter(k) ? kpiCard(k.label,"kpi_"+i,k.unit||"",k.map?"txt":"") : ""; }).join(""); }
+      // Breit (ab 1500 px) stehen die Gruppen nebeneinander, Spaltenbreite nach Anzahl Kacheln (--cols)
+      var nSec=function(s){ return Math.max(1, cfg.kpis.filter(function(k){ return k.sec===s.key; }).length); };
       var kp = cfg.sections
-        ? cfg.sections.map(function(s){ return '<div class="sec-head"><h2>'+s.title+'</h2><span class="tag" id="sec_'+s.key+'"></span></div>'+
-            '<div class="kpis">'+cards(function(k){ return k.sec===s.key; })+'</div>'; }).join("")
+        ? '<div class="kp-grid" style="--cols:'+cfg.sections.map(function(s){ return "minmax(0,"+nSec(s)+"fr)"; }).join(" ")+'">'+
+          cfg.sections.map(function(s){ return '<div class="kp-sec"><div class="sec-head"><h2>'+s.title+'</h2><span class="tag" id="sec_'+s.key+'"></span></div>'+
+            '<div class="kpis">'+cards(function(k){ return k.sec===s.key; })+'</div></div>'; }).join("")+'</div>'
         : '<div class="kpis">'+cards(function(){ return true; })+'</div>';
       var charts=cfg.charts.map(function(c,i){
         var items=(c.lines||[]).map(function(ln){ return '<span class="it"><span class="sw" style="border-color:'+ln.color+(ln.dash?';border-top-style:dashed':'')+'"></span>'+(ln.label||'')+'</span>'; });
@@ -1095,12 +1106,12 @@ function simpleView(cfg){
         var leg = (c.lines && (c.lines.length>1 || c.minmaxField)) ? '<div class="legend">'+items.join("")+'</div>' : "";
         return '<div class="panel"><h2>'+c.title+' <span class="tag" id="ct_'+i+'"></span></h2>'+leg+'<div id="chart_'+i+'"><div class="chart-empty">wird geladen…</div></div>'+(c.note?'<div class="note">'+c.note+'</div>':'')+'</div>';
       }).join("");
-      main.innerHTML='<div class="wrap"><div class="view-head"><h1>'+cfg.icon+" "+cfg.title+'</h1>'+
+      main.innerHTML='<div class="wrap wide"><div class="view-head"><h1>'+cfg.icon+" "+cfg.title+'</h1>'+
         '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
           '<span class="seg" id="seg-period"><button data-m="heute" class="active">Heute</button><button data-m="24h">24 h</button><button data-m="7tage">7 Tage</button></span>'+
           '<div class="meta" id="head-meta">wird geladen…</div>'+
         '</div></div>'+
-        kp+charts+
+        kp+'<div class="ch-grid">'+charts+'</div>'+
         '<footer>Datenquelle: ThingSpeak Kanal '+cfg.channel+' · Aktualisierung alle 60 s · <span id="err2" style="color:var(--red)"></span></footer></div>';
       var sp=g("seg-period"); if(sp) sp.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; mode=b.getAttribute("data-m"); segActive(sp,b); loadCharts(); });
     },
@@ -1210,7 +1221,7 @@ var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
   _cache:null, _pNow:null, _todayActual:null, _boilerNow:null, _boilerThr:null, _boilerTodayKwh:null, _carNow:null, _carVorgabe:null };
 
 PLANNER.render=function(main){
-  main.innerHTML='<div class="wrap">'+
+  main.innerHTML='<div class="wrap wide plan-wide">'+
     '<div class="view-head"><h1>🗓️ Vorgeschlagene Gerätenutzung</h1><div class="meta" id="pl-meta">wird geladen…</div></div>'+
     '<div class="panel"><h2>Solarprognose 7 Tage <span class="tag" id="pl-cal"></span></h2>'+
       '<div id="pl-chart"><div class="chart-empty">wird geladen…</div></div>'+
@@ -1282,7 +1293,7 @@ PLANNER.load=function(){
     // Pro Tag genau eine Datumsbeschriftung, mittig (12:00) unter dem jeweiligen Tagesverlauf
     var plWd=["So","Mo","Di","Mi","Do","Fr","Sa"], plTicks=order.map(function(d){ var nd=new Date(d+"T12:00:00");
       return {t:nd, label:plWd[nd.getDay()]+" "+nd.getDate()+"."+(nd.getMonth()+1)+"."}; });
-    if(g("pl-chart")) lineChart(g("pl-chart"), plSeries, {unit:"kW", dec:1, unit2:"°C", zero2:false, legend:plLegend, xTicks:plTicks});
+    if(g("pl-chart")) lineChart(g("pl-chart"), plSeries, {unit:"kW", dec:1, unit2:"°C", zero2:false, legend:plLegend, xTicks:plTicks, autoW:true});
     // Tageskarten
     var wd=["So","Mo","Di","Mi","Do","Fr","Sa"], today=ymdLocal(new Date());   // Ortszeit (UTC waere 00-02 Uhr noch der Vortag)
     var nowH=new Date().getHours();
