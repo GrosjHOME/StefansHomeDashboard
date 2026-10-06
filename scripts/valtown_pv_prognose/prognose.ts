@@ -19,6 +19,7 @@
 //
 // Abruf: GET <URL dieser Datei>            -> Prognose von heute (fehlt sie nach 05:00: jetzt rechnen)
 //        GET <URL dieser Datei>?datum=2026-10-05 -> gespeicherte Prognose dieses Tages
+//        GET <URL dieser Datei>?liste=60         -> { tage: [{datum, kwh, erstellt}] } der letzten 60 Tage
 // Antwort: { datum, erstellt, schrittMin, tagesKwh, faktoren[24], punkte: [[ms, kW], ...] }
 //          ms = Intervallmitte (Unix-Zeit in Millisekunden)
 
@@ -127,12 +128,25 @@ export async function morgenprognose(): Promise<Prognose | null> {
   return p;
 }
 
+// Alle gespeicherten Tage kurz (fuer "Prognose gegen Ist" im Dashboard), neueste zuletzt
+async function liste(tage: number) {
+  const keys = (await blob.list("pv_prognose_")).map((b: { key: string }) => b.key).sort().slice(-tage);
+  const out: { datum: string; kwh: number; erstellt: string }[] = [];
+  for (const k of keys) {
+    const p = (await blob.getJSON(k).catch(() => undefined)) as Prognose | undefined;
+    if (p) out.push({ datum: p.datum, kwh: p.tagesKwh, erstellt: p.erstellt });
+  }
+  return { tage: out };
+}
+
 export default async function (req: Request): Promise<Response> {
   const h = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json; charset=utf-8" };
   const antwort = (status: number, body: unknown, extra: Record<string, string> = {}) =>
     new Response(JSON.stringify(body), { status, headers: { ...h, ...extra } });
   try {
-    const datum = new URL(req.url).searchParams.get("datum");
+    const q = new URL(req.url).searchParams;
+    if (q.has("liste")) return antwort(200, await liste(Math.min(366, +(q.get("liste") || 0) || 60)), { "Cache-Control": "public, max-age=600" });
+    const datum = q.get("datum");
     let p: Prognose | null | undefined;
     if (datum && datum !== lokal(Date.now()).datum) {
       if (!/^\d{4}-\d\d-\d\d$/.test(datum)) return antwort(400, { fehler: "datum=YYYY-MM-DD" });
