@@ -1,5 +1,5 @@
 // PV-Morgenprognose: rechnet um 05:00 Ortszeit die Prognose des Tages (Val Town, Val
-// "PV-Prognose", Datei morgens.ts, Trigger: Cron). Logik und Abruf: prognose.ts.
+// "grosjeansHomeDashboard", Datei morgens.ts, Trigger: Cron). Logik und Abruf: prognose.ts.
 //
 // Cron-Ausdruck (UTC!): 0 3-7 * * *  -> stuendlich 03-07 UTC = 05:00 Sommerzeit bzw. 05:00
 // Winterzeit beim ersten Lauf ab 05:00 Ortszeit. Die weiteren Laeufe tun nichts, solange die

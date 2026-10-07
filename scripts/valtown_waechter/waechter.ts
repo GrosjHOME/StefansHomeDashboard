@@ -1,12 +1,12 @@
-// Zuhause-Waechter: meldet Stoerungen per E-Mail (Val Town, Val "Zuhause-Waechter", Datei
+// Zuhause-Waechter: meldet Stoerungen per E-Mail (Val Town, Val "grosjeansHomeDashboard", Datei
 // waechter.ts, Trigger: Cron alle 30 min). Einrichtung: README, Abschnitt "Waechter (Val Town)".
 //
 // Prueft bei jedem Lauf:
 //  - liefern alle ThingSpeak-Kanaele noch (letzter Eintrag nicht aelter als maxMin)?
 //    Die Heizung nur in der Heizsaison (Okt-Apr), sonst "Sommerpause".
-//    ID.3-Kanal veraltet = der Tibber-Poller (Val "VW") laeuft nicht, z. B. Token-Kette gerissen.
+//    ID.3-Kanal veraltet = der Tibber-Poller (main.ts im selben Val) laeuft nicht, z. B. Token-Kette gerissen.
 //  - meldet die PV-Steuerung die SD-Karte als OK (Kanal 172430, field7 = 1)?
-//  - ist die PV-Morgenprognose von heute um 05:00 entstanden (Val "PV-Prognose")?
+//  - ist die PV-Morgenprognose von heute um 05:00 entstanden (prognose.ts/morgens.ts im selben Val)?
 //
 // E-Mail: bei einer neuen Stoerung, wenn alles wieder in Ordnung ist, und taeglich als Erinnerung,
 // solange etwas gestoert ist. Eine Stoerung zaehlt erst, wenn sie zwei Laeufe hintereinander
@@ -28,7 +28,7 @@ const KANAELE: { id: string; name: string; kanal: number; key?: string; maxMin: 
   { id: "pv", name: "PV-Anlage", kanal: 172430, key: PV_READ_KEY, maxMin: 45 },
   { id: "wallbox", name: "Wallbox", kanal: 172228, maxMin: 45 },
   { id: "boiler", name: "Boiler", kanal: 502977, maxMin: 45 },
-  { id: "id3", name: "ID.3 (Tibber-Poller, Val VW)", kanal: 3514838, maxMin: 90 },
+  { id: "id3", name: "ID.3 (Tibber-Poller main.ts)", kanal: 3514838, maxMin: 90 },
   { id: "heizung", name: "Heizung", kanal: 172428, maxMin: 120, saison: [9, 10, 11, 0, 1, 2, 3] },
 ];
 
@@ -78,7 +78,7 @@ async function pruefen(): Promise<Record<string, string>> {
       const pr = await r.json();
       if (!r.ok || pr.datum !== heute.datum) p.prognose = `PV-Morgenprognose: keine Prognose für heute (${pr.fehler ?? "HTTP " + r.status})`;
       else if (lokal(Date.parse(pr.erstellt)).h !== 5) {
-        p.prognose = `PV-Morgenprognose: erst um ${zeit(Date.parse(pr.erstellt))} erstellt statt 05:00 (Cron morgens.ts im Val PV-Prognose prüfen)`;
+        p.prognose = `PV-Morgenprognose: erst um ${zeit(Date.parse(pr.erstellt))} erstellt statt 05:00 (Cron morgens.ts prüfen)`;
       }
     } catch (e) {
       p.prognose = `PV-Morgenprognose: nicht abrufbar (${e})`;
