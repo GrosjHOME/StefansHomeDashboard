@@ -38,7 +38,7 @@ Open-Meteo (Einstrahlung, Wetter) ───────────────�
 
 ### Val Town: ein Val, vier Dateien
 
-Alles, was auf einem Server laufen muss, steckt im Val **grosjeansHomeDashboard**
+Alles, was auf einem Server laufen muss, steckt im Val **GrosjeansHomeDashboard**
 (val.town, Konto `steffgrosjean`). Jede Datei hat ihren eigenen Trigger. Den
 Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
 
@@ -194,7 +194,7 @@ jedem Wetter-Update. Fehlt die Morgenprognose, rechnet der Balken wie bisher liv
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **grosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-vier-dateien)) |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-vier-dateien)) |
 | **Dateien** | `prognose.ts` (Trigger **HTTP**: Rechnung + Abruf) und `morgens.ts` (Trigger **Cron** `0 3-7 * * *`) |
 | **Quelltext** | `scripts/valtown_pv_prognose/` – hier ändern, dann in den Val kopieren |
 | **Speicher** | Blob `pv_prognose_YYYY-MM-DD` je Tag (bleibt erhalten, `?datum=…` liefert ältere Tage) |
@@ -219,7 +219,7 @@ sofort. Die Legende zeigt dann die tatsächliche Uhrzeit.
 <details>
 <summary><b>Einrichtung Schritt für Schritt</b></summary>
 
-1. Den Val **grosjeansHomeDashboard** öffnen.
+1. Den Val **GrosjeansHomeDashboard** öffnen.
 2. Datei **`prognose.ts`** anlegen, den Inhalt von
    `scripts/valtown_pv_prognose/prognose.ts` einfügen und als Trigger **HTTP**
    wählen. Den Vorlagen-Code vorher ganz ersetzen.
@@ -266,7 +266,7 @@ eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **grosjeansHomeDashboard**, Datei `waechter.ts` |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard**, Datei `waechter.ts` |
 | **Takt** | Cron-Trigger alle 30 Minuten |
 | **Quelltext** | `scripts/valtown_waechter/waechter.ts` |
 | **Speicher** | Blob `waechter_status` (gemeldete Störungen, Zeit der letzten Mail) |
@@ -274,7 +274,7 @@ eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
 <details>
 <summary><b>Einrichtung Schritt für Schritt</b></summary>
 
-1. Den Val **grosjeansHomeDashboard** öffnen.
+1. Den Val **GrosjeansHomeDashboard** öffnen.
 2. Datei **`waechter.ts`** anlegen, den Inhalt von
    `scripts/valtown_waechter/waechter.ts` einfügen und als Trigger **Cron** alle
    **30 Minuten** wählen.
@@ -311,7 +311,7 @@ Umstellung kommt zuverlässig alle 15 min ein Wert (96 statt ~5 pro Tag).
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **grosjeansHomeDashboard** (früher „VW" bzw. „VW-Tibber"), Datei `main.ts` |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (früher „VW" bzw. „VW-Tibber"), Datei `main.ts` |
 | **Takt** | Cron-Trigger alle 15 Minuten |
 | **Quelltext** | `scripts/valtown_id3_tibber.ts` – das Repo ist die Vorlage: hier ändern, dann in den Val kopieren |
 | **Token-Speicher** | val-eigener Blob-Speicher, Schlüssel `tibber_refresh_token` |

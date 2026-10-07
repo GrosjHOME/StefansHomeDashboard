@@ -631,7 +631,7 @@ PV.sollJetzt=function(c){
 // PV-Morgenprognose vom Server (Val Town, scripts/valtown_pv_prognose/): um 05:00 fuer den
 // ganzen Tag in 15-min-Schritten gerechnet und eingefroren. Grafik "Leistung" (heute, blau
 // gestrichelt) und Soll am Balken nehmen sie; fehlt sie, rechnet der Balken live wie bisher.
-PV.PROGNOSE_URL="https://steffgrosjean--23dbba40c0d911f1a70c1607ee4eb77e.web.val.run/";   // Val grosjeansHomeDashboard, prognose.ts (leer = aus)
+PV.PROGNOSE_URL="https://steffgrosjean--23dbba40c0d911f1a70c1607ee4eb77e.web.val.run/";   // Val GrosjeansHomeDashboard, prognose.ts (leer = aus)
 PV._morgen=null;      // {datum, p, t, pr}
 PV.morgenPrognose=function(){
   if(!PV.PROGNOSE_URL) return Promise.resolve(null);

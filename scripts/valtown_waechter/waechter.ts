@@ -1,4 +1,4 @@
-// Zuhause-Waechter: meldet Stoerungen per E-Mail (Val Town, Val "grosjeansHomeDashboard", Datei
+// Zuhause-Waechter: meldet Stoerungen per E-Mail (Val Town, Val "GrosjeansHomeDashboard", Datei
 // waechter.ts, Trigger: Cron alle 30 min). Einrichtung: README, Abschnitt "Waechter (Val Town)".
 //
 // Prueft bei jedem Lauf:

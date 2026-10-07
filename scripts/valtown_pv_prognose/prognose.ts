@@ -1,4 +1,4 @@
-// PV-Morgenprognose fuer das Dashboard (Val Town, Val "grosjeansHomeDashboard", Datei prognose.ts,
+// PV-Morgenprognose fuer das Dashboard (Val Town, Val "GrosjeansHomeDashboard", Datei prognose.ts,
 // Trigger: HTTP). Einrichtung: README, Abschnitt "PV-Morgenprognose (Val Town)".
 //
 // Jeden Morgen um 05:00 (Datei morgens.ts, Cron) wird die PV-Leistung fuer den ganzen Tag
