@@ -14,7 +14,7 @@
 // die Adresse des Val-Town-Kontos - im Code steht keine Adresse.
 
 import { blob } from "https://esm.town/v/std/blob/main.ts";
-import { email } from "https://esm.town/v/std/email/main.ts";
+import { email } from "https://esm.town/v/std/email";   // ohne /main.ts (sonst 404)
 
 const DASHBOARD = "https://grosjhome.github.io/StefansHomeDashboard/";
 const PROGNOSE_URL = "https://steffgrosjean--23dbba40c0d911f1a70c1607ee4eb77e.web.val.run/";
