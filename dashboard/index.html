@@ -122,7 +122,8 @@
   @media (min-width:1500px){
     .wrap.wide{max-width:2400px; padding-left:24px; padding-right:24px;}
     .pv-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:16px; align-items:start;
-      grid-template-areas:"hero kpi" "leist energ" "jahr strom" "jahr spann" "dc verl";}
+      grid-template-areas:"hero kpi" "leist energ" "jahr strom" "jahr spann" "dc verl" "lf lf";}
+    .pv-grid .a-lf{grid-area:lf;}
     .pv-grid .a-hero{grid-area:hero; align-self:stretch; display:flex; flex-direction:column; justify-content:center;}
     .pv-grid .a-kpi{grid-area:kpi; grid-template-columns:repeat(4,minmax(0,1fr));}
     .pv-grid .a-leist{grid-area:leist;} .pv-grid .a-energ{grid-area:energ;}
@@ -312,17 +313,18 @@ function lineChart(holder, series, opts){
   svg.addEventListener("mousemove",function(ev){
     var rect=svg.getBoundingClientRect(), mx=(ev.clientX-rect.left)/rect.width*W;
     if(mx<padL||mx>W-padR){ ov.style.display="none"; tip.style.opacity=0; return; }
-    var t=tMin+(mx-padL)/(W-padL-padR)*(tMax-tMin), dots="", rows="", anyX=null;
+    var t=tMin+(mx-padL)/(W-padL-padR)*(tMax-tMin), dots="", rows="", anyX=null, t0=null;
     series.forEach(function(s){ if(!s.pts.length||s.bandFrac!=null||s.noTip)return; var best=null,bd=Infinity;
       s.pts.forEach(function(p){ if(p.v==null)return; var dd=Math.abs(p.t.getTime()-t); if(dd<bd){bd=dd;best=p;} });
-      if(best){ var px=X(best.t.getTime()),py=YF(s)(best.v); anyX=px;
+      if(best){ var px=X(best.t.getTime()),py=YF(s)(best.v); anyX=px; if(t0===null) t0=best.t;
         var su=(s.axis==="right")?(opts.unit2||""):(opts.unit||""); var sd=(s.dec!=null)?s.dec:dec;
         dots+='<circle cx="'+px+'" cy="'+py+'" r="3.5" fill="'+s.color+'"/>';
         rows+='<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+s.color+';margin-right:5px"></span>'+fmt(best.v,sd)+' '+su+'</div>'; } });
     if(anyX===null){ ov.style.display="none"; tip.style.opacity=0; return; }
     ov.innerHTML='<line x1="'+anyX+'" x2="'+anyX+'" y1="'+padT+'" y2="'+(H-padB)+'" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"/>'+dots; ov.style.display="";
     var dd=new Date(t), span=tMax-tMin;
-    var hdr= span>26*3600*1000 ? dd.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"})+" "+dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"}) : dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
+    // opts.tipFmt(Zeitpunkt des naechsten Punkts der ersten Serie) ersetzt die Standard-Kopfzeile
+    var hdr= opts.tipFmt ? opts.tipFmt(t0||dd) : span>26*3600*1000 ? dd.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"})+" "+dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"}) : dd.toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
     tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+hdr+'</div>'+rows;
     var px=anyX/W*rect.width; tip.style.left=Math.max(0,Math.min(rect.width-tip.offsetWidth-4, px+10))+"px"; tip.style.top=Math.max(0,(ev.clientY-rect.top)-10)+"px"; tip.style.opacity=1;
   });
@@ -331,7 +333,8 @@ function lineChart(holder, series, opts){
 /* Balkendiagramm */
 function barChart(holder, bars, opts){
   opts=opts||{}; if(!bars.length){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
-  var W=1000,H=300,padL=58,padR=16,padT=28,padB=48,n=bars.length;
+  var W=opts.autoW?Math.max(1000,Math.round(holder.clientWidth||0)):1000;   // autoW wie bei lineChart
+  var H=300,padL=58,padR=16,padT=28,padB=48,n=bars.length;
   // gestapelte Balken moeglich: b.v = unteres Segment, b.v2 = oberes Segment (color2).
   // Optional: b.lo/b.hi = feine Striche (z. B. Min/Max der Vorjahre), b.show = angezeigter
   // Wert (Beschriftung + Tooltip) statt der Stapelsumme, b.tipExtra = 3. Tooltip-Zeile.
@@ -436,6 +439,7 @@ var PV={ CH:172430, period:"heute", energyMode:"tage", energyYear:null, cmpMode:
 function segActive(container, btn){ Array.prototype.forEach.call(container.querySelectorAll("button"), function(b){ b.classList.toggle("active", b===btn); }); }
 PV.render=function(main){
   PV.period="heute";  // bei jedem Mount auf Standard (passt zum aktiven Button)
+  PV.lfMode="jahre";
   PV.energyMode="tage"; PV.energyYear=null; PV.cmpMode="kumuliert";
   var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 Monate</option>'; for(var _y=_cy;_y>=2014;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
   main.innerHTML='<div class="wrap wide">'+
@@ -474,12 +478,16 @@ PV.render=function(main){
       '<span class="it">— WR 5 · - - - WR 6</span>'+
       '<span class="it"><span class="sw" style="border-color:var(--red)"></span>Mittags-PAC (kW, rechts)</span></div><div id="chart-verlust"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Tages-Mittel des Tracker-Stroms im Mittagsfenster (11–13 h) – ein Punkt pro Tag aus dem dedizierten Log-Kanal (volle Historie). Zum Erkennen eines schleichenden Rückgangs über Wochen/Monate; Feld „Mittags-PAC" dient später der Normierung gegen die Einstrahlung.</div></div>'+
+    '<div class="panel a-lf"><h2>Leistungsfaktor <span class="tag" id="lf-tag">Verlust-Diagnose</span><span class="seg" id="seg-lf"><button data-m="jahre" class="active">Jahre</button><button data-m="monate">Monate</button></span></h2>'+
+      '<div id="chart-lf"><div class="chart-empty">wird geladen…</div></div>'+
+      '<div class="note">Leistungsfaktor = PV-Ertrag ÷ Einstrahlung auf die Modulfläche (Open-Meteo-Archiv, Reanalyse ERA5, 60° Süd), in % des Mittels '+PV.LF_REF[0]+'–'+String(PV.LF_REF[1]).slice(2)+'. Unabhängig vom Wetter: Ein sonniger Sommer bringt mehr Ertrag, aber auch mehr Einstrahlung. <b>Jahre:</b> April–September zusammen. Nov–Feb verfälschen Schnee, tiefe Sonne und Verschattung. <b>Monate:</b> März–Oktober einzeln, gestrichelt der Jahreswert. Übliche Modulalterung: etwa 0.5 % pro Jahr.</div></div>'+
     '</div><footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
   // Jahresvergleich an die Hoehe von Strom + Spannung anpassen, sobald diese geladen sind oder
   // sich die Fensterbreite aendert (nur zweispaltig wirksam, siehe PV.fitJahr)
   if(PV._ro) PV._ro.disconnect();
   if(window.ResizeObserver){ PV._ro=new ResizeObserver(function(){ requestAnimationFrame(PV.fitJahr); });
     [".a-strom",".a-spann"].forEach(function(s){ var e=main.querySelector(s); if(e) PV._ro.observe(e); }); }
+  var slf=document.getElementById("seg-lf"); if(slf) slf.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.lfMode=b.getAttribute("data-m"); segActive(slf,b); PV.loadLF(); });
   var spd=document.getElementById("seg-period"); if(spd) spd.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.period=b.getAttribute("data-m"); segActive(spd,b); PV.loadPower(); PV.loadTrackers(); PV.loadPeakSun(); });
   function parseEnergyYear(v){ return v?parseInt(v,10):null; }
   var se=document.getElementById("seg-energy"); if(se) se.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.energyMode=b.getAttribute("data-m"); segActive(se,b);
@@ -545,6 +553,91 @@ var CMP_NOTES={
 // Zweispaltig (ab 1500 px) steht der Jahresvergleich neben Strom + Spannung: seine Hoehe wird so
 // angepasst, dass beide Spalten unten buendig abschliessen (sonst Luecke bzw. Ueberhang).
 // Einspaltig: feste Hoehe 600. Ausgeloest nach dem Zeichnen und wenn Strom/Spannung die Groesse aendern.
+// ---- Leistungsfaktor (Verlust-Diagnose) ----
+// PV-Ertrag je Monat (pvMonthTotal) geteilt durch die Einstrahlung auf die Modulflaeche im selben
+// Monat (Open-Meteo-Archiv = Reanalyse ERA5, 60° Sued, stuendlich aufsummiert). Das Wetter kuerzt
+// sich heraus: sinkt der Faktor ueber die Jahre, verliert die Anlage Leistung (Alterung, PID,
+// Verschmutzung, Defekte). Bezug = April-September der Jahre PV.LF_REF (= 100 %).
+PV.LF_REF=[2014,2016];
+PV.LF_SOMMER=[3,8];          // April-September (Monatsindex 0-11) fuer die Jahreswerte
+PV.LF_MONATE=[2,9];          // Maerz-Oktober in der Monatsansicht
+PV.lfMode="jahre"; PV._lf=null;
+// Einstrahlung je Monat (kWh/m²) eines Jahres; nur abgeschlossene Monate, unvollstaendige
+// (fehlende Stunden im Archiv, ca. 5 Tage Verzug) = null. Abgeschlossene Vorjahre im localStorage.
+function pvMonthIrr(y){
+  var now=new Date(), cy=now.getFullYear(), cm=now.getMonth(), key="pv_h_"+y;
+  var fertig = y<cy-1 || (y===cy-1 && (cm>0 || now.getDate()>10));   // Dezember braucht ein paar Tage
+  if(fertig){ var c=lsGet(key); if(c){ try{ return Promise.resolve(JSON.parse(c)); }catch(e){} } }
+  if(y===cy && cm===0) return Promise.resolve([]);
+  var end = y<cy ? y+"-12-31" : ymdLocal(new Date(cy,cm,0));
+  return j("https://archive-api.open-meteo.com/v1/archive?latitude="+PLANNER.LAT+"&longitude="+PLANNER.LON+
+    "&start_date="+y+"-01-01&end_date="+end+"&hourly=global_tilted_irradiance&tilt="+PLANNER.TILT+"&azimuth="+PLANNER.AZ+"&timezone=Europe%2FZurich")
+  .then(function(r){
+    var t=r.hourly.time, g=r.hourly.global_tilted_irradiance, s=[], luecke={};
+    for(var i=0;i<t.length;i++){ var m=parseInt(t[i].slice(5,7),10)-1;
+      if(g[i]==null){ luecke[m]=true; continue; } s[m]=(s[m]||0)+g[i]/1000; }
+    for(var mm=0;mm<12;mm++){ if(luecke[mm] || s[mm]==null) s[mm]=null; }
+    if(fertig) lsSet(key, JSON.stringify(s));
+    return s; });
+}
+// Alle Monate seit 2014 mit Ertrag e (kWh), Einstrahlung h (kWh/m²), Faktor f; einmal je Seitenaufruf
+PV.lfDaten=function(){
+  if(PV._lf) return PV._lf;
+  var now=new Date(), cy=now.getFullYear(), cm=now.getMonth(), ys=[];
+  for(var y=2014;y<=cy;y++) ys.push(y);
+  PV._lf=Promise.all(ys.map(function(y){
+    var ms=[]; for(var m=0;m<12;m++){ if(y===cy && m>=cm) break; ms.push(m); }
+    return Promise.all([ pvMonthIrr(y).catch(function(){ return []; }),
+      Promise.all(ms.map(function(m){ return pvMonthTotal(y,m).catch(function(){ return null; }); })) ])
+    .then(function(r){ return ms.map(function(m,i){ var e=r[1][i], h=r[0][m];
+      return {y:y, m:m, e:e, h:h, f:(e>0 && h>0) ? e/h : null}; }); });
+  })).then(function(per){
+    var rows=[].concat.apply([],per), se=0, sh=0;
+    rows.forEach(function(r){ if(r.f && r.y>=PV.LF_REF[0] && r.y<=PV.LF_REF[1] && r.m>=PV.LF_SOMMER[0] && r.m<=PV.LF_SOMMER[1]){ se+=r.e; sh+=r.h; } });
+    return {rows:rows, ref: sh>0 ? se/sh : null};
+  });
+  PV._lf.catch(function(){ PV._lf=null; });   // bei Fehler beim naechsten Mal neu versuchen
+  return PV._lf;
+};
+PV.loadLF=function(){
+  var holder=document.getElementById("chart-lf"); if(!holder) return;
+  var mode=PV.lfMode, mo=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+  PV.lfDaten().then(function(d){
+    if(!document.body.contains(holder) || mode!==PV.lfMode) return;
+    if(!d.ref){ holder.innerHTML='<div class="chart-empty">keine Daten für den Bezug '+PV.LF_REF.join("–")+'</div>'; return; }
+    var pc=function(f){ return f/d.ref*100; }, refTxt=PV.LF_REF[0]+"–"+String(PV.LF_REF[1]).slice(2);
+    var farbe=function(p){ return p>=95 ? "var(--green)" : (p>=88 ? "var(--amber)" : "var(--red)"); };
+    // Jahreswerte April-September (laufendes Jahr: bisher abgeschlossene Sommermonate)
+    var jahr={}; d.rows.forEach(function(r){ if(!r.f || r.m<PV.LF_SOMMER[0] || r.m>PV.LF_SOMMER[1]) return;
+      var a=jahr[r.y]=jahr[r.y]||{e:0,h:0,n:0,bis:0}; a.e+=r.e; a.h+=r.h; a.n++; a.bis=Math.max(a.bis,r.m); });
+    var ys=Object.keys(jahr).map(Number).sort(), n6=PV.LF_SOMMER[1]-PV.LF_SOMMER[0]+1;
+    var last=ys.length ? jahr[ys[ys.length-1]] : null, lastP=last ? Math.round(pc(last.e/last.h)) : null;
+    var tag=document.getElementById("lf-tag");
+    if(tag && lastP!=null){ tag.textContent=ys[ys.length-1]+": "+lastP+" % von "+refTxt+(last.n<n6?" (bis "+mo[last.bis]+")":"");
+      tag.style.color=farbe(lastP); }
+    if(mode==="jahre"){
+      var bars=ys.map(function(y){ var a=jahr[y], f=a.e/a.h, p=pc(f);
+        return {label:String(y), v:Math.round(p), hi:100, color:farbe(p), tip:y+" · April–"+mo[a.bis]+(a.n<n6?" (unvollständig)":""),
+          tipExtra:"Faktor "+fmt(f,1)+" kWh pro kWh/m² · Ertrag "+fmt(a.e/1000,1)+" MWh · Einstrahlung "+fmt(a.h,0)+" kWh/m²"}; });
+      barChart(holder, bars, {unit:"%", autoW:true, legend:[{color:"var(--green)", label:"≥ 95 %"}, {color:"var(--amber)", label:"88–95 %"},
+        {color:"var(--red)", label:"< 88 %"}, {color:"var(--muted)", label:"Bezug "+refTxt+" = 100 %"}]});
+    } else {
+      var pts=[], jp=[];
+      d.rows.forEach(function(r){ var t=new Date(r.y, r.m, 15);
+        if(r.m<PV.LF_MONATE[0] || r.m>PV.LF_MONATE[1] || !r.f){ if(r.m===PV.LF_MONATE[1]+1) pts.push({t:t, v:null}); return; }   // Luecke Nov-Feb
+        pts.push({t:t, v:pc(r.f)}); });
+      ys.forEach(function(y){ var a=jahr[y]; jp.push({t:new Date(y,6,1), v:pc(a.e/a.h)}); });
+      var xt=[]; ys.forEach(function(y){ xt.push({t:new Date(y,0,1), label:String(y).slice(2)}); });
+      var bezug=[{t:new Date(ys[0],0,1), v:100}, {t:new Date(ys[ys.length-1],11,31), v:100}];
+      lineChart(holder, [{color:"var(--muted)", width:1, noTip:true, pts:bezug}, {color:"var(--amber)", pts:pts}, {color:"var(--blue)", dash:true, width:2, pts:jp}],
+        {unit:"%", dec:0, zero:false, yMin:50, yMax:115, yTicks:[{v:50},{v:75},{v:100}], dots:true, autoW:true, xTicks:xt,
+         tipFmt:function(d){ return mo[d.getMonth()]+" "+d.getFullYear(); },
+         legend:[{color:"var(--amber)", label:"Monat (März–Okt.)"}, {color:"var(--blue)", dash:true, label:"Jahr (April–Sept.)"},
+           {color:"var(--muted)", label:"Bezug "+refTxt+" = 100 %"}]});
+    }
+  }).catch(function(){ if(document.body.contains(holder)) holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
+};
+
 PV.cumH=600;
 PV.fitJahr=function(){
   var c=PV._cum; if(!c || !document.body.contains(c.holder)) return;
@@ -708,7 +801,7 @@ PV.load=function(){
     var sd=L("field7"); g("sd-status").innerHTML= sd===1?'<span class="dot ok"></span>SD-Karte OK':(sd===0?'<span class="dot bad"></span>SD-Karte Fehler':'<span class="dot na"></span>SD-Karte');
     if(last.created_at) g("updated").textContent="Aktualisiert "+relTime(new Date(last.created_at));
   });
-  PV.loadPower(); PV.loadEnergy(); PV.loadCumYear();
+  PV.loadPower(); PV.loadEnergy(); PV.loadCumYear(); PV.loadLF();
   var p4=PV.loadTrackers();
   var p5=PV.loadPeakSun();
   // Verlust-Diagnose aus dem dedizierten Log-Kanal (2. Account): pro Tag ein
