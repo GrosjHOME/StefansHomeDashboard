@@ -44,7 +44,7 @@ Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
 
 | Datei im Val | Aufgabe | Trigger | Quelltext im Repo |
 |---|---|---|---|
-| `main.ts` | ID.3-Ladezustand von Tibber → ThingSpeak | Cron alle 15 min | `scripts/valtown_id3_tibber.ts` |
+| `id3.ts` | ID.3-Ladezustand von Tibber → ThingSpeak | Cron alle 15 min | `scripts/valtown_id3_tibber.ts` |
 | `prognose.ts` | PV-Morgenprognose rechnen und ausliefern | HTTP | `scripts/valtown_pv_prognose/prognose.ts` |
 | `morgens.ts` | Prognose um 05:00 anstossen | Cron `0 3-7 * * *` | `scripts/valtown_pv_prognose/morgens.ts` |
 | `waechter.ts` | E-Mail bei Störungen | Cron alle 30 min | `scripts/valtown_waechter/waechter.ts` |
@@ -311,7 +311,7 @@ Umstellung kommt zuverlässig alle 15 min ein Wert (96 statt ~5 pro Tag).
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (früher „VW" bzw. „VW-Tibber"), Datei `main.ts` |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (früher „VW" bzw. „VW-Tibber"), Datei `id3.ts` (früher `main.ts`) |
 | **Takt** | Cron-Trigger alle 15 Minuten |
 | **Quelltext** | `scripts/valtown_id3_tibber.ts` – das Repo ist die Vorlage: hier ändern, dann in den Val kopieren |
 | **Token-Speicher** | val-eigener Blob-Speicher, Schlüssel `tibber_refresh_token` |
@@ -363,10 +363,10 @@ Im Gratis-Plan kann ein Val nur **Public** sein. Sichtbar ist damit nur der
 <summary><b>Einrichtung Schritt für Schritt</b></summary>
 
 1. **Konto** auf val.town anlegen (gratis).
-2. **New val** → Name z. B. `VW` → Sichtbarkeit **Public** (*Private*/*Unlisted*
-   gibt es im Gratis-Plan nicht) → *Create val*.
-3. **Code:** `main.ts` öffnen und den **gesamten Inhalt ersetzen** durch
-   `scripts/valtown_id3_tibber.ts`. Den Vorlagen-Code nicht stehen lassen – sonst
+2. **New val** → Name `GrosjeansHomeDashboard` → Sichtbarkeit **Public**
+   (*Private*/*Unlisted* gibt es im Gratis-Plan nicht) → *Create val*.
+3. **Code:** die Vorlagen-Datei `main.ts` in `id3.ts` umbenennen, öffnen und den
+   **gesamten Inhalt ersetzen** durch `scripts/valtown_id3_tibber.ts`. Den Vorlagen-Code nicht stehen lassen – sonst
    gibt es zwei `export default` und der Val startet nicht. → *Save*.
 4. **Trigger:** oben rechts *+ Add trigger* → **Cron**. „Cron" ist in der neuen
    Oberfläche ein Trigger, kein Dateityp. Er steht danach auf **Paused** – erst
