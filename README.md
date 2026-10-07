@@ -36,6 +36,23 @@ VW ID.3 ──> Tibber ──> Val Town ──────┘                 �
 Open-Meteo (Einstrahlung, Wetter) ──────────────────────┘
 ```
 
+### Val Town: ein Val, vier Dateien
+
+Alles, was auf einem Server laufen muss, steckt im Val **GrosjeansHomeDashboard**
+(val.town, Konto `steffgrosjean`). Jede Datei hat ihren eigenen Trigger. Den
+Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
+
+| Datei im Val | Aufgabe | Trigger | Quelltext im Repo |
+|---|---|---|---|
+| `id3.ts` | ID.3-Ladezustand von Tibber → ThingSpeak | Cron alle 15 min | `scripts/valtown_id3_tibber.ts` |
+| `prognose.ts` | PV-Morgenprognose rechnen und ausliefern | HTTP | `scripts/valtown_pv_prognose/prognose.ts` |
+| `morgens.ts` | Prognose um 05:00 anstossen | Cron `0 3-7 * * *` | `scripts/valtown_pv_prognose/morgens.ts` |
+| `waechter.ts` | E-Mail bei Störungen | Cron alle 30 min | `scripts/valtown_waechter/waechter.ts` |
+
+Das Repo ist die Vorlage: Änderungen hier machen und dann in den Val kopieren.
+Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
+[PV-Morgenprognose](#pv-morgenprognose-val-town) · [Wächter](#wächter-val-town).
+
 ## Projektstruktur
 
 | Pfad | Zweck |
@@ -168,7 +185,7 @@ System.
 
 ## PV-Morgenprognose (Val Town)
 
-Jeden Morgen um **05:00** rechnet ein Val auf Val Town die PV-Leistung für den
+Jeden Morgen um **05:00** rechnet Val Town die PV-Leistung für den
 ganzen Tag in **15-Minuten-Schritten** und friert sie ein. Das Dashboard zeigt sie
 in der Grafik **Leistung** (Ansicht *Heute*) als **blau gestrichelte Linie** und
 nimmt sie als **Soll** am Balken *Aktuelle Leistung*. So bleibt den ganzen Tag
@@ -177,7 +194,7 @@ jedem Wetter-Update. Fehlt die Morgenprognose, rechnet der Balken wie bisher liv
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **PV-Prognose** |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-vier-dateien)) |
 | **Dateien** | `prognose.ts` (Trigger **HTTP**: Rechnung + Abruf) und `morgens.ts` (Trigger **Cron** `0 3-7 * * *`) |
 | **Quelltext** | `scripts/valtown_pv_prognose/` – hier ändern, dann in den Val kopieren |
 | **Speicher** | Blob `pv_prognose_YYYY-MM-DD` je Tag (bleibt erhalten, `?datum=…` liefert ältere Tage) |
@@ -202,7 +219,7 @@ sofort. Die Legende zeigt dann die tatsächliche Uhrzeit.
 <details>
 <summary><b>Einrichtung Schritt für Schritt</b></summary>
 
-1. In Val Town **New Val** anlegen, Name **PV-Prognose**.
+1. Den Val **GrosjeansHomeDashboard** öffnen.
 2. Datei **`prognose.ts`** anlegen, den Inhalt von
    `scripts/valtown_pv_prognose/prognose.ts` einfügen und als Trigger **HTTP**
    wählen. Den Vorlagen-Code vorher ganz ersetzen.
@@ -217,6 +234,8 @@ sofort. Die Legende zeigt dann die tatsächliche Uhrzeit.
 
 Der Val ist öffentlich (Gratis-Plan). Die Web-Adresse liefert nur die Prognose,
 also öffentliche Daten. Mehr als eine Rechnung pro Tag kann niemand auslösen.
+Die Web-Adresse enthält eine ID, nicht den Namen. Ein Umbenennen des Vals ändert
+sie nicht.
 
 </details>
 
@@ -227,7 +246,7 @@ Tage. Die Werte kommen aus `prognose.ts?liste=60`.
 
 ## Wächter (Val Town)
 
-Ein eigener Val prüft alle 30 Minuten, ob alles läuft, und schickt bei Störungen
+Die Datei `waechter.ts` prüft alle 30 Minuten, ob alles läuft, und schickt bei Störungen
 eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
 `std/email` schickt nur an den Kontoinhaber.
 
@@ -247,7 +266,7 @@ eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **Zuhause-Waechter**, Datei `waechter.ts` |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard**, Datei `waechter.ts` |
 | **Takt** | Cron-Trigger alle 30 Minuten |
 | **Quelltext** | `scripts/valtown_waechter/waechter.ts` |
 | **Speicher** | Blob `waechter_status` (gemeldete Störungen, Zeit der letzten Mail) |
@@ -255,7 +274,7 @@ eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
 <details>
 <summary><b>Einrichtung Schritt für Schritt</b></summary>
 
-1. In Val Town **New Val** anlegen, Name **Zuhause-Waechter**.
+1. Den Val **GrosjeansHomeDashboard** öffnen.
 2. Datei **`waechter.ts`** anlegen, den Inhalt von
    `scripts/valtown_waechter/waechter.ts` einfügen und als Trigger **Cron** alle
    **30 Minuten** wählen.
@@ -292,7 +311,7 @@ Umstellung kommt zuverlässig alle 15 min ein Wert (96 statt ~5 pro Tag).
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **VW**, Datei `main.ts` |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (früher „VW" bzw. „VW-Tibber"), Datei `id3.ts` (früher `main.ts`) |
 | **Takt** | Cron-Trigger alle 15 Minuten |
 | **Quelltext** | `scripts/valtown_id3_tibber.ts` – das Repo ist die Vorlage: hier ändern, dann in den Val kopieren |
 | **Token-Speicher** | val-eigener Blob-Speicher, Schlüssel `tibber_refresh_token` |
@@ -344,10 +363,10 @@ Im Gratis-Plan kann ein Val nur **Public** sein. Sichtbar ist damit nur der
 <summary><b>Einrichtung Schritt für Schritt</b></summary>
 
 1. **Konto** auf val.town anlegen (gratis).
-2. **New val** → Name z. B. `VW` → Sichtbarkeit **Public** (*Private*/*Unlisted*
-   gibt es im Gratis-Plan nicht) → *Create val*.
-3. **Code:** `main.ts` öffnen und den **gesamten Inhalt ersetzen** durch
-   `scripts/valtown_id3_tibber.ts`. Den Vorlagen-Code nicht stehen lassen – sonst
+2. **New val** → Name `GrosjeansHomeDashboard` → Sichtbarkeit **Public**
+   (*Private*/*Unlisted* gibt es im Gratis-Plan nicht) → *Create val*.
+3. **Code:** die Vorlagen-Datei `main.ts` in `id3.ts` umbenennen, öffnen und den
+   **gesamten Inhalt ersetzen** durch `scripts/valtown_id3_tibber.ts`. Den Vorlagen-Code nicht stehen lassen – sonst
    gibt es zwei `export default` und der Val startet nicht. → *Save*.
 4. **Trigger:** oben rechts *+ Add trigger* → **Cron**. „Cron" ist in der neuen
    Oberfläche ein Trigger, kein Dateityp. Er steht danach auf **Paused** – erst

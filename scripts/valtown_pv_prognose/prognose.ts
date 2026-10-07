@@ -1,4 +1,4 @@
-// PV-Morgenprognose fuer das Dashboard (Val Town, Val "PV-Prognose", Datei prognose.ts,
+// PV-Morgenprognose fuer das Dashboard (Val Town, Val "GrosjeansHomeDashboard", Datei prognose.ts,
 // Trigger: HTTP). Einrichtung: README, Abschnitt "PV-Morgenprognose (Val Town)".
 //
 // Jeden Morgen um 05:00 (Datei morgens.ts, Cron) wird die PV-Leistung fuer den ganzen Tag
@@ -46,10 +46,28 @@ function lokal(ms: number) {
   return { datum: s.slice(0, 10), h: +s.slice(11, 13), min: +s.slice(14, 16) };
 }
 
+// Abruf mit Wiederholung: Zur vollen Stunde ist Open-Meteo oft kurz ueberlastet (HTTP 503, so am
+// 07.10.2026 um 05:00). Bei 429/5xx oder Netzfehler nach 5, 15 und 25 s nochmals versuchen -
+// zusammen unter einer Minute (Laufzeitgrenze Gratis-Plan). Klappt es nicht, holt der naechste
+// Cron-Lauf (stuendlich bis 09:00) die Prognose nach.
+const WARTEN_S = [5, 15, 25];
 async function json(url: string): Promise<any> {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`${url.split("?")[0]}: HTTP ${r.status}`);
-  return r.json();
+  const ziel = url.split("?")[0];
+  for (let i = 0; ; i++) {
+    let fehler: string;
+    try {
+      const r = await fetch(url);
+      if (r.ok) return r.json();
+      fehler = `HTTP ${r.status}`;
+      if (r.status !== 429 && r.status < 500) throw new Error(`${ziel}: ${fehler}`);   // nicht wiederholbar
+    } catch (e) {
+      if (String(e).includes(ziel)) throw e;                 // eigener Fehler von oben
+      fehler = String(e);
+    }
+    if (i >= WARTEN_S.length) throw new Error(`${ziel}: ${fehler} (nach ${i + 1} Versuchen)`);
+    console.warn(`${ziel}: ${fehler} – neuer Versuch in ${WARTEN_S[i]} s`);
+    await new Promise((res) => setTimeout(res, WARTEN_S[i] * 1000));
+  }
 }
 const om = (extra: string) =>
   `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&tilt=${TILT}&azimuth=${AZ}` +
