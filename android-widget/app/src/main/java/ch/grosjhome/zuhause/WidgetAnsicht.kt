@@ -7,10 +7,12 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.util.TypedValue
 import android.widget.RemoteViews
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /** Fuellt das Widget-Layout und verdrahtet die Klicks. */
 object WidgetAnsicht {
@@ -28,6 +30,17 @@ object WidgetAnsicht {
         v.setTextViewText(R.id.auto, Daten.auto(w.autoKw, w.wallbox))
         v.setTextViewText(R.id.id3, Daten.id3(w.soc, w.zielSoc, w.reichweiteKm))
         geraete(v, w.geraete)
+        // Titel links: in der Heizsaison Kessel oben und Schnitzel-Fuellstand (spart Platz, das Widget
+        // bleibt gleich gross); sonst der normale Titel. Etwas kleinere Schrift, damit es neben Uhrzeit
+        // und Knopf in die Kopfzeile passt.
+        if (w.kesselC != null) {
+            v.setTextViewText(R.id.titel, "🔥 ${w.kesselC.roundToInt()} °C" +
+                    (if (w.fuellstand != null) " · 🪵 ${w.fuellstand.roundToInt()} %" else ""))
+            v.setTextViewTextSize(R.id.titel, TypedValue.COMPLEX_UNIT_SP, 13f)
+        } else {
+            v.setTextViewText(R.id.titel, ctx.getString(R.string.titel))
+            v.setTextViewTextSize(R.id.titel, TypedValue.COMPLEX_UNIT_SP, 15f)
+        }
         // Kopfzeile: Uhrzeit; bei Fehler der Grund (ganz leer) bzw. ein Hinweis (teilweise)
         v.setTextViewText(R.id.stand, when {
             w.fehler == null -> uhrzeit(w.zeit)

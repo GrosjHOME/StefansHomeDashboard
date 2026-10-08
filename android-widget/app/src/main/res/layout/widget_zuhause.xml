@@ -24,6 +24,8 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:maxLines="1"
+            android:id="@+id/titel"
+            android:ellipsize="end"
             android:text="@string/titel"
             android:textColor="@color/ink"
             android:textSize="15sp"
