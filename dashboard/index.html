@@ -147,6 +147,12 @@
     /* Wallbox/Heizung/Boiler: Kennzahl-Gruppen nebeneinander, Grafiken paarweise */
     .kp-grid{display:grid; grid-template-columns:var(--cols); column-gap:16px; align-items:start;}
     .kp-grid .kp-sec .kpis{grid-template-columns:repeat(var(--n),minmax(0,1fr));}
+    /* alle Kacheln einer Zeile gleich hoch, Werte unten buendig - auch wenn eine Beschriftung umbricht */
+    .kp-grid{align-items:stretch;}
+    .kp-grid .kp-sec{display:flex; flex-direction:column;}
+    .kp-grid .kp-sec .kpis{flex:1; grid-auto-rows:1fr;}
+    .kp-grid .kpi{display:flex; flex-direction:column;}
+    .kp-grid .kpi .v{margin-top:auto;}
     .ch-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:16px; align-items:stretch;}
     /* Nutzung: Prognose-Grafik volle Breite (autoW), die 7 Tageskarten in einer Reihe */
     .plan-wide .pldays{grid-template-columns:repeat(7,minmax(0,1fr));}
@@ -1132,7 +1138,7 @@ function simpleView(cfg){
     }).catch(function(){});
     // KPIs aus anderen Kanaelen (z. B. HSH-Auslastung liegt im Wallbox-Kanal 172228)
     var extra={};
-    cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel){ (extra[k.channel]=extra[k.channel]||[]).push({k:k,i:i}); } });
+    cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel&&!k.ausFeeds&&!k.integrate){ (extra[k.channel]=extra[k.channel]||[]).push({k:k,i:i}); } });
     Object.keys(extra).forEach(function(ch){
       j(api(ch, "/feeds.json?results=300", false)).then(function(d){
         var f=(d&&d.feeds)?d.feeds:[];
@@ -1156,6 +1162,8 @@ function simpleView(cfg){
     var chans={}; chans[String(cfg.channel)]=cfg.channel;
     cfg.charts.forEach(function(c){ (c.lines||[]).forEach(function(ln){ if(ln.channel) chans[String(ln.channel)]=ln.channel;
       (ln.uses||[]).forEach(function(u){ chans[String(u)]=u; }); }); });
+    // ... und von Zeitraum-KPIs aus anderen Kanaelen (z. B. Ø Auslastung im Tab Heizung)
+    cfg.kpis.forEach(function(k){ if((k.ausFeeds||k.integrate) && k.channel) chans[String(k.channel)]=k.channel; });
     var keys=Object.keys(chans);
     Promise.all(keys.map(function(k){ var ch=chans[k];
       return j(api(ch, periodUrl(), String(ch)==="172430")).then(function(d){ return {k:k, feeds:(d&&d.feeds)?d.feeds:[]}; }); }))
@@ -1328,13 +1336,12 @@ function heizPhasen(ff){
 function heizVoll(ff){ return heizPhasen(ff).filter(function(p){ return p.voll; }); }
 
 var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
-  // Zwei Quellen getrennt: Heizungs-Logger (Kanal 172428, laeuft nur in der Heizsaison)
-  // und HSH-Auslastung (stuendlich im Wallbox-Kanal 172228, ganzjaehrig).
+  // Links aktuelle Werte des Heizungs-Loggers (Kanal 172428, laeuft nur in der Heizsaison),
+  // rechts Werte ueber den gewaehlten Zeitraum - inkl. Ø Auslastung aus dem Wallbox-Kanal 172228.
   sections:[
     // Veraltet-Warnung nur Okt-Apr; Mai-Sep ist ein Stillstand normal ("Sommerpause")
     {key:"hz",  title:"🔥 Kessel & Schnitzel", channel:172428, staleMin:60, season:[9,10,11,0,1,2,3]},
-    {key:"zyk", title:"♨️ Brennbetrieb im Zeitraum", channel:172428, staleMin:60, season:[9,10,11,0,1,2,3]},
-    {key:"hsh", title:"📊 Auslastung", channel:172228}
+    {key:"zyk", title:"♨️ Brennbetrieb im Zeitraum", channel:172428, staleMin:60, season:[9,10,11,0,1,2,3]}
   ],
   kpis:[
     {sec:"hz",field:"field1",label:"Kessel oben",unit:"°C",dec:1},
@@ -1347,7 +1354,9 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
     {sec:"zyk",label:"Glutstösse",dec:0,ausFeeds:function(ff){ return heizPhasen(ff).length-heizVoll(ff).length; }},
     {sec:"zyk",label:"Brennzeit",unit:"h",dec:1,ausFeeds:function(ff){ return heizPhasen(ff).reduce(function(s,p){ return s+p.min; },0)/60; }},
     {sec:"zyk",label:"Ø Heizzyklus",unit:"min",dec:0,ausFeeds:function(ff){ var v=heizVoll(ff); return v.length ? v.reduce(function(s,p){ return s+p.min; },0)/v.length : null; }},
-    {sec:"hsh",channel:172228,field:"field1",label:"Auslastung",unit:"%",dec:0}
+    // Auslastung (stuendlich im Wallbox-Kanal 172228, field1): Mittel ueber den Zeitraum
+    {sec:"zyk",channel:172228,label:"Ø Auslastung",unit:"%",dec:0,ausFeeds:function(ff){ var s=0, n=0;
+      ff.forEach(function(x){ var v=num(x.field1); if(v!==null){ s+=v; n++; } }); return n ? s/n : null; }}
   ],
   charts:[
     {title:"Kesseltemperaturen", unit:"°C", zero:false, minmaxField:"field1", lines:[{field:"field1",label:"Oben",color:"var(--amber)"},{field:"field2",label:"Mitte",color:"var(--blue)"}]},
