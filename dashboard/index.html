@@ -154,6 +154,7 @@
     .kp-grid .kpi{display:flex; flex-direction:column;}
     .kp-grid .kpi .v{margin-top:auto;}
     .ch-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:16px; align-items:stretch;}
+    .ch-grid > .panel:last-child:nth-child(odd){grid-column:1 / -1;}   /* ungerade Anzahl: letzte Grafik volle Breite */
     /* Nutzung: Prognose-Grafik volle Breite (autoW), die 7 Tageskarten in einer Reihe */
     .plan-wide .pldays{grid-template-columns:repeat(7,minmax(0,1fr));}
   }
@@ -456,6 +457,27 @@ function groupedBarChart(holder, groups, opts){
 }
 function parseStatus(s){ var o={},re=/([UI])([56])=([\d.]+)\/([\d.]+)\/([\d.]+)/g,m; while((m=re.exec(s))){ o[m[1]+m[2]]=[parseFloat(m[3]),parseFloat(m[4]),parseFloat(m[5])]; } return o; }
 function downsample(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)), out=[]; for(var i=0;i<arr.length;i+=st) out.push(arr[i]); if(arr.length && out[out.length-1]!==arr[arr.length-1]) out.push(arr[arr.length-1]); return out; }
+// Wie downsample, aber je Block gemittelt (Zeit und Wert) - fuer abgeleitete Werte wie die Steigung,
+// bei denen einzelne Stichproben sonst Spitzen verschlucken wuerden.
+function downsampleAvg(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)); if(st===1) return arr; var out=[];
+  for(var i=0;i<arr.length;i+=st){ var s=0, ts=0, n=0; for(var j=i;j<Math.min(arr.length,i+st);j++){ s+=arr[j].v; ts+=arr[j].t.getTime(); n++; } out.push({t:new Date(ts/n), v:s/n}); }
+  return out; }
+// Steigung eines Feldes in Einheiten pro Minute: (Wert nach - Wert vor) / Zeit ueber ein Fenster von
+// +-wMin Minuten um jeden Messpunkt. Das Fenster glaettet die Fuehleraufloesung (DS18B20: 0.0625 K je
+// Schritt -> bei +-3 min ca. 0.01 K/min Rauschen). Am Rand reicht ein halbes Fenster; fehlen
+// Messwerte (Luecke), entsteht kein Punkt. Ungueltige Messwerte (z. B. -127 Lesefehler) bleiben aussen vor.
+function steigung(ff, field, wMin){
+  var t=[], v=[]; ff.forEach(function(x){ var r=num(x[field]); if(r===null || r<-100) return; t.push(Date.parse(x.created_at)); v.push(r); });
+  var W=wMin*60000, out=[], lo=0, hi=0;
+  for(var i=0;i<t.length;i++){
+    while(t[lo]<t[i]-W) lo++;
+    if(hi<i) hi=i;
+    while(hi+1<t.length && t[hi+1]<=t[i]+W) hi++;
+    var dt=(t[hi]-t[lo])/60000;
+    if(dt>=0.7*wMin) out.push({t:new Date(t[i]), v:(v[hi]-v[lo])/dt});
+  }
+  return out;
+}
 
 /* Zeitraum-Query je Modus:
    "heute" = ab lokaler Mitternacht (ThingSpeak start-Param, in UTC = korrekter Zeitpunkt),
@@ -1229,6 +1251,10 @@ function simpleView(cfg){
             cp.forEach(function(p,i){ var a=cp[i-1], b=cp[i+1]; if(a && b && a.v===p.v && b.v===p.v) return; pts.push(p); });
             return {color:ln.color, dash:ln.dash, width:ln.width, axis:ln.axis, dec:ln.dec, pts:pts};
           }
+          if(ln.slope){   // Steigung je Minute (ln.slope = halbes Glaettungsfenster in Minuten)
+            var sp=steigung(ff, ln.field, ln.slope);
+            return {color:ln.color, dash:ln.dash, width:ln.width, axis:ln.axis, dec:ln.dec, pts:downsampleAvg(sp,300)};
+          }
           ff.forEach(function(x){ var raw=num(x[ln.field]);
             // Eintraege ohne dieses Feld ueberspringen statt als Luecke zeichnen: z. B. schreibt in den
             // Wallbox-Kanal stuendlich ein Eintrag nur mit field1. derive-Linien (rote Markierung)
@@ -1243,8 +1269,17 @@ function simpleView(cfg){
             series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mx},{t:t1,v:mx}]}); } }
         if(c.threshold!=null && f.length){ var t0=new Date(f[0].created_at), t1=new Date(f[f.length-1].created_at);
           series.push({color:"var(--red)",dash:true,pts:[{t:t0,v:c.threshold},{t:t1,v:c.threshold}]}); }
+        // zeroLine: Nulllinie + Achse mit runden Schritten, die 0 enthaelt (fuer Steigungen/Abweichungen)
+        var yTicks=c.yTicks, yMin=c.yMin, yMax=c.yMax;
+        if(c.zeroLine && series.length){ var lo=0, hi=0, t0z=Infinity, t1z=-Infinity;
+          series.forEach(function(s){ s.pts.forEach(function(p){ if(p.v==null)return; if(p.v<lo)lo=p.v; if(p.v>hi)hi=p.v; var tm=p.t.getTime(); if(tm<t0z)t0z=tm; if(tm>t1z)t1z=tm; }); });
+          var step=[0.1,0.2,0.5,1,2,5,10].filter(function(s){ return (hi-lo)/s<=5; })[0] || 10;
+          yMin=Math.floor(lo/step-1e-9)*step; yMax=Math.ceil(hi/step-1e-9)*step; if(yMax<=yMin) yMax=yMin+step;
+          yTicks=[]; for(var tv=yMin; tv<=yMax+1e-9; tv+=step) yTicks.push({v:Math.round(tv*1e6)/1e6});
+          series.push({color:"var(--muted)", width:1, noTip:true, pts:[{t:new Date(t0z),v:0},{t:new Date(t1z),v:0}]}); }
         if(g("ct_"+i)) g("ct_"+i).textContent = lastTs ? "Stand "+relTime(lastTs) : "";
-        lineChart(holder, series, {unit:c.unit, zero:c.zero, padL:c.padL, yMin:c.yMin, yMax:c.yMax, yTicks:c.yTicks, unit2:c.unit2, zero2:c.zero2, yMin2:c.yMin2, yMax2:c.yMax2});
+        // autoW: Zeichenbreite = Pixelbreite (mind. 1000) - noetig, wenn eine Grafik die volle Breite hat
+        lineChart(holder, series, {unit:c.unit, zero:c.zero, padL:c.padL, yMin:yMin, yMax:yMax, yTicks:yTicks, unit2:c.unit2, zero2:c.zero2, yMin2:c.yMin2, yMax2:c.yMax2, autoW:true});
       });
       if(g("err2"))g("err2").textContent="";
     }).catch(function(){ if(g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
@@ -1360,6 +1395,10 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
   ],
   charts:[
     {title:"Kesseltemperaturen", unit:"°C", zero:false, minmaxField:"field1", lines:[{field:"field1",label:"Oben",color:"var(--amber)"},{field:"field2",label:"Mitte",color:"var(--blue)"}]},
+    // Steigung = Temperaturaenderung je Minute, ueber +-3 min (6 min) geglaettet, siehe steigung()
+    {title:"Temperatursteigung", unit:"°C/min", zero:false, zeroLine:true,
+      lines:[{field:"field1",label:"Oben",color:"var(--amber)",slope:3,dec:2},{field:"field2",label:"Mitte",color:"var(--blue)",slope:3,dec:2}],
+      note:"Temperaturänderung je Minute, über 6 min geglättet (Fühlerauflösung 0.06 K). Über 0: der Kessel heizt auf, unter 0: er kühlt ab."},
     {title:"Abgastemperatur", unit:"°C", zero:false, lines:[{field:"field8",label:"Abgas",color:"var(--red)"}]},
     {title:"Temperatur vor Schnitzelbunker", unit:"°C", zero:false, threshold:25, lines:[{field:"field3",label:"Vor Bunker",color:"#b5651d"}]},
     {title:"Holzschnitzel-Füllstand", unit:"%", lines:[{field:"field4",label:"Füllstand",color:"var(--green)"}]}
