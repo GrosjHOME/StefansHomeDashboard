@@ -290,13 +290,14 @@ function lineChart(holder, series, opts){
   function Y2(v){ return padT+(H-padT-padB)*(1-clampF((v-R.base)/(R.top-R.base))); }
   function YF(s){ return (s.axis==="right")?Y2:Y; }
   var rColor="var(--amber)"; series.forEach(function(s){ if(s.axis==="right") rColor=s.color; });
+  if(opts.y2Color) rColor=opts.y2Color;
   var grid="",yl="";
   var ticks = opts.yTicks || [{v:L.base},{v:(L.base+L.top)/2},{v:L.top}];
   ticks.forEach(function(tk){ var y=Y(tk.v);
     grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
     yl+='<text x="'+(padL-8)+'" y="'+(y+7)+'" text-anchor="end" font-size="21" fill="var(--muted)">'+(tk.label!=null?tk.label:ylab(tk.v))+'</text>';
     if(hasRight){ var frac=1-(y-padT)/(H-padT-padB), rv=R.base+(R.top-R.base)*frac;
-      yl+='<text x="'+(W-padR+8)+'" y="'+(y+7)+'" text-anchor="start" font-size="21" fill="'+rColor+'">'+ylab(rv)+'</text>'; } });
+      yl+='<text x="'+(W-padR+8)+'" y="'+(y+7)+'" text-anchor="start" font-size="21" fill="'+rColor+'">'+(opts.y2Fmt ? opts.y2Fmt(rv) : ylab(rv))+'</text>'; } });
   var paths="";
   series.forEach(function(s){ if(s.pts.length<2)return; var YS=YF(s);
     if(s.segColor){ // segmentweise Faerbung nach Wert
@@ -320,7 +321,8 @@ function lineChart(holder, series, opts){
       if(!open){ d+="M "+x+" "+by+" L "+x+" "+y; open=true; } else { d+=" L "+x+" "+y; }
       lastX=x; });
     if(open){ d+=" L "+lastX+" "+by+" Z"; }
-    if(d){ fill+='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+s.color+'" stop-opacity="0.30"/><stop offset="100%" stop-color="'+s.color+'" stop-opacity="0.02"/></linearGradient></defs><path d="'+d+'" fill="url(#'+gid+')"/>'; } });
+    var o1=(s.fillFlat!=null)?s.fillFlat:0.30, o2=(s.fillFlat!=null)?s.fillFlat:0.02;   // fillFlat: gleichmaessig (Zeitbereiche)
+    if(d){ fill+='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+s.color+'" stop-opacity="'+o1+'"/><stop offset="100%" stop-color="'+s.color+'" stop-opacity="'+o2+'"/></linearGradient></defs><path d="'+d+'" fill="url(#'+gid+')"/>'; } });
   var xl="";
   if(opts.xTicks){ opts.xTicks.forEach(function(xt){ var tv=(xt.t instanceof Date)?xt.t.getTime():xt.t; if(tv<tMin||tv>tMax)return; var x=X(tv);
       xl+='<text x="'+x+'" y="'+(H-9)+'" text-anchor="middle" font-size="21" fill="var(--muted)">'+xt.label+'</text>'; }); }
@@ -360,7 +362,7 @@ function lineChart(holder, series, opts){
       if(best){ var px=X(best.t.getTime()),py=YF(s)(best.v); anyX=px; if(t0===null) t0=best.t;
         var su=(s.axis==="right")?(opts.unit2||""):(opts.unit||""); var sd=(s.dec!=null)?s.dec:dec;
         dots+='<circle cx="'+px+'" cy="'+py+'" r="3.5" fill="'+s.color+'"/>';
-        rows+='<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+s.color+';margin-right:5px"></span>'+fmt(best.v,sd)+' '+su+'</div>'; } });
+        rows+='<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+s.color+';margin-right:5px"></span>'+(s.fmt ? s.fmt(best.v) : fmt(best.v,sd)+' '+su)+'</div>'; } });
     if(anyX===null){ ov.style.display="none"; tip.style.opacity=0; return; }
     ov.innerHTML='<line x1="'+anyX+'" x2="'+anyX+'" y1="'+padT+'" y2="'+(H-padB)+'" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"/>'+dots; ov.style.display="";
     var dd=new Date(t), span=tMax-tMin;
@@ -1251,6 +1253,17 @@ function simpleView(cfg){
             cp.forEach(function(p,i){ var a=cp[i-1], b=cp[i+1]; if(a && b && a.v===p.v && b.v===p.v) return; pts.push(p); });
             return {color:ln.color, dash:ln.dash, width:ln.width, axis:ln.axis, dec:ln.dec, pts:pts};
           }
+          if(ln.stufe){   // Ein/Aus-Bereiche: ln.stufe(Rohwert) -> 1 (an) / 0 (aus); nur die Wechsel werden
+            // gezeichnet (Stufe zur Mitte zwischen zwei Messpunkten), daher gehen auch kurze Laeufe
+            // beim Ausduennen nicht verloren. ln.optional: ganz weglassen, wenn nie "an".
+            var zs=[]; ff.forEach(function(x){ var rw=num(x[ln.field]); if(rw===null) return; zs.push({t:Date.parse(x.created_at), s:ln.stufe(rw)?1:0}); });
+            var sp2=[]; zs.forEach(function(z,zi){
+              if(zi===0){ sp2.push({t:new Date(z.t), v:z.s}); }
+              else if(z.s!==zs[zi-1].s){ var tm=(zs[zi-1].t+z.t)/2; sp2.push({t:new Date(tm), v:zs[zi-1].s}); sp2.push({t:new Date(tm), v:z.s}); }
+              if(zi===zs.length-1) sp2.push({t:new Date(z.t), v:z.s}); });
+            if(ln.optional && !zs.some(function(z){ return z.s; })) sp2=[];
+            return {color:ln.color, width:ln.width, axis:ln.axis, fill:ln.fill, fillFlat:ln.fillFlat, fmt:ln.fmt, pts:sp2};
+          }
           if(ln.slope){   // Steigung je Minute (ln.slope = halbes Glaettungsfenster in Minuten)
             var sp=steigung(ff, ln.field, ln.slope);
             return {color:ln.color, dash:ln.dash, width:ln.width, axis:ln.axis, dec:ln.dec, pts:downsampleAvg(sp,300)};
@@ -1280,7 +1293,7 @@ function simpleView(cfg){
           series.push({color:"var(--muted)", width:1, noTip:true, pts:[{t:new Date(t0z),v:0},{t:new Date(t1z),v:0}]}); }
         if(g("ct_"+i)) g("ct_"+i).textContent = lastTs ? "Stand "+relTime(lastTs) : "";
         // autoW: Zeichenbreite = Pixelbreite (mind. 1000) - noetig, wenn eine Grafik die volle Breite hat
-        lineChart(holder, series, {unit:c.unit, zero:c.zero, padL:c.padL, yMin:yMin, yMax:yMax, yTicks:yTicks, unit2:c.unit2, zero2:c.zero2, yMin2:c.yMin2, yMax2:c.yMax2, autoW:true});
+        lineChart(holder, series, {unit:c.unit, zero:c.zero, padL:c.padL, yMin:yMin, yMax:yMax, yTicks:yTicks, unit2:c.unit2, zero2:c.zero2, yMin2:c.yMin2, yMax2:c.yMax2, y2Fmt:c.y2Fmt, y2Color:c.y2Color, autoW:true});
       });
       if(g("err2"))g("err2").textContent="";
     }).catch(function(){ if(g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
@@ -1402,7 +1415,17 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
       note:"Temperaturänderung je Minute, über 6 min geglättet (Fühlerauflösung 0.06 K). Über 0: der Kessel heizt auf, unter 0: er kühlt ab."},
     {title:"Abgastemperatur", unit:"°C", zero:false, lines:[{field:"field8",label:"Abgas",color:"var(--red)"}]},
     {title:"Temperatur vor Schnitzelbunker", unit:"°C", zero:false, threshold:25, lines:[{field:"field3",label:"Vor Bunker",color:"#b5651d"}]},
-    {title:"Holzschnitzel-Füllstand", unit:"%", lines:[{field:"field4",label:"Füllstand",color:"var(--green)"}]}
+    // Austragung = Feld 6 des Loggers (Statuscode, einmal pro Minute): 0.4/0.7/1.0 Automat laeuft (wenig/normal/
+    // viel), 0.95 von Hand, 0.2 Stoerung (zu lange gelaufen), 0.05 bereit, 0 aus. Als Zeitbereiche hinterlegt,
+    // rechte Achse nur "Aus"/"Ein". (Im ThingSpeak-Kanal heisst Feld 6 noch "Steigung Temperatur" - veraltet.)
+    {title:"Holzschnitzel-Füllstand &amp; Austragung", unit:"%", unit2:"", yMin2:0, yMax2:1, y2Color:"var(--blue)",
+      y2Fmt:function(v){ return v>0.99 ? "Ein" : (v<0.01 ? "Aus" : ""); },
+      note:"Blau hinterlegt: die Schnitzel-Austragung läuft (Automat oder von Hand). Rot: Störung, die Austragung ist zu lange gelaufen. Wert aus dem Logger, einmal pro Minute.",
+      lines:[{field:"field4",label:"Füllstand",color:"var(--green)"},
+        {field:"field6",label:"Austragung läuft",color:"var(--blue)",axis:"right",fill:true,fillFlat:0.18,width:1,
+          stufe:function(v){ return v>0.3; }, fmt:function(v){ return v>0.5 ? "läuft" : "aus"; }},
+        {field:"field6",label:"Störung (zu lange gelaufen)",color:"var(--red)",axis:"right",fill:true,fillFlat:0.28,width:1,optional:true,
+          stufe:function(v){ return Math.abs(v-0.2)<0.02; }, fmt:function(v){ return v>0.5 ? "Störung" : "ok"; }}]}
   ]});
 
 var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22" height="22" style="vertical-align:-4px"><rect x="5.5" y="4" width="13" height="17" rx="5" fill="#2b83c7"/><rect x="10.5" y="1.5" width="3" height="3" rx="1" fill="#7fb2dd"/><path d="M12 9.5c1.7 2.1 2.6 3.4 2.6 4.7a2.6 2.6 0 1 1-5.2 0c0-1.3 .9-2.6 2.6-4.7z" fill="#eaf4fb"/></svg>', title:"Boiler",
