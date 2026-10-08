@@ -146,6 +146,7 @@
     .pv-grid .a-dc{grid-area:dc;} .pv-grid .a-verl{grid-area:verl;}
     /* Wallbox/Heizung/Boiler: Kennzahl-Gruppen nebeneinander, Grafiken paarweise */
     .kp-grid{display:grid; grid-template-columns:var(--cols); column-gap:16px; align-items:start;}
+    .kp-grid .kp-sec .kpis{grid-template-columns:repeat(var(--n),minmax(0,1fr));}
     .ch-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:16px; align-items:stretch;}
     /* Nutzung: Prognose-Grafik volle Breite (autoW), die 7 Tageskarten in einer Reihe */
     .plan-wide .pldays{grid-template-columns:repeat(7,minmax(0,1fr));}
@@ -1247,12 +1248,13 @@ function simpleView(cfg){
       // KPI-Kacheln (Text-Werte kleiner). Mit cfg.sections in beschriftete Gruppen getrennt -
       // je Gruppe eine Quelle mit eigener Aktualitaet ("Stand vor ...", ggf. veraltet).
       function cards(filter){ return cfg.kpis.map(function(k,i){ return filter(k) ? kpiCard(k.label,"kpi_"+i,k.unit||"",k.map?"txt":"") : ""; }).join(""); }
-      // Breit (ab 1500 px) stehen die Gruppen nebeneinander, Spaltenbreite nach Anzahl Kacheln (--cols)
-      var nSec=function(s){ return Math.max(1, cfg.kpis.filter(function(k){ return k.sec===s.key; }).length); };
+      // Breit (ab 1500 px) stehen die Gruppen nebeneinander, jede Kachel gleich breit und ohne
+      // Umbruch: Gruppe = so viele Spalten wie Kacheln, mindestens 2 (Platz fuer Titel + "Stand").
+      var nSec=function(s){ return Math.max(2, cfg.kpis.filter(function(k){ return k.sec===s.key; }).length); };
       var kp = cfg.sections
         ? '<div class="kp-grid" style="--cols:'+cfg.sections.map(function(s){ return "minmax(0,"+nSec(s)+"fr)"; }).join(" ")+'">'+
           cfg.sections.map(function(s){ return '<div class="kp-sec"><div class="sec-head"><h2>'+s.title+'</h2><span class="tag" id="sec_'+s.key+'"></span></div>'+
-            '<div class="kpis">'+cards(function(k){ return k.sec===s.key; })+'</div></div>'; }).join("")+'</div>'
+            '<div class="kpis" style="--n:'+nSec(s)+'">'+cards(function(k){ return k.sec===s.key; })+'</div></div>'; }).join("")+'</div>'
         : '<div class="kpis">'+cards(function(){ return true; })+'</div>';
       var charts=cfg.charts.map(function(c,i){
         var items=(c.lines||[]).map(function(ln){ return '<span class="it"><span class="sw" style="border-color:'+ln.color+(ln.dash?';border-top-style:dashed':'')+'"></span>'+(ln.label||'')+'</span>'; });
