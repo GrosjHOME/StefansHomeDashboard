@@ -474,9 +474,16 @@ function downsampleAvg(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)); i
 // Steigung eines Feldes in Einheiten pro Minute: (Wert nach - Wert vor) / Zeit ueber ein Fenster von
 // +-wMin Minuten um jeden Messpunkt. Das Fenster glaettet die Fuehleraufloesung (DS18B20: 0.0625 K je
 // Schritt -> bei +-3 min ca. 0.01 K/min Rauschen). Am Rand reicht ein halbes Fenster; fehlen
-// Messwerte (Luecke), entsteht kein Punkt. Ungueltige Messwerte (z. B. -127 Lesefehler) bleiben aussen vor.
-function steigung(ff, field, wMin){
-  var t=[], v=[]; ff.forEach(function(x){ var r=num(x[field]); if(r===null || r<-100) return; t.push(Date.parse(x.created_at)); v.push(r); });
+// Messwerte (Luecke), entsteht kein Punkt. Ungueltige Messwerte bleiben aussen vor: -127 (DS18B20-Lesefehler),
+// alles, was ok(v) ablehnt (z. B. 0.0 beim Kessel), und einzelne Ausreisser - ein Punkt, der um mehr als
+// 10 K vom Median seiner bis zu vier Nachbarn abweicht (echte Aenderungen sind hoechstens ~2.5 K/min).
+function steigung(ff, field, wMin, ok){
+  var t0=[], v0=[]; ff.forEach(function(x){ var r=num(x[field]); if(r===null || r<-100 || (ok && !ok(r))) return; t0.push(Date.parse(x.created_at)); v0.push(r); });
+  var t=[], v=[]; v0.forEach(function(r,i){
+    var nb=[]; for(var k=i-2;k<=i+2;k++){ if(k!==i && k>=0 && k<v0.length) nb.push(v0[k]); }
+    if(nb.length>=2){ nb.sort(function(a,b){ return a-b; }); var m=nb.length%2 ? nb[(nb.length-1)/2] : (nb[nb.length/2-1]+nb[nb.length/2])/2;
+      if(Math.abs(r-m)>10) return; }
+    t.push(t0[i]); v.push(r); });
   var W=wMin*60000, out=[], lo=0, hi=0;
   for(var i=0;i<t.length;i++){
     while(t[lo]<t[i]-W) lo++;
@@ -1150,8 +1157,8 @@ function simpleView(cfg){
     j(api(cfg.channel, "/feeds.json?results=10", false)).then(function(d){
       var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
       var last=f[f.length-1];
-      function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
-      cfg.kpis.forEach(function(k,i){ if(k.integrate||k.ausFeeds)return; if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
+      function L(fd,ok){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null && (!ok||ok(v)))return v;} return null; }   // ok: Lesefehler uebergehen
+      cfg.kpis.forEach(function(k,i){ if(k.integrate||k.ausFeeds)return; if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field,k.gueltig); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
         el.textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0);
         if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
         if(k.color) el.style.color = (v===null) ? "" : k.color(v); });
@@ -1276,7 +1283,7 @@ function simpleView(cfg){
             return {color:ln.color, width:ln.width, axis:ln.axis, fill:ln.fill, fillFlat:ln.fillFlat, fmt:ln.fmt, step:true, pts:sp2};
           }
           if(ln.slope){   // Steigung je Minute (ln.slope = halbes Glaettungsfenster in Minuten)
-            var sp=steigung(ff, ln.field, ln.slope);
+            var sp=steigung(ff, ln.field, ln.slope, ln.gueltig);
             return {color:ln.color, dash:ln.dash, width:ln.width, axis:ln.axis, dec:ln.dec, pts:downsampleAvg(sp,300)};
           }
           ff.forEach(function(x){ var raw=num(x[ln.field]);
@@ -1284,10 +1291,12 @@ function simpleView(cfg){
             // Wallbox-Kanal stuendlich ein Eintrag nur mit field1. derive-Linien (rote Markierung)
             // brauchen die Nullen dagegen bewusst, um nur abschnittsweise zu erscheinen.
             if(raw===null && !ln.derive) return;
+            // ln.gueltig(v): Messwert verwerfen, z. B. Fuehler-Lesefehler (0.0 beim Kessel, -127)
+            if(raw!==null && ln.gueltig && !ln.gueltig(raw)) return;
             var v = ln.derive ? ln.derive(raw) : (ln.scale? raw*ln.scale : raw);
             pts.push({t:new Date(x.created_at), v:v}); });
           return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, bandFrac:ln.bandFrac, axis:ln.axis, dec:ln.dec, fill:ln.fill, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
-        if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null){ vv.push(v); ct.push(new Date(x.created_at)); } });
+        if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null && (!c.minmaxGueltig || c.minmaxGueltig(v))){ vv.push(v); ct.push(new Date(x.created_at)); } });
           if(vv.length>1){ var mn=Math.min.apply(null,vv), mx=Math.max.apply(null,vv), t0=ct[0], t1=ct[ct.length-1];
             series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
             series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mx},{t:t1,v:mx}]}); } }
@@ -1374,6 +1383,13 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
              {channel:3514838,field:"field2",label:"Reichweite",color:"var(--amber)",dec:0,axis:"right"}]}
   ]});
 
+// Plausibilitaet von Fuehlerwerten: Lesefehler der Logger sind 0.0 (Kesselfuehler, am 08.10.2026 14:19
+// eine Minute lang), -127 (DS18B20 ohne Antwort) und vereinzelte Spitzen ueber 400 °C beim Abgas.
+// Solche Werte gehoeren nicht in Grafiken, Kennzahlen oder Steigungen.
+function kesselOk(v){ return v>0 && v<150; }       // Kessel/Boiler: Wasser ist nie genau 0 °C oder ueber 150 °C
+function abgasOk(v){ return v>-100 && v<400; }
+function fuehlerOk(v){ return v>-100 && v<150; }   // Raum-/Aussenfuehler (0 °C ist hier moeglich)
+
 // Brennphasen aus Abgas (field8) und Kessel oben (field1) - Methodik wie in HeizungTiba
 // docs/Heizzyklen-Auswertung-2010-2026.xlsx (Blatt Methodik), an 8 Tagen 02/2026 exakt gleich:
 // Beginn bei Abgas - Kessel > 30 K, Ende unter 20 K; zaehlt nur ab 60 s Dauer und 45 K Spitze.
@@ -1383,7 +1399,7 @@ function heizPhasen(ff){
   if(heizPhasen._ff===ff) return heizPhasen._p;   // dieselben Feeds fuer mehrere KPIs nur einmal rechnen
   var out=[], an=null, maxD=0, lastT=null;
   ff.forEach(function(x){ var t=Date.parse(x.created_at), a=num(x.field8), k=num(x.field1);
-    if(a===null || k===null || a>400 || a<-100 || k<-100) return;
+    if(a===null || k===null || a>400 || a<-100 || k<=0 || !kesselOk(k)) return;   // Lesefehler (0.0, -127) und Spitzen ignorieren
     var d=a-k;
     if(an===null){ if(d>30){ an=t; maxD=d; } }
     else { if(d>maxD) maxD=d; if(d<20){ out.push({s:an, e:t, max:maxD}); an=null; } }
@@ -1404,11 +1420,11 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
     {key:"zyk", title:"♨️ Brennbetrieb im Zeitraum", channel:172428, staleMin:60, season:[9,10,11,0,1,2,3]}
   ],
   kpis:[
-    {sec:"hz",field:"field1",label:"Kessel oben",unit:"°C",dec:1},
-    {sec:"hz",field:"field2",label:"Kessel mitte",unit:"°C",dec:1},
-    {sec:"hz",field:"field8",label:"Abgas",unit:"°C",dec:0},
+    {sec:"hz",field:"field1",label:"Kessel oben",unit:"°C",dec:1,gueltig:kesselOk},
+    {sec:"hz",field:"field2",label:"Kessel mitte",unit:"°C",dec:1,gueltig:kesselOk},
+    {sec:"hz",field:"field8",label:"Abgas",unit:"°C",dec:0,gueltig:abgasOk},
     {sec:"hz",field:"field4",label:"Füllstand",unit:"%",dec:0},
-    {sec:"hz",field:"field3",label:"Schnitzelbunker",unit:"°C",dec:1,warnAbove:25},
+    {sec:"hz",field:"field3",label:"Schnitzelbunker",unit:"°C",dec:1,warnAbove:25,gueltig:fuehlerOk},
     // Zeitraum-KPIs (Heute / 24 h / 7 Tage oben rechts), siehe heizPhasen()
     {sec:"zyk",label:"Heizzyklen",dec:0,ausFeeds:function(ff){ return heizVoll(ff).length; }},
     {sec:"zyk",label:"Glutstösse",dec:0,ausFeeds:function(ff){ return heizPhasen(ff).length-heizVoll(ff).length; }},
@@ -1419,13 +1435,13 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
       ff.forEach(function(x){ var v=num(x.field1); if(v!==null){ s+=v; n++; } }); return n ? s/n : null; }}
   ],
   charts:[
-    {title:"Kesseltemperaturen", unit:"°C", zero:false, minmaxField:"field1", lines:[{field:"field1",label:"Oben",color:"var(--amber)"},{field:"field2",label:"Mitte",color:"var(--blue)"}]},
+    {title:"Kesseltemperaturen", unit:"°C", zero:false, minmaxField:"field1", minmaxGueltig:kesselOk, lines:[{field:"field1",label:"Oben",color:"var(--amber)",gueltig:kesselOk},{field:"field2",label:"Mitte",color:"var(--blue)",gueltig:kesselOk}]},
     // Steigung = Temperaturaenderung je Minute, ueber +-3 min (6 min) geglaettet, siehe steigung()
     {title:"Temperatursteigung", unit:"°C/min", zero:false, zeroLine:true,
-      lines:[{field:"field1",label:"Oben",color:"var(--amber)",slope:3,dec:2},{field:"field2",label:"Mitte",color:"var(--blue)",slope:3,dec:2}],
+      lines:[{field:"field1",label:"Oben",color:"var(--amber)",slope:3,dec:2,gueltig:kesselOk},{field:"field2",label:"Mitte",color:"var(--blue)",slope:3,dec:2,gueltig:kesselOk}],
       note:"Temperaturänderung je Minute, über 6 min geglättet (Fühlerauflösung 0.06 K). Über 0: der Kessel heizt auf, unter 0: er kühlt ab."},
-    {title:"Abgastemperatur", unit:"°C", zero:false, lines:[{field:"field8",label:"Abgas",color:"var(--red)"}]},
-    {title:"Temperatur vor Schnitzelbunker", unit:"°C", zero:false, threshold:25, lines:[{field:"field3",label:"Vor Bunker",color:"#b5651d"}]},
+    {title:"Abgastemperatur", unit:"°C", zero:false, lines:[{field:"field8",label:"Abgas",color:"var(--red)",gueltig:abgasOk}]},
+    {title:"Temperatur vor Schnitzelbunker", unit:"°C", zero:false, threshold:25, lines:[{field:"field3",label:"Vor Bunker",color:"#b5651d",gueltig:fuehlerOk}]},
     // Austragung = Feld 6 des Loggers (Statuscode, einmal pro Minute). Die Firmware kodiert den Zustand so, dass
     // er direkt als Hoehe taugt: 0.4/0.7/1.0 Automat laeuft (wenig/normal/viel), 0.95 von Hand, 0.2 Stoerung
     // (zu lange gelaufen), 0.05 Automat bereit, 0 aus. Zeitbereiche im Hintergrund: schmaler Streifen unten =
@@ -1450,9 +1466,9 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
 
 var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22" height="22" style="vertical-align:-4px"><rect x="5.5" y="4" width="13" height="17" rx="5" fill="#2b83c7"/><rect x="10.5" y="1.5" width="3" height="3" rx="1" fill="#7fb2dd"/><path d="M12 9.5c1.7 2.1 2.6 3.4 2.6 4.7a2.6 2.6 0 1 1-5.2 0c0-1.3 .9-2.6 2.6-4.7z" fill="#eaf4fb"/></svg>', title:"Boiler",
   kpis:[
-    {field:"field1",label:"Temperatur mitte",unit:"°C",dec:1,
+    {field:"field1",label:"Temperatur mitte",unit:"°C",dec:1,gueltig:kesselOk,
       color:function(v){ return bandColor([[25,"#3b5bdb"],[45,"#d4c21a"],[70,"#2fb344"],[90,"#f08c00"],[Infinity,"#e03131"]],v); }},
-    {field:"field2",label:"Temperatur unten",unit:"°C",dec:1,
+    {field:"field2",label:"Temperatur unten",unit:"°C",dec:1,gueltig:kesselOk,
       color:function(v){ return bandColor([[35,"#8b5cf6"],[70,"#2fb344"],[90,"#f4a261"],[Infinity,"#e03131"]],v); }},
     {field:"field3",label:"Ladeleistung",unit:"W",dec:0,color:chargeColor},
     {field:"field4",label:"Einschaltschwelle",unit:"W",dec:0,colorPv:true},
@@ -1465,7 +1481,7 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
     // "50 Grad laden" (nur manuelles Laden, wird nicht gemeldet).
     {title:"Boiler-Temperaturen", unit:"°C", zero:false,
       note:"Gestrichelt: Schaltschwellen der Steuerung (bezogen auf „Unten“). Laden ein unter 45 °C, Laden aus über 58 °C – bei PV über 10 kW (und Mitte unter 67 °C) erst über 63 °C.",
-      lines:[{field:"field1",label:"Mitte",color:"var(--amber)"},{field:"field2",label:"Unten",color:"var(--blue)"},
+      lines:[{field:"field1",label:"Mitte",color:"var(--amber)",gueltig:kesselOk},{field:"field2",label:"Unten",color:"var(--blue)",gueltig:kesselOk},
       {label:"Laden ein",color:"var(--muted)",width:1,dash:true,calc:function(){ return 45; }},
       {label:"Laden aus",color:"var(--muted)",width:1,dash:true,uses:[172430],maxHoldMin:10,
         calcBase:function(x,at){ var mi=num(x.field1); if(mi===null||mi<=-100) return null; var pv=at(172430,"field1");
@@ -1474,7 +1490,7 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
     // Steigung = Temperaturaenderung je Minute, ueber +-10 min (20 min) geglaettet: der Boiler aendert
     // sich langsam (Laden ca. 0.2 K/min, Auskuehlung ca. 0.006 K/min), siehe steigung()
     {title:"Temperatursteigung", unit:"°C/min", zero:false, zeroLine:true,
-      lines:[{field:"field1",label:"Mitte",color:"var(--amber)",slope:10,dec:3},{field:"field2",label:"Unten",color:"var(--blue)",slope:10,dec:3}],
+      lines:[{field:"field1",label:"Mitte",color:"var(--amber)",slope:10,dec:3,gueltig:kesselOk},{field:"field2",label:"Unten",color:"var(--blue)",slope:10,dec:3,gueltig:kesselOk}],
       note:"Temperaturänderung je Minute, über 20 min geglättet (Fühlerauflösung 0.06 K). Über 0: der Boiler wird aufgeheizt, unter 0: er kühlt aus oder es wurde Warmwasser entnommen (Kaltwasser strömt unten nach)."},
     {title:"Ladeleistung &amp; Einschaltschwelle", unit:"W", yMax:7000, lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0,fill:true},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?10:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0},{field:"field4",label:"Einschaltschwelle",color:"var(--blue)",dec:0,dash:true}]}
   ]});
