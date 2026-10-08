@@ -19,11 +19,22 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
+        <!-- Flamme: gross, wenn das Feuer brennt, klein, wenn es nur glimmt; ohne Heizdaten ausgeblendet -->
+        <TextView
+            android:id="@+id/flamme"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:text="🔥"
+            android:textSize="10sp"
+            android:visibility="gone" />
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:maxLines="1"
+            android:id="@+id/titel"
+            android:ellipsize="end"
             android:text="@string/titel"
             android:textColor="@color/ink"
             android:textSize="15sp"

@@ -150,7 +150,7 @@ Startbildschirm und zeigt
 
 **Aktualisierung:** von selbst alle **15 min** (das kürzeste, was Android im
 Hintergrund erlaubt, und nur mit Netz). **Antippen** des Widgets lädt sofort neu.
-Rechts oben zeigt es die Uhrzeit des Stands. Die **Kopfzeile** (Titel, Uhrzeit, Knopf **↗**) öffnet das Dashboard.
+Rechts oben zeigt es die Uhrzeit des Stands. Die **Kopfzeile** (Titel, Uhrzeit, Knopf **↗**) öffnet das Dashboard. In der **Heizsaison** steht links in der Kopfzeile statt „Zuhause" die Kessel-Temperatur oben und der Schnitzel-Füllstand (z. B. „🔥 78 °C · 🪵 7 %"). Die Flamme ist **gross, wenn das Feuer brennt** (Abgas mehr als 30 K über dem Kessel), sonst klein. Sendet die Heizung seit mehr als 60 min nichts (Sommer), steht dort wieder „Zuhause". Das Widget wird dadurch nicht grösser.
 
 **Installation:**
 

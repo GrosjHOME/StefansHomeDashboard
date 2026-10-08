@@ -23,6 +23,9 @@ data class Werte(
     val soc: Double?,          // ID.3 Ladezustand in % (Kanal 3514838, field1)
     val reichweiteKm: Double?, // ID.3 Reichweite in km (field2)
     val zielSoc: Double?,      // ID.3 Soll-Ladezustand in % (field4, in der App eingestellt)
+    val kesselC: Double?,      // Kessel oben in °C (Kanal 172428, field1) - nur waehrend der Heizsaison, sonst null
+    val fuellstand: Double?,   // Holzschnitzel-Fuellstand in % (field4), dito
+    val brennt: Boolean,       // Feuer brennt: Abgas mehr als 30 K ueber Kessel oben (wie die Brennphase im Dashboard)
     val geraete: Planer.Ergebnis?, // wie viele Geraete jetzt laufen duerfen (null = Prognose fehlt)
     val zeit: Long,            // Zeitpunkt des Abrufs
     val fehler: String?        // erster Fehler beim Abruf (kurz, deutsch), null = alles geladen
@@ -53,12 +56,31 @@ object Daten {
                 (if (key != null) "&api_key=$key" else "")).getJSONArray("feeds")
 
     /** Letzter vorhandene Wert eines Feldes - nicht jeder Eintrag enthaelt alle Felder. */
-    private fun letzter(f: JSONArray?, feld: String): Double? {
+    private fun letzter(f: JSONArray?, feld: String, ok: (Double) -> Boolean = { true }): Double? {
         if (f == null) return null
         for (i in f.length() - 1 downTo 0) {
-            f.getJSONObject(i).optString(feld, "").toDoubleOrNull()?.let { return it }
+            f.getJSONObject(i).optString(feld, "").toDoubleOrNull()?.let { if (ok(it)) return it }
         }
         return null
+    }
+
+    /** Brennt das Feuer? Neuester Eintrag mit gueltigem Kessel (field1) und Abgas (field8): Abgas - Kessel > 30 K. */
+    private fun brennt(f: JSONArray?): Boolean {
+        if (f == null) return false
+        for (i in f.length() - 1 downTo 0) {
+            val o = f.getJSONObject(i)
+            val k = o.optString("field1", "").toDoubleOrNull()?.takeIf { it > 0 && it < 150 }
+            val a = o.optString("field8", "").toDoubleOrNull()?.takeIf { it > -100 && it < 400 }
+            if (k != null && a != null) return a - k > 30
+        }
+        return false
+    }
+
+    /** Zeitpunkt des neuesten Eintrags in ms (ThingSpeak: ISO-8601 in UTC), null wenn keiner da ist. */
+    private fun letzteZeit(f: JSONArray?): Long? {
+        if (f == null || f.length() == 0) return null
+        return try { java.time.Instant.parse(f.getJSONObject(f.length() - 1).getString("created_at")).toEpochMilli() }
+        catch (e: Exception) { null }
     }
 
     /** Fehler in wenigen Worten - passt in die Kopfzeile des Widgets. */
@@ -81,6 +103,14 @@ object Daten {
         val boiler = hole(502977, 3)
         val wallbox = hole(172228, 10)   // stuendlich kommt ein Eintrag nur mit field1 -> mehrere holen
         val auto = hole(3514838, 3)
+        // Heizung: der Logger sendet nur in der Heizsaison. Ist der letzte Eintrag aelter als 60 min
+        // (wie die Veraltet-Warnung im Dashboard), bleibt der Platz fuer den normalen Titel.
+        val heizung = hole(172428, 5)
+        val heizAktuell = letzteZeit(heizung)?.let { System.currentTimeMillis() - it < 60 * 60_000L } == true
+        // Lesefehler der Fuehler (0.0, -127) ueberspringen wie im Dashboard (kesselOk)
+        val kesselC = if (heizAktuell) letzter(heizung, "field1") { it > 0 && it < 150 } else null
+        val fuellstand = if (heizAktuell) letzter(heizung, "field4") else null
+        val feuer = heizAktuell && brennt(heizung)
         val pvKw = letzter(pv, "field1")?.div(1000)
         val boilerW = letzter(boiler, "field3")
         val autoKw = letzter(wallbox, "field4")?.times(1e-6)
@@ -98,6 +128,9 @@ object Daten {
             soc = letzter(auto, "field1"),
             reichweiteKm = letzter(auto, "field2"),
             zielSoc = letzter(auto, "field4"),
+            kesselC = kesselC,
+            fuellstand = fuellstand,
+            brennt = feuer,
             geraete = geraete,
             zeit = System.currentTimeMillis(),
             fehler = fehler

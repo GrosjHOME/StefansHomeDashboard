@@ -3,7 +3,7 @@
     <string name="app_name">Zuhause Widget</string>
     <string name="titel">Zuhause</string>
     <string name="laedt">lädt …</string>
-    <string name="widget_beschreibung">PV, Boiler, Wallbox und ID.3 live</string>
+    <string name="widget_beschreibung">PV, Boiler, Wallbox, ID.3 und Heizung live</string>
     <string name="dashboard_oeffnen">Dashboard öffnen</string>
     <string name="geraete_titel">Geräte jetzt</string>
     <string name="jetzt_testen">Jetzt testen</string>
