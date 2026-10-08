@@ -43,6 +43,21 @@
   .link-old:hover{color:var(--ink);}
   .theme-btn{cursor:pointer; border:1px solid var(--line); background:var(--card); color:var(--ink);
     border-radius:10px; width:36px; height:36px; font-size:1.05rem;}
+  /* Info-Fenster */
+  .dlg{border:none; border-radius:14px; padding:0; width:min(460px, calc(100vw - 32px)); background:var(--card); color:var(--ink); box-shadow:0 20px 60px rgba(0,0,0,.3);}
+  .dlg::backdrop{background:rgba(0,0,0,.4);}
+  .dlg-head{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:16px 18px 4px;}
+  .dlg-head h2{font-size:1.05rem; margin:0;}
+  .dlg-x{border:none; background:none; color:var(--muted); font-size:1.1rem; cursor:pointer; padding:4px 6px; border-radius:6px;}
+  .dlg-x:hover{background:var(--bg); color:var(--ink);}
+  .dlg-list{display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px 14px; margin:10px 18px 4px; font-size:.88rem; line-height:1.4;}
+  .dlg-list dt{color:var(--muted);} .dlg-list dd{margin:0; overflow-wrap:anywhere;}
+  .dlg{overflow-x:hidden;}
+  .dlg-list a{color:var(--green); font-weight:600;}
+  .dlg-btns{display:flex; align-items:center; gap:10px; padding:12px 18px 18px; flex-wrap:wrap;}
+  .btn{cursor:pointer; border:1px solid var(--line); background:var(--bg); color:var(--ink); border-radius:8px; padding:7px 12px; font-size:.85rem; font-weight:600;}
+  .btn:hover{border-color:var(--green);}
+  #info-msg{font-size:.82rem; color:var(--muted);}
 
   .wrap{max-width:1100px; margin:0 auto; padding:16px 16px 30px;}
   .view-head{display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px;}
@@ -162,11 +177,29 @@
       <a data-view="planer">🗓️<span class="tl"> Nutzung</span></a>
     </nav>
     <div class="navright">
-      <a class="link-old" href="../thingspeak-dashboard/index.html" title="Original mit ThingSpeak-iframes">ThingSpeak</a>
+      <a class="link-old" href="../thingspeak-dashboard/index.html" title="Altes Dashboard (Original mit ThingSpeak-iframes)">Alt</a>
       <button id="theme-toggle" class="theme-btn" title="Hell/Dunkel">🌙</button>
+      <button id="info-btn" class="theme-btn" title="Info &amp; Version">ℹ️</button>
     </div>
   </header>
   <main id="view"></main>
+
+  <!-- Info-Fenster (Knopf ℹ️ oben rechts): Version, Autor, Updates, Quellen -->
+  <dialog id="info-dlg" class="dlg" aria-labelledby="info-titel">
+    <div class="dlg-in">
+      <div class="dlg-head"><h2 id="info-titel">⚡ Grosjeans Zuhause</h2><button class="dlg-x" aria-label="Schliessen">✕</button></div>
+      <dl class="dlg-list">
+        <dt>App-Version</dt><dd id="info-version">–</dd>
+        <dt>Entwickelt von</dt><dd>Stefan Grosjean</dd>
+        <dt>Läuft als</dt><dd id="info-modus">–</dd>
+        <dt>Updates</dt><dd id="info-upd">–</dd>
+        <dt>Datenquellen</dt><dd>ThingSpeak (Steuerungen PV, Wallbox, Heizung, Boiler) · Open-Meteo (Wetter, Einstrahlung) · Tibber (VW ID.3, über Val Town)</dd>
+        <dt>Android-Widget</dt><dd><a href="https://github.com/GrosjHOME/StefansHomeDashboard/releases/download/widget-latest/Zuhause-Widget.apk">Zuhause-Widget.apk herunterladen</a></dd>
+        <dt>Quelltext</dt><dd><a href="https://github.com/GrosjHOME/StefansHomeDashboard" target="_blank" rel="noopener">GitHub · GrosjHOME/StefansHomeDashboard</a></dd>
+      </dl>
+      <div class="dlg-btns"><button id="info-check" class="btn">Nach Updates suchen</button><span id="info-msg"></span></div>
+    </div>
+  </dialog>
 
 <script>
 /* ================= Theme ================= */
@@ -1080,7 +1113,7 @@ function simpleView(cfg){
       var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
       var last=f[f.length-1];
       function L(fd){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null)return v;} return null; }
-      cfg.kpis.forEach(function(k,i){ if(k.integrate)return; if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
+      cfg.kpis.forEach(function(k,i){ if(k.integrate||k.ausFeeds)return; if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
         el.textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0);
         if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
         if(k.color) el.style.color = (v===null) ? "" : k.color(v); });
@@ -1139,17 +1172,21 @@ function simpleView(cfg){
       // Integral-KPIs (z. B. "Geladene Menge"): Leistung (W) ueber den Zeitraum
       // aufintegrieren -> kWh. Heute/24h aus den vorhandenen Chart-Feeds; fuer 7 Tage
       // die vollen 7 Tage in 2 Fenstern nachladen (ThingSpeak roh ~8000 Punkte ≈ 6.5 Tage).
-      cfg.kpis.forEach(function(k,ki){ if(!k.integrate)return; var el=g("kpi_"+ki); if(!el)return;
+      // Ebenso Zeitraum-KPIs mit eigener Rechnung (k.ausFeeds(feeds) -> Zahl), z. B. Heizzyklen.
+      var sieben={};   // 7-Tage-Feeds je Kanal, einmal geladen fuer alle KPIs
+      cfg.kpis.forEach(function(k,ki){ if(!k.integrate && !k.ausFeeds)return; var el=g("kpi_"+ki); if(!el)return;
         var ch=k.channel||cfg.channel, dec=(k.dec!=null?k.dec:1), withKey=(String(ch)==="172430"), toKw=k.intScale;
+        var wert=function(ff){ return k.ausFeeds ? k.ausFeeds(ff) : integKwh(ff,k.field,toKw); };
         if(mode==="7tage"){
-          var now=Date.now(), mid=now-3.5*864e5, wk=mode;
-          var u1=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(now-7*864e5))+"&end="+encodeURIComponent(tsStamp(mid)),withKey);
-          var u2=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(mid))+"&end="+encodeURIComponent(tsStamp(now)),withKey);
-          Promise.all([j(u1),j(u2)]).then(function(rr){ if(mode!==wk)return;  // Zeitraum inzwischen gewechselt
-            var ff=((rr[0]&&rr[0].feeds)||[]).concat((rr[1]&&rr[1].feeds)||[]);
-            el.textContent = fmt(integKwh(ff,k.field,toKw), dec); }).catch(function(){});
+          var wk=mode;
+          if(!sieben[ch]){ var now=Date.now(), mid=now-3.5*864e5;
+            var u1=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(now-7*864e5))+"&end="+encodeURIComponent(tsStamp(mid)),withKey);
+            var u2=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(mid))+"&end="+encodeURIComponent(tsStamp(now)),withKey);
+            sieben[ch]=Promise.all([j(u1),j(u2)]).then(function(rr){ return ((rr[0]&&rr[0].feeds)||[]).concat((rr[1]&&rr[1].feeds)||[]); }); }
+          sieben[ch].then(function(ff){ if(mode!==wk)return;  // Zeitraum inzwischen gewechselt
+            el.textContent = fmt(wert(ff), dec); }).catch(function(){});
         } else {
-          el.textContent = fmt(integKwh(byChan[String(ch)]||[], k.field, toKw), dec);
+          el.textContent = fmt(wert(byChan[String(ch)]||[]), dec);
         }
       });
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
@@ -1267,13 +1304,35 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
              {channel:3514838,field:"field2",label:"Reichweite",color:"var(--amber)",dec:0,axis:"right"}]}
   ]});
 
+// Brennphasen aus Abgas (field8) und Kessel oben (field1) - Methodik wie in HeizungTiba
+// docs/Heizzyklen-Auswertung-2010-2026.xlsx (Blatt Methodik), an 8 Tagen 02/2026 exakt gleich:
+// Beginn bei Abgas - Kessel > 30 K, Ende unter 20 K; zaehlt nur ab 60 s Dauer und 45 K Spitze.
+// Unter 5 min = Glutstoss, sonst Heizzyklus (Vollzyklus). Fuehler-Lesefehler (-127 °C) und
+// Abgasspitzen ueber 400 °C werden ignoriert. Eine Phase, die noch laeuft, zaehlt mit.
+function heizPhasen(ff){
+  if(heizPhasen._ff===ff) return heizPhasen._p;   // dieselben Feeds fuer mehrere KPIs nur einmal rechnen
+  var out=[], an=null, maxD=0, lastT=null;
+  ff.forEach(function(x){ var t=Date.parse(x.created_at), a=num(x.field8), k=num(x.field1);
+    if(a===null || k===null || a>400 || a<-100 || k<-100) return;
+    var d=a-k;
+    if(an===null){ if(d>30){ an=t; maxD=d; } }
+    else { if(d>maxD) maxD=d; if(d<20){ out.push({s:an, e:t, max:maxD}); an=null; } }
+    lastT=t; });
+  if(an!==null) out.push({s:an, e:lastT, max:maxD});
+  var p=out.filter(function(x){ return x.e-x.s>=60000 && x.max>=45; })
+    .map(function(x){ return {min:(x.e-x.s)/60000, voll:(x.e-x.s)>=300000}; });
+  heizPhasen._ff=ff; heizPhasen._p=p; return p;
+}
+function heizVoll(ff){ return heizPhasen(ff).filter(function(p){ return p.voll; }); }
+
 var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
   // Zwei Quellen getrennt: Heizungs-Logger (Kanal 172428, laeuft nur in der Heizsaison)
   // und HSH-Auslastung (stuendlich im Wallbox-Kanal 172228, ganzjaehrig).
   sections:[
     // Veraltet-Warnung nur Okt-Apr; Mai-Sep ist ein Stillstand normal ("Sommerpause")
     {key:"hz",  title:"🔥 Kessel & Schnitzel", channel:172428, staleMin:60, season:[9,10,11,0,1,2,3]},
-    {key:"hsh", title:"📊 HSH-Auslastung", channel:172228}
+    {key:"zyk", title:"♨️ Brennbetrieb im Zeitraum", channel:172428, staleMin:60, season:[9,10,11,0,1,2,3]},
+    {key:"hsh", title:"📊 Auslastung", channel:172228}
   ],
   kpis:[
     {sec:"hz",field:"field1",label:"Kessel oben",unit:"°C",dec:1},
@@ -1281,7 +1340,12 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
     {sec:"hz",field:"field8",label:"Abgas",unit:"°C",dec:0},
     {sec:"hz",field:"field4",label:"Schnitzel-Füllstand",unit:"%",dec:0},
     {sec:"hz",field:"field3",label:"Temp. vor Schnitzelbunker",unit:"°C",dec:1,warnAbove:25},
-    {sec:"hsh",channel:172228,field:"field1",label:"HSH-Auslastung",unit:"%",dec:0}
+    // Zeitraum-KPIs (Heute / 24 h / 7 Tage oben rechts), siehe heizPhasen()
+    {sec:"zyk",label:"Heizzyklen",dec:0,ausFeeds:function(ff){ return heizVoll(ff).length; }},
+    {sec:"zyk",label:"Glutstösse",dec:0,ausFeeds:function(ff){ return heizPhasen(ff).length-heizVoll(ff).length; }},
+    {sec:"zyk",label:"Brennzeit",unit:"h",dec:1,ausFeeds:function(ff){ return heizPhasen(ff).reduce(function(s,p){ return s+p.min; },0)/60; }},
+    {sec:"zyk",label:"Ø Heizzyklus",unit:"min",dec:0,ausFeeds:function(ff){ var v=heizVoll(ff); return v.length ? v.reduce(function(s,p){ return s+p.min; },0)/v.length : null; }},
+    {sec:"hsh",channel:172228,field:"field1",label:"Auslastung",unit:"%",dec:0}
   ],
   charts:[
     {title:"Kesseltemperaturen", unit:"°C", zero:false, minmaxField:"field1", lines:[{field:"field1",label:"Oben",color:"var(--amber)"},{field:"field2",label:"Mitte",color:"var(--blue)"}]},
@@ -1608,29 +1672,67 @@ if("serviceWorker" in navigator && location.protocol.indexOf("http")===0){
 
 // Neue Dashboard-Version von selbst laden: Eine installierte App bleibt oft tagelang
 // offen und wuerde sonst bei der alten Version bleiben (die Daten kommen trotzdem).
-// Geprueft wird beim Zurueckwechseln in die App (nach >= 5 min im Hintergrund) und
-// alle 6 h, falls sie dauernd sichtbar offen ist (z. B. am PC). Verglichen wird der
-// Fingerabdruck dieser Seite beim Server (ETag bzw. Last-Modified von GitHub Pages);
-// hat er sich seit dem Laden geaendert, laedt die App neu - die Adresse mit #Tab bleibt.
+// Automatisch geprueft wird hoechstens EINMAL PRO WOCHE (Zeitpunkt der letzten Pruefung im
+// localStorage): beim Zurueckwechseln in die App und stuendlich, solange sie sichtbar offen
+// ist. Von Hand jederzeit ueber Info (ℹ️) -> "Nach Updates suchen"; ein normales Neuladen
+// (F5) holt ohnehin die neueste Version (Service Worker: zuerst Netz).
+// Verglichen wird der Fingerabdruck dieser Seite beim Server (ETag bzw. Last-Modified von
+// GitHub Pages); hat er sich seit dem Laden geaendert, laedt die App neu - #Tab bleibt.
+var APP_UPD={ WOCHE:7*864e5, KEY:"shoUpdCheck" };
 (function(){
-  if(location.protocol.indexOf("http")!==0) return;   // nicht als lokale Datei
-  var HIDDEN_MIN_MS=5*60000, PERIOD_MS=6*3600000, url=location.pathname, base=null, hiddenAt=0;
+  var http=location.protocol.indexOf("http")===0, url=location.pathname, base=null;
   function stamp(r){ return r.ok ? (r.headers.get("ETag")||r.headers.get("Last-Modified")) : null; }
+  APP_UPD.letzte=function(){ try{ return +localStorage.getItem(APP_UPD.KEY)||0; }catch(e){ return 0; } };
+  function merke(){ try{ localStorage.setItem(APP_UPD.KEY, String(Date.now())); }catch(e){} }
   // Fingerabdruck der GELADENEN Version: aus dem Browser-Cache (dieselbe Datei, die die
   // Seite gerade benutzt) - nicht vom Server, sonst ginge ein Update in den ersten
   // Minuten nach dem Deploy verloren.
-  fetch(url,{cache:"force-cache"}).then(function(r){ base=stamp(r); }).catch(function(){});
-  function check(){
-    if(!base) return;
-    fetch(url,{method:"HEAD",cache:"no-store"}).then(function(r){
-      var s=stamp(r); if(s && s!==base) location.reload();
-    }).catch(function(){});   // offline o. ae.: naechstes Mal
+  if(http) fetch(url,{cache:"force-cache"}).then(function(r){ base=stamp(r); }).catch(function(){});
+  // Ergebnis: "neu" (laedt neu), "aktuell", "offline", "unbekannt" (kein Vergleich moeglich), "lokal"
+  APP_UPD.pruefen=function(){
+    if(!http) return Promise.resolve("lokal");
+    return fetch(url,{method:"HEAD",cache:"no-store"}).then(function(r){
+      var s=stamp(r); if(!s) return "offline";
+      merke();
+      if(!base) return "unbekannt";
+      if(s!==base){ location.reload(); return "neu"; }
+      return "aktuell";
+    }).catch(function(){ return "offline"; });   // offline o. ae.: naechstes Mal
+  };
+  function faellig(){ if(http && !document.hidden && Date.now()-APP_UPD.letzte()>=APP_UPD.WOCHE) APP_UPD.pruefen(); }
+  document.addEventListener("visibilitychange", faellig);
+  setInterval(faellig, 3600000);
+})();
+
+/* ================= Info (ℹ️ oben rechts) ================= */
+// Version = Veroeffentlichungsdatum dieser Seite (Last-Modified von GitHub Pages, also der
+// Zeitpunkt des Merges nach main) - kommt automatisch, nichts von Hand hochzuzaehlen.
+(function(){
+  var dlg=document.getElementById("info-dlg"), btn=document.getElementById("info-btn"); if(!dlg||!btn) return;
+  function g(id){ return document.getElementById(id); }
+  function p2(n){ return ("0"+n).slice(-2); }
+  function zeit(d){ return d.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric"})+", "+hhmm(d.getTime()); }
+  function fuellen(){
+    var lm=new Date(document.lastModified), ok=!isNaN(lm.getTime());
+    g("info-version").textContent = ok ? lm.getFullYear()+"."+p2(lm.getMonth()+1)+"."+p2(lm.getDate())+" · veröffentlicht "+zeit(lm) : "–";
+    var app=(window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone;
+    g("info-modus").textContent = app ? "installierte App" : "Browser";
+    var l=APP_UPD.letzte();
+    g("info-upd").textContent = "automatisch einmal pro Woche · zuletzt geprüft: "+(l ? zeit(new Date(l)) : "noch nie");
+    g("info-msg").textContent = "";
   }
-  document.addEventListener("visibilitychange",function(){
-    if(document.hidden){ hiddenAt=Date.now(); return; }
-    if(hiddenAt && Date.now()-hiddenAt>=HIDDEN_MIN_MS) check();
+  btn.addEventListener("click",function(){ fuellen(); if(dlg.showModal) dlg.showModal(); else dlg.setAttribute("open",""); });
+  dlg.querySelector(".dlg-x").addEventListener("click",function(){ dlg.close(); });
+  dlg.addEventListener("click",function(e){ if(e.target===dlg) dlg.close(); });   // Klick neben das Fenster
+  g("info-check").addEventListener("click",function(){
+    g("info-msg").textContent="prüfe …";
+    APP_UPD.pruefen().then(function(r){
+      var t={neu:"Neue Version gefunden – lade neu …", aktuell:"Du hast die neueste Version.", offline:"Keine Verbindung – später nochmals versuchen.",
+        unbekannt:"Version nicht vergleichbar – lade neu …", lokal:"Lokale Datei – keine Prüfung möglich."}[r];
+      g("info-msg").textContent=t; if(r==="unbekannt") location.reload();
+      fuellen(); g("info-msg").textContent=t;
+    });
   });
-  setInterval(function(){ if(!document.hidden) check(); }, PERIOD_MS);
 })();
 </script>
 </body>

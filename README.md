@@ -20,7 +20,7 @@ aktualisiert sich alle 60 s · als App installierbar (Android, Windows, iOS)
 |---|---|
 | ☀️&nbsp;**PV&#8209;Anlage** | Aktuelle Leistung gegen die Soll-Leistung aus der Prognose (Soll-Strich, Toleranzband ±10 %, Farbverlauf orange → grün) · Energie heute/gestern/Monat/Jahr · Leistungsverlauf (heute mit der Morgenprognose von 05:00, blau gestrichelt) · Energie nach Tagen (mit 3-Tage-Prognose und Min/Max desselben Kalendertags der Vorjahre), Monaten und Jahren (laufende Periode gegen Ø und Min/Max **aller** Jahre ab 2014) · PV-Arbeit je Jahr · Strom und Spannung je MPP-Tracker · Tracker-Strom mittags zur Verlust-Diagnose · **Leistungsfaktor** (Ertrag ÷ Einstrahlung aus dem Open-Meteo-Archiv, wetterbereinigt, in % von 2014–16) |
 | 🚗&nbsp;**Wallbox** | Zwei Gruppen mit eigener Aktualität: **Wallbox** (Ladeleistung, PV-Ladevorgabe, Ladestrom-Begrenzung, Verbindung, geladene Menge) und **Auto** (VW ID.3 via Tibber: Ladezustand, Ziel, Reichweite, Stecker, Ladestatus) · Verläufe |
-| 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **HSH-Auslastung** · Verläufe |
+| 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **Brennbetrieb im Zeitraum**: Heizzyklen, Glutstösse, Brennzeit, Ø Heizzyklus (Zählung wie in HeizungTiba `docs/Heizzyklen-Auswertung-2010-2026.xlsx`: Abgas − Kessel > 30 K bis < 20 K, ab 60 s und 45 K, unter 5 min = Glutstoss) · **Auslastung** · Verläufe |
 | 💧&nbsp;**Boiler** | Temperaturen Mitte/Unten mit den Schaltschwellen der Steuerung (Laden ein < 45 °C, aus > 58 bzw. 63 °C) · Ladeleistung gegen Einschaltschwelle und PV · geladene Menge |
 | 🗓️&nbsp;**Nutzung** | 7-Tage-Solarprognose (Open-Meteo, stündlich an den letzten 14 Tagen kalibriert, heute mit Nowcast) · Tageskarten mit Empfehlungen für Waschmaschine, Geschirrspüler, Tumbler, Auto und Boiler |
 
@@ -113,12 +113,19 @@ Rückfall ohne Verbindung (die Seite startet dann, die Live-Daten fehlen).
 Daten-APIs anderer Server (ThingSpeak, Open-Meteo) fasst er nicht an. Bei
 Änderungen an `sw.js` die Cache-Version (`zuhause-v1`) hochzählen.
 
-**Updates kommen von selbst:** Die Live-Daten laufen alle 60 s. Eine neue
-Dashboard-Version lädt die App selbst – beim **Zurückwechseln** in die App (nach
-mindestens 5 min im Hintergrund) und **alle 6 h**, falls sie dauernd sichtbar offen
-ist. Dazu vergleicht sie den Fingerabdruck der Seite (ETag von GitHub Pages) mit
-dem beim Laden; nur wenn er sich geändert hat, lädt sie neu (gleicher Tab). Nach
-einem Merge dauert es durch Pages-Build und Browser-Cache bis zu ~15 min.
+**Updates:** Die Live-Daten laufen alle 60 s. Ob es eine neue Dashboard-Version
+gibt, prüft die App **höchstens einmal pro Woche**: beim Zurückwechseln in die App
+oder stündlich, solange sie offen ist. Den Zeitpunkt der letzten Prüfung merkt
+sich der Browser. Dazu vergleicht sie den Fingerabdruck der Seite (ETag von GitHub
+Pages) mit dem beim Laden. Nur wenn er sich geändert hat, lädt sie neu, im selben
+Tab. **Sofort** geht es über **ℹ️ oben rechts → „Nach Updates suchen"** oder mit
+F5. Nach einem Merge dauert es durch Pages-Build und Browser-Cache bis zu ~15 min.
+
+**Info-Fenster (ℹ️ oben rechts):** zeigt die App-Version, den Autor (Stefan
+Grosjean), ob das Dashboard als App oder im Browser läuft, die letzte Update-Prüfung,
+die Datenquellen und Links zum Android-Widget und zu GitHub. Die Version ist das
+Veröffentlichungsdatum der Seite, z. B. `2026.10.08`. Sie kommt automatisch aus
+GitHub Pages (Last-Modified), von Hand ist nichts hochzuzählen.
 App-Name und Icon aktualisieren Android/Windows selbst (kann bis zu einem Tag
 dauern); auf dem iPhone muss die App dafür neu zum Home-Bildschirm hinzugefügt
 werden.
