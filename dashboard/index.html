@@ -85,6 +85,13 @@
   .kpi .k{color:var(--muted); font-size:.8rem; margin-bottom:4px;}
   .kpi .v{font-size:1.45rem; font-weight:700;}
   .kpi .v small{font-size:.8rem; font-weight:600; color:var(--muted);}
+  /* Kalender-Feld fuer den freien Zeitraum (Start, Zeit, Dauer) unter dem Umschalter */
+  .frei{background:var(--card); border-radius:12px; box-shadow:var(--shadow); padding:12px 14px; margin:-4px 0 14px; display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px 14px;}
+  .frei[hidden]{display:none;}
+  .frei label{display:flex; flex-direction:column; gap:3px; font-size:.72rem; font-weight:600; color:var(--muted);}
+  .frei input,.frei select{font:inherit; font-size:.9rem; font-weight:500; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:6px 8px; color-scheme:light dark;}
+  .frei-msg{font-size:.82rem; color:var(--red); flex:1 1 100%;}
+  .frei-msg:empty{display:none;}
   .kpi .chk{display:block; font-size:.74rem; font-weight:600; color:var(--muted); margin-top:2px;}   /* Pruefwert in Klammern */
   .kpi .stale{font-size:.72rem; font-weight:600; color:var(--red); margin-top:4px;}
   .kpi .v.txt{font-size:1.1rem; line-height:1.3;}   /* Text-Werte (z. B. "Lädt nicht") kleiner als Zahlen */
@@ -500,7 +507,60 @@ function steigung(ff, field, wMin, ok){
    "heute" = ab lokaler Mitternacht (ThingSpeak start-Param, in UTC = korrekter Zeitpunkt),
    "3h" = letzte 3 Stunden, "24h" = rollierende letzte 24 h, "7tage" = letzte 7 Tage. */
 function midnightStartUTC(){ var d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,19).replace('T',' '); }
-function periodQuery(mode){ if(mode==="3h") return "/feeds.json?minutes=180"; if(mode==="7tage") return "/feeds.json?days=7"; if(mode==="24h") return "/feeds.json?days=1"; return "/feeds.json?start="+encodeURIComponent(midnightStartUTC()); }
+function periodQuery(mode){ if(mode==="3h") return "/feeds.json?minutes=180"; if(mode==="7tage") return "/feeds.json?days=7"; if(mode==="24h") return "/feeds.json?days=1";
+  if(mode==="frei"){ var z=zeitraumMs("frei"); return "/feeds.json?start="+encodeURIComponent(tsStamp(z.von))+"&end="+encodeURIComponent(tsStamp(z.bis)); }
+  return "/feeds.json?start="+encodeURIComponent(midnightStartUTC()); }
+
+/* ---- Freier Zeitraum (Kalender-Knopf): Startdatum + Startzeit + Dauer ---- */
+var FREI={von:0, bis:0, dauerMin:1440};                      // ms; gesetzt ueber das Feld unter dem Umschalter
+var FREI_DAUER=[["3 h",180],["6 h",360],["12 h",720],["24 h",1440],["3 Tage",4320],["7 Tage",10080]];   // die gewohnten Zeitraeume
+var FREI_FENSTER_MS=3*864e5, _freiCache={};
+// Anfang/Ende (ms) des gewaehlten Zeitraums, Ende nie in der Zukunft
+function zeitraumMs(mode){ var bis=Date.now();
+  if(mode==="frei") return {von:FREI.von, bis:Math.min(FREI.bis,bis)};
+  if(mode==="3h") return {von:bis-3*36e5, bis:bis};
+  if(mode==="24h") return {von:bis-864e5, bis:bis};
+  if(mode==="7tage") return {von:bis-7*864e5, bis:bis};
+  return {von:new Date().setHours(0,0,0,0), bis:bis}; }
+// Messwerte (datei "feeds.json" oder "status.json") fuer den gewaehlten Zeitraum. Die festen Zeitraeume
+// kommen mit einer Abfrage; ein freier Zeitraum in 3-Tage-Fenstern (ThingSpeak liefert je Abfrage hoechstens
+// ~8000 Eintraege, bei minuetlichen Daten ~5.5 Tage) und ohne doppelte Eintraege an den Fenstergrenzen.
+// Liegt der freie Zeitraum ganz in der Vergangenheit, bleibt das Ergebnis im Speicher (kein Neuladen jede Minute).
+function holeZeitraum(ch, mode, withKey, datei){ datei=datei||"feeds.json";
+  if(mode!=="frei") return j(api(ch, periodQuery(mode).replace("feeds.json",datei), withKey));
+  var z=zeitraumMs("frei"), key=ch+"|"+datei+"|"+z.von+"|"+z.bis, fertig=z.bis<Date.now()-300000;
+  if(fertig && _freiCache[key]) return _freiCache[key];
+  var fenster=[]; for(var s=z.von; s<z.bis; s+=FREI_FENSTER_MS) fenster.push([s, Math.min(s+FREI_FENSTER_MS, z.bis)]);
+  var p=Promise.all(fenster.map(function(w){ return j(api(ch, "/"+datei+"?start="+encodeURIComponent(tsStamp(w[0]))+"&end="+encodeURIComponent(tsStamp(w[1])), withKey)); }))
+    .then(function(rs){ var seen={}, feeds=[]; rs.forEach(function(r){ ((r&&r.feeds)||[]).forEach(function(x){ if(!seen[x.entry_id]){ seen[x.entry_id]=1; feeds.push(x); } }); }); return {feeds:feeds}; });
+  if(fertig){ if(Object.keys(_freiCache).length>12) _freiCache={}; _freiCache[key]=p; }
+  return p; }
+function freiText(){ var a=new Date(FREI.von), b=new Date(Math.min(FREI.bis,Date.now())), p2=function(n){ return ("0"+n).slice(-2); };
+  var hm=function(d){ return p2(d.getHours())+":"+p2(d.getMinutes()); };
+  return a.getDate()+"."+(a.getMonth()+1)+". "+hm(a)+" – "+(FREI.bis>Date.now()?"jetzt":(b.toDateString()===a.toDateString()?"":b.getDate()+"."+(b.getMonth()+1)+". ")+hm(b)); }
+// HTML: Zeitraum-Umschalter inkl. Kalender-Knopf und das aufklappbare Feld (Start, Zeit, Dauer)
+function zeitraumLeisteHtml(){ return '<span class="seg" id="seg-period"><button data-m="3h">3 h</button><button data-m="heute" class="active">Heute</button><button data-m="24h">24 h</button><button data-m="7tage">7 Tage</button><button data-m="frei" id="btn-frei" title="Freien Zeitraum wählen: Startdatum, Zeit und Dauer">📅</button></span>'; }
+function freiPanelHtml(){ return '<div class="frei" id="frei-panel" hidden>'+
+  '<label>Start<input type="date" id="fr-d"></label><label>Zeit<input type="time" id="fr-t"></label>'+
+  '<label>Dauer<select id="fr-n">'+FREI_DAUER.map(function(x){ return '<option value="'+x[1]+'">'+x[0]+'</option>'; }).join("")+'</select></label>'+
+  '<button class="btn" id="fr-ok">Anzeigen</button><button class="btn" id="fr-x">Schliessen</button><span class="frei-msg" id="fr-msg"></span></div>'; }
+// Verdrahtet Umschalter und Feld; setMode(m) bekommt "3h" | "heute" | "24h" | "7tage" | "frei" und laedt neu.
+function zeitraumBinden(setMode){
+  var seg=document.getElementById("seg-period"), panel=document.getElementById("frei-panel"), bf=document.getElementById("btn-frei"); if(!seg||!panel) return;
+  var d=document.getElementById("fr-d"), t=document.getElementById("fr-t"), n=document.getElementById("fr-n"), msg=document.getElementById("fr-msg"), p2=function(x){ return ("0"+x).slice(-2); };
+  function vorbelegen(){ var s=FREI.von ? new Date(FREI.von) : new Date(Date.now()-6*36e5); if(!FREI.von) s.setMinutes(0,0,0);
+    d.value=ymdLocal(s); d.max=ymdLocal(new Date()); t.value=p2(s.getHours())+":"+p2(s.getMinutes()); n.value=String(FREI.dauerMin); msg.textContent=""; }
+  seg.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; var m=b.getAttribute("data-m");
+    if(m==="frei"){ if(panel.hidden){ vorbelegen(); panel.hidden=false; } else panel.hidden=true; return; }   // Zeitraum wechselt erst mit "Anzeigen"
+    panel.hidden=true; bf.textContent="📅"; segActive(seg,b); setMode(m); });
+  document.getElementById("fr-x").addEventListener("click",function(){ panel.hidden=true; });
+  document.getElementById("fr-ok").addEventListener("click",function(){
+    var s=new Date(d.value+"T"+(t.value||"00:00"));
+    if(!d.value||isNaN(s.getTime())){ msg.textContent="Bitte ein Startdatum wählen."; return; }
+    if(s.getTime()>Date.now()){ msg.textContent="Der Start liegt in der Zukunft."; return; }
+    var dm=parseInt(n.value,10); FREI={von:s.getTime(), bis:s.getTime()+dm*60000, dauerMin:dm};
+    panel.hidden=true; bf.textContent="📅 "+freiText(); segActive(seg,bf); setMode("frei"); });
+}
 // Trapez-Integral einer Leistungsreihe (W) -> kWh. Datenluecken >2 h werden uebersprungen.
 // Trapez-Integral einer Leistungsreihe -> kWh. toKw skaliert den Rohwert auf kW
 // (Standard 0.001: Rohwert in W; z. B. Wallbox field4 in µW -> 0.000001). Luecken >2 h uebersprungen.
@@ -524,9 +584,9 @@ PV.render=function(main){
   main.innerHTML='<div class="wrap wide">'+
     '<div class="view-head"><h1>☀️ PV-Anlage</h1>'+
       '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
-        '<span class="seg" id="seg-period"><button data-m="3h">3 h</button><button data-m="heute" class="active">Heute</button><button data-m="24h">24 h</button><button data-m="7tage">7 Tage</button></span>'+
+        zeitraumLeisteHtml()+
         '<div class="meta"><div id="sd-status"><span class="dot na"></span>SD-Karte</div><div id="updated">wird geladen…</div></div>'+
-      '</div></div>'+
+      '</div></div>'+freiPanelHtml()+
     '<div class="pv-grid"><div class="hero a-hero"><div class="lbl">Aktuelle Leistung</div><div class="val"><span id="power">–</span> <small>kW</small></div>'+
       '<div class="bar"><i class="band" id="power-band"></i><span id="power-bar" style="width:0%"></span><i class="mark" id="power-soll"></i></div><div class="bar-scale"><span>0</span><span class="mid" id="power-scale-mid">15 kW</span><span>30 kW</span></div>'+
       '<div class="bar-soll" id="power-soll-txt"></div></div>'+
@@ -567,7 +627,7 @@ PV.render=function(main){
   if(window.ResizeObserver){ PV._ro=new ResizeObserver(function(){ requestAnimationFrame(PV.fitJahr); });
     [".a-strom",".a-spann"].forEach(function(s){ var e=main.querySelector(s); if(e) PV._ro.observe(e); }); }
   var slf=document.getElementById("seg-lf"); if(slf) slf.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.lfMode=b.getAttribute("data-m"); segActive(slf,b); PV.loadLF(); });
-  var spd=document.getElementById("seg-period"); if(spd) spd.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.period=b.getAttribute("data-m"); segActive(spd,b); PV.loadPower(); PV.loadTrackers(); PV.loadPeakSun(); });
+  zeitraumBinden(function(m){ PV.period=m; PV.loadPower(); PV.loadTrackers(); PV.loadPeakSun(); });
   function parseEnergyYear(v){ return v?parseInt(v,10):null; }
   var se=document.getElementById("seg-energy"); if(se) se.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.energyMode=b.getAttribute("data-m"); segActive(se,b);
     var sy=document.getElementById("energy-year"); if(sy){ if(PV.energyMode==="monate"){ sy.style.display=""; PV.energyYear=parseEnergyYear(sy.value); } else { sy.style.display="none"; PV.energyYear=null; } }
@@ -584,8 +644,7 @@ function panel(title,tag,id){ return '<div class="panel"><h2>'+title+' '+tag+'</
 // Tracker-Status (Tabelle aktueller Wert + Strom/Spannung-Historie) fuer den globalen Zeitraum
 PV.loadTrackers=function(){
   function g(id){ return document.getElementById(id); }
-  var url = periodQuery(PV.period).replace("feeds.json","status.json");
-  return j(api(PV.CH,url,true)).then(function(d){
+  return holeZeitraum(PV.CH, PV.period, true, "status.json").then(function(d){
     var f=(d&&d.feeds)?d.feeds:[]; var last=f.length?f[f.length-1]:null; var holder=g("tracker-holder"); if(!holder)return;
     if(last&&last.status){ g("status-time").textContent=relTime(new Date(last.created_at)); var p=parseStatus(last.status);
       function wr(w){ var U=p["U"+w],I=p["I"+w]; if(!U||!I)return '<tr><td class="wr-head">WR '+w+'</td><td colspan="3" style="text-align:left;color:var(--muted)">keine Daten</td></tr>';
@@ -611,7 +670,7 @@ PV.loadTrackers=function(){
 // Peak-Leistung + Sonnenstunden fuer den globalen Zeitraum
 PV.loadPeakSun=function(){
   function g(id){ return document.getElementById(id); }
-  return j(api(PV.CH,periodQuery(PV.period),true)).then(function(d){
+  return holeZeitraum(PV.CH, PV.period, true).then(function(d){
     var f=(d&&d.feeds)?d.feeds:[], pts=[], peak=0;
     f.forEach(function(x){ var v=num(x.field1); if(v===null)return; if(v>peak)peak=v; pts.push({t:new Date(x.created_at).getTime(),v:v}); });
     pts.sort(function(a,b){return a.t-b.t;});
@@ -905,9 +964,8 @@ PV.load=function(){
 
 PV.loadPower=function(){
   var holder=document.getElementById("chart-power"); if(!holder)return;
-  var url = periodQuery(PV.period);
   var mpr = (PV.period==="heute" || PV.period==="3h") ? PV.morgenPrognose() : Promise.resolve(null);
-  Promise.all([ j(api(PV.CH,url,true)), mpr ]).then(function(r){
+  Promise.all([ holeZeitraum(PV.CH, PV.period, true), mpr ]).then(function(r){
     var d=r[0], mp=r[1];
     var f=(d&&d.feeds)?d.feeds:[],pts=[]; f.forEach(function(x){ var v=num(x.field1); if(v!==null)pts.push({t:new Date(x.created_at),v:v/1000}); });
     var series=[{color:"var(--green)",fill:true,pts:pts}], leg=null;
@@ -1146,7 +1204,7 @@ PV.loadEnergy=function(){
 function simpleView(cfg){
   var mode = "heute";  // "3h" | "heute" (ab Mitternacht) | "24h" | "7tage" (steuert alle Charts der Ansicht)
   function g(id){ return document.getElementById(id); }
-  function periodUrl(){ return periodQuery(mode); }
+
 
   // Gruppen-Kopf (cfg.sections): "Stand vor ..." des Kanals; mit staleMin der Gruppe
   // rot "veraltet", wenn der Kanal so lange nichts Neues geliefert hat (z. B. Poller aus).
@@ -1211,7 +1269,7 @@ function simpleView(cfg){
       if(k.pruef) chans[String(k.pruef.channel)]=k.pruef.channel; });
     var keys=Object.keys(chans);
     Promise.all(keys.map(function(k){ var ch=chans[k];
-      return j(api(ch, periodUrl(), String(ch)==="172430")).then(function(d){ return {k:k, feeds:(d&&d.feeds)?d.feeds:[]}; }); }))
+      return holeZeitraum(ch, mode, String(ch)==="172430").then(function(d){ return {k:k, feeds:(d&&d.feeds)?d.feeds:[]}; }); }))
     .then(function(results){
       var byChan={}; results.forEach(function(r){ byChan[r.k]=r.feeds; });
       var f=byChan[String(cfg.channel)]||[];
@@ -1234,8 +1292,7 @@ function simpleView(cfg){
           sieben[ch]=Promise.all([j(u1),j(u2)]).then(function(rr){ return ((rr[0]&&rr[0].feeds)||[]).concat((rr[1]&&rr[1].feeds)||[]); }); }
         return sieben[ch]; }
       // Zeitraum fuer Rechnungen, die den Anteil an der Gesamtdauer brauchen (k.ausFeeds(feeds, {von, bis}))
-      var bisMs=Date.now(), vonMs = mode==="7tage" ? bisMs-7*864e5 : (mode==="24h" ? bisMs-864e5 : (mode==="3h" ? bisMs-3*36e5 : new Date().setHours(0,0,0,0)));
-      var ctx={von:vonMs, bis:bisMs};
+      var ctx=zeitraumMs(mode);   // {von, bis} in ms - auch fuer den freien Zeitraum
       cfg.kpis.forEach(function(k,ki){ if(!k.integrate && !k.ausFeeds)return; var el=g("kpi_"+ki); if(!el)return;
         var ch=k.channel||cfg.channel, dec=(k.dec!=null?k.dec:1), toKw=k.intScale;
         var wert=function(ff){ return k.ausFeeds ? k.ausFeeds(ff,ctx) : integKwh(ff,k.field,toKw); };
@@ -1354,12 +1411,12 @@ function simpleView(cfg){
       }).join("");
       main.innerHTML='<div class="wrap wide"><div class="view-head"><h1>'+cfg.icon+" "+cfg.title+'</h1>'+
         '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
-          '<span class="seg" id="seg-period"><button data-m="3h">3 h</button><button data-m="heute" class="active">Heute</button><button data-m="24h">24 h</button><button data-m="7tage">7 Tage</button></span>'+
+          zeitraumLeisteHtml()+
           '<div class="meta" id="head-meta">wird geladen…</div>'+
         '</div></div>'+
-        kp+'<div class="ch-grid">'+charts+'</div>'+
+        freiPanelHtml()+kp+'<div class="ch-grid">'+charts+'</div>'+
         '<footer>Datenquelle: ThingSpeak Kanal '+cfg.channel+' · Aktualisierung alle 60 s · <span id="err2" style="color:var(--red)"></span></footer></div>';
-      var sp=g("seg-period"); if(sp) sp.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; mode=b.getAttribute("data-m"); segActive(sp,b); loadCharts(); });
+      zeitraumBinden(function(m){ mode=m; loadCharts(); });
     },
     load:function(){ loadKpis(); loadCharts(); }
   };
