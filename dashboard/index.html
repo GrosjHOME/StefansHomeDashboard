@@ -1393,21 +1393,42 @@ function fuehlerOk(v){ return v>-100 && v<150; }   // Raum-/Aussenfuehler (0 °C
 // Brennphasen aus Abgas (field8) und Kessel oben (field1) - Methodik wie in HeizungTiba
 // docs/Heizzyklen-Auswertung-2010-2026.xlsx (Blatt Methodik), an 8 Tagen 02/2026 exakt gleich:
 // Beginn bei Abgas - Kessel > 30 K, Ende unter 20 K; zaehlt nur ab 60 s Dauer und 45 K Spitze.
-// Unter 5 min = Glutstoss, sonst Heizzyklus (Vollzyklus). Fuehler-Lesefehler (-127 °C) und
-// Abgasspitzen ueber 400 °C werden ignoriert. Eine Phase, die noch laeuft, zaehlt mit.
+// Unter 5 min = Glutstoss (Gluterhaltung), sonst Heizzyklus (Vollzyklus). Fuehler-Lesefehler (-127 °C)
+// und Abgasspitzen ueber 400 °C werden ignoriert. Eine Phase, die noch laeuft, zaehlt mit.
+//
+// Ergaenzung fuer Glutstoesse bei heissem Kessel: Steht der Kessel schon bei 70-80 °C, erreicht das
+// Abgas beim Glutstoss die Schwelle "30 K ueber Kessel" bzw. "45 K Spitze" nicht (z. B. 66 -> 114 °C bei
+// Kessel 72 °C: nur 42 K) - der Stoss wurde dann nicht gezaehlt. Zusaetzlich gilt deshalb als Glutstoss:
+// Das Abgas springt innerhalb von 1-2 Messungen um >= 30 K ueber sein bisheriges Minimum und faellt
+// innerhalb von 5 min wieder auf höchstens Basis + 15 K; ausserhalb einer bekannten Brennphase.
+// Geprueft an 59 SD-Referenztagen der Auswertung (2023-25): mild +/- wie die SD-Zaehlung, Heizzyklen
+// unveraendert; an kalten Tagen und Wintern mit 30-min-Intervall zaehlt die Regel mehr, als die
+// Auswertung kannte (diese Stoesse haben die typische Form).
+var GLUT_SPRUNG_K=30, GLUT_ABKLING_K=15, GLUT_MAX_MIN=5;
 function heizPhasen(ff){
   if(heizPhasen._ff===ff) return heizPhasen._p;   // dieselben Feeds fuer mehrere KPIs nur einmal rechnen
-  var out=[], an=null, maxD=0, lastT=null;
+  var out=[], an=null, maxD=0, lastT=null, v=[];
   ff.forEach(function(x){ var t=Date.parse(x.created_at), a=num(x.field8), k=num(x.field1);
     if(a===null || k===null || a>400 || a<-100 || k<=0 || !kesselOk(k)) return;   // Lesefehler (0.0, -127) und Spitzen ignorieren
+    v.push({t:t, a:a});
     var d=a-k;
     if(an===null){ if(d>30){ an=t; maxD=d; } }
     else { if(d>maxD) maxD=d; if(d<20){ out.push({s:an, e:t, max:maxD}); an=null; } }
     lastT=t; });
   if(an!==null) out.push({s:an, e:lastT, max:maxD});
-  var p=out.filter(function(x){ return x.e-x.s>=60000 && x.max>=45; })
-    .map(function(x){ return {min:(x.e-x.s)/60000, voll:(x.e-x.s)>=300000}; });
-  heizPhasen._ff=ff; heizPhasen._p=p; return p;
+  var ph=out.filter(function(x){ return x.e-x.s>=60000 && x.max>=45; })
+    .map(function(x){ return {s:x.s, e:x.e, min:(x.e-x.s)/60000, voll:(x.e-x.s)>=300000}; });
+  // Glutstoesse ueber den Abgas-Sprung (siehe oben)
+  var sperre=0, sprung=[];
+  for(var i=2;i<v.length;i++){ var p=v[i]; if(p.t<sperre) continue;
+    if(p.t-v[i-2].t>3.5*60000) continue;                                     // Messluecke
+    var base=Math.min(v[i-1].a, v[i-2].a); if(p.a-base<GLUT_SPRUNG_K) continue;
+    if(ph.some(function(o){ return p.t>=o.s-2*60000 && p.t<=o.e+2*60000; })) continue;   // gehoert zu einer Brennphase
+    var ende=null; for(var j=i+1;j<v.length && v[j].t-p.t<=GLUT_MAX_MIN*60000;j++){ if(v[j].a<=base+GLUT_ABKLING_K){ ende=v[j].t; break; } }
+    if(ende===null) continue;                                                // faellt nicht rasch ab (Vollzyklus oder noch im Gang)
+    sprung.push({s:p.t, e:ende, min:(ende-p.t)/60000, voll:false}); sperre=ende; }
+  var r=ph.concat(sprung);
+  heizPhasen._ff=ff; heizPhasen._p=r; return r;
 }
 function heizVoll(ff){ return heizPhasen(ff).filter(function(p){ return p.voll; }); }
 
@@ -1427,7 +1448,7 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
     {sec:"hz",field:"field3",label:"Schnitzelbunker",unit:"°C",dec:1,warnAbove:25,gueltig:fuehlerOk},
     // Zeitraum-KPIs (Heute / 24 h / 7 Tage oben rechts), siehe heizPhasen()
     {sec:"zyk",label:"Heizzyklen",dec:0,ausFeeds:function(ff){ return heizVoll(ff).length; }},
-    {sec:"zyk",label:"Glutstösse",dec:0,ausFeeds:function(ff){ return heizPhasen(ff).length-heizVoll(ff).length; }},
+    {sec:"zyk",label:"Gluterhaltung",dec:0,ausFeeds:function(ff){ return heizPhasen(ff).length-heizVoll(ff).length; }},
     {sec:"zyk",label:"Brennzeit",unit:"h",dec:1,ausFeeds:function(ff){ return heizPhasen(ff).reduce(function(s,p){ return s+p.min; },0)/60; }},
     {sec:"zyk",label:"Ø Heizzyklus",unit:"min",dec:0,ausFeeds:function(ff){ var v=heizVoll(ff); return v.length ? v.reduce(function(s,p){ return s+p.min; },0)/v.length : null; }},
     // Auslastung (stuendlich im Wallbox-Kanal 172228, field1): Mittel ueber den Zeitraum
