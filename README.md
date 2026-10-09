@@ -20,7 +20,7 @@ aktualisiert sich alle 60 s · als App installierbar (Android, Windows, iOS)
 |---|---|
 | ☀️&nbsp;**PV&#8209;Anlage** | Aktuelle Leistung gegen die Soll-Leistung aus der Prognose (Soll-Strich, Toleranzband ±10 %, Farbverlauf orange → grün) · Energie heute/gestern/Monat/Jahr · Leistungsverlauf (heute mit der Morgenprognose von 05:00, blau gestrichelt) · Energie nach Tagen (mit 3-Tage-Prognose und Min/Max desselben Kalendertags der Vorjahre), Monaten und Jahren (laufende Periode gegen Ø und Min/Max **aller** Jahre ab 2014) · PV-Arbeit je Jahr · Strom und Spannung je MPP-Tracker · Tracker-Strom mittags zur Verlust-Diagnose · **Leistungsfaktor** (Ertrag ÷ Einstrahlung aus dem Open-Meteo-Archiv, wetterbereinigt, in % von 2014–16) |
 | 🚗&nbsp;**Wallbox** | Zwei Gruppen mit eigener Aktualität: **Wallbox** (Ladeleistung, PV-Ladevorgabe, Ladestrom-Begrenzung, Verbindung, geladene Menge) und **Auto** (VW ID.3 via Tibber: Ladezustand, Ziel, Reichweite, Stecker, Ladestatus) · Verläufe |
-| 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **Brennbetrieb im Zeitraum**: Heizzyklen, Gluterhaltung (Glutstösse), Brennzeit, Ø Heizzyklus, Ø Auslastung (Zählung wie in HeizungTiba `docs/Heizzyklen-Auswertung-2010-2026.xlsx`: Abgas − Kessel > 30 K bis < 20 K, ab 60 s und 45 K, unter 5 min = Glutstoss; bei heissem Kessel zusätzlich Abgas-Sprung ab 30 K, der binnen 5 min abklingt) · Verläufe, darunter die **Temperatursteigung** (°C pro Minute von Kessel oben und mitte, über 6 min geglättet; Lesefehler der Fühler wie 0.0 oder -127 werden herausgefiltert) und der **Füllstand mit der Schnitzel-Austragung** (Feld 6 des Loggers: hellgrüner Streifen unten = Automatik an, blauer Bereich = Austragung läuft, Höhe = Füllmodus wenig/normal/viel, violett = von Hand, rot = Störung) |
+| 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **Brennbetrieb im Zeitraum**: Heizzyklen, Gluterhaltung (Glutstösse), Brennzeit, Ø Heizzyklus, **Auslastung** = Brennanteil des Zeitraums, direkt aus den Heizungsdaten gerechnet (in Klammern vorübergehend der Wert des ThingSpeak-Skripts „TS" zum Gegenprüfen) (Zählung wie in HeizungTiba `docs/Heizzyklen-Auswertung-2010-2026.xlsx`: Abgas − Kessel > 30 K bis < 20 K, ab 60 s und 45 K, unter 5 min = Glutstoss; bei heissem Kessel zusätzlich Abgas-Sprung ab 30 K, der binnen 5 min abklingt) · Verläufe, darunter die **Temperatursteigung** (°C pro Minute von Kessel oben und mitte, über 6 min geglättet; Lesefehler der Fühler wie 0.0 oder -127 werden herausgefiltert) und der **Füllstand mit der Schnitzel-Austragung** (Feld 6 des Loggers: hellgrüner Streifen unten = Automatik an, blauer Bereich = Austragung läuft, Höhe = Füllmodus wenig/normal/viel, violett = von Hand, rot = Störung) |
 | 💧&nbsp;**Boiler** | Temperaturen Mitte/Unten mit den Schaltschwellen der Steuerung (Laden ein < 45 °C, aus > 58 bzw. 63 °C) · **Temperatursteigung** (°C pro Minute, über 20 min geglättet: Aufheizen, Auskühlen, Warmwasser-Entnahme) · Ladeleistung gegen Einschaltschwelle und PV · geladene Menge |
 | 🗓️&nbsp;**Nutzung** | 7-Tage-Solarprognose (Open-Meteo, stündlich an den letzten 14 Tagen kalibriert, heute mit Nowcast) · Tageskarten mit Empfehlungen für Waschmaschine, Geschirrspüler, Tumbler, Auto und Boiler |
 
@@ -70,6 +70,7 @@ Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
 | `scripts/tibber_token_neu.ps1` | Frischen Tibber-Refresh-Token erzeugen |
 | `scripts/id3_tibber_cloud.py` | Früherer GitHub-Actions-Poller (Reserve) |
 | `scripts/thingspeak_trigger_id3.m` | ThingSpeak-TimeControl-Auslöser (Alternative) |
+| `scripts/thingspeak_hsh_auslastung.m` | ThingSpeak-Skript für die HSH-Auslastung (stündlich, Brennanteil der letzten 6 h) |
 | `.github/workflows/id3-tibber.yml` | GitHub-Workflow des früheren Pollers – **deaktiviert** |
 
 ## ThingSpeak-Kanäle
@@ -82,6 +83,35 @@ Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
 | 502977 | Boiler | |
 | 3510388 | Tracker-Tagesmittel | 2. Account, Mittags-Mittelwert je MPP-Tracker |
 | 3514838 | VW ID.3 (E-Auto) | Ladezustand via Tibber, siehe unten |
+
+### HSH-Auslastung (ThingSpeak-Skript)
+
+Feld 1 im Wallbox-Kanal 172228 („HSH-Auslastung", stündlich) schreibt ein
+**MATLAB-Skript in ThingSpeak** (MATLAB Analysis + TimeControl), nicht ein Arduino.
+Das Dashboard rechnet die **Auslastung** inzwischen selbst aus den Heizungsdaten und zeigt den Wert dieses Skripts vorübergehend in Klammern („TS") zum Gegenprüfen.
+
+**Die alte Formel** (`mean(Abgas) − 1.1·min(Abgas) − 0.7·max(0, max − 200)` über die
+letzten 360 Einträge) ist nachgerechnet und reproduziert die ThingSpeak-Werte exakt
+(Abweichung 0.00). Sie ist aber **kein Zeitanteil**, sondern ein Temperaturmass:
+
+| Problem | Folge |
+|---|---|
+| Der kälteste Wert im Fenster zählt (Min.) | Nach einem Heizungsstart steht der kalte Anlauf (z. B. 19 °C) ~6 h im Fenster: am 08.10.2026 zeigte sie bis 15 Uhr bis zu **70 %**, gemessen waren 37 %. Mit dem Verlassen des Fensters sprang sie auf 32 %. |
+| Bei Dauerbetrieb steigt das Minimum | Die Formel fällt gegen 0, obwohl die Heizung dauernd brennt |
+| Fühler-Lesefehler (0.0, −127) | Das Minimum wird 0 oder −127: Wert steht auf 100 % bzw. 1 % |
+| „Letzte 360 Einträge" statt 6 Stunden | Nach Pausen reicht das Fenster über Tage oder Monate zurück |
+| Mittlere Abweichung zum echten Brennanteil | **11 Punkte** (236 Fälle aus 2023–25, Korrelation 0.72); am 22.11.2023 stand sie bei 30 %, die Heizung brannte 87 % |
+| Schreibkonflikte | Der Wallbox-Arduino schreibt jede Minute in denselben Kanal. Ein Wert, der innerhalb von 15 s danach kommt, wird abgelehnt: etwa jede vierte Stunde fehlt. |
+
+**Neues Skript:** [`scripts/thingspeak_hsh_auslastung.m`](scripts/thingspeak_hsh_auslastung.m)
+liefert den **Anteil der Zeit, in dem die Heizung in den letzten 6 Stunden gebrannt
+hat**, mit derselben Zählung wie Heizzyklen und Brennzeit (Abgas − Kessel über 30 K bis
+unter 20 K), zeitgewichtet, ohne Lesefehler und mit Wiederholung beim Schreiben.
+Auf den 236 Referenzfällen weicht es im Mittel **0.5 Punkte** vom gemessenen
+Brennanteil ab. Einrichtung: Inhalt in das bestehende ThingSpeak-Skript einfügen und
+die Platzhalter `<READ_API_KEY_HEIZUNG>` und `<WRITE_API_KEY_WALLBOX>` durch die
+echten Schlüssel ersetzen. **Die Schlüssel gehören nicht ins Repo** (öffentlich).
+Frühere Werte im Kanal bleiben nach der alten Formel stehen.
 
 ## Deployment
 
