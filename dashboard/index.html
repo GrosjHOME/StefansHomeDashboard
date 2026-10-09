@@ -85,6 +85,7 @@
   .kpi .k{color:var(--muted); font-size:.8rem; margin-bottom:4px;}
   .kpi .v{font-size:1.45rem; font-weight:700;}
   .kpi .v small{font-size:.8rem; font-weight:600; color:var(--muted);}
+  .kpi .chk{display:block; font-size:.74rem; font-weight:600; color:var(--muted); margin-top:2px;}   /* Pruefwert in Klammern */
   .kpi .stale{font-size:.72rem; font-weight:600; color:var(--red); margin-top:4px;}
   .kpi .v.txt{font-size:1.1rem; line-height:1.3;}   /* Text-Werte (z. B. "Lädt nicht") kleiner als Zahlen */
   .sec-head{display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px; margin:2px 2px 10px;}
@@ -576,7 +577,8 @@ PV.render=function(main){
     var h=document.getElementById("chart-cumyear"); if(h) h.innerHTML='<div class="chart-empty">wird geladen…</div>';
     PV.loadCumYear(); });
 };
-function kpiCard(k,id,unit,cls){ return '<div class="kpi"><div class="k">'+k+'</div><div class="v'+(cls?' '+cls:'')+'"><span id="'+id+'">–</span> <small>'+unit+'</small></div></div>'; }
+// extra: zusaetzliches HTML in der Wertzeile, z. B. ein Pruefwert in Klammern (k.pruef)
+function kpiCard(k,id,unit,cls,extra){ return '<div class="kpi"><div class="k">'+k+'</div><div class="v'+(cls?' '+cls:'')+'"><span id="'+id+'">–</span> <small>'+unit+'</small>'+(extra||'')+'</div></div>'; }
 function panel(title,tag,id){ return '<div class="panel"><h2>'+title+' '+tag+'</h2><div id="'+id+'"><div class="chart-empty">wird geladen…</div></div></div>'; }
 
 // Tracker-Status (Tabelle aktueller Wert + Strom/Spannung-Historie) fuer den globalen Zeitraum
@@ -1201,7 +1203,8 @@ function simpleView(cfg){
     cfg.charts.forEach(function(c){ (c.lines||[]).forEach(function(ln){ if(ln.channel) chans[String(ln.channel)]=ln.channel;
       (ln.uses||[]).forEach(function(u){ chans[String(u)]=u; }); }); });
     // ... und von Zeitraum-KPIs aus anderen Kanaelen (z. B. Ø Auslastung im Tab Heizung)
-    cfg.kpis.forEach(function(k){ if((k.ausFeeds||k.integrate) && k.channel) chans[String(k.channel)]=k.channel; });
+    cfg.kpis.forEach(function(k){ if((k.ausFeeds||k.integrate) && k.channel) chans[String(k.channel)]=k.channel;
+      if(k.pruef) chans[String(k.pruef.channel)]=k.pruef.channel; });
     var keys=Object.keys(chans);
     Promise.all(keys.map(function(k){ var ch=chans[k];
       return j(api(ch, periodUrl(), String(ch)==="172430")).then(function(d){ return {k:k, feeds:(d&&d.feeds)?d.feeds:[]}; }); }))
@@ -1221,20 +1224,25 @@ function simpleView(cfg){
       // die vollen 7 Tage in 2 Fenstern nachladen (ThingSpeak roh ~8000 Punkte ≈ 6.5 Tage).
       // Ebenso Zeitraum-KPIs mit eigener Rechnung (k.ausFeeds(feeds) -> Zahl), z. B. Heizzyklen.
       var sieben={};   // 7-Tage-Feeds je Kanal, einmal geladen fuer alle KPIs
+      function siebenTage(ch){ if(!sieben[ch]){ var withKey=(String(ch)==="172430"), now=Date.now(), mid=now-3.5*864e5;
+          var u1=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(now-7*864e5))+"&end="+encodeURIComponent(tsStamp(mid)),withKey);
+          var u2=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(mid))+"&end="+encodeURIComponent(tsStamp(now)),withKey);
+          sieben[ch]=Promise.all([j(u1),j(u2)]).then(function(rr){ return ((rr[0]&&rr[0].feeds)||[]).concat((rr[1]&&rr[1].feeds)||[]); }); }
+        return sieben[ch]; }
+      // Zeitraum fuer Rechnungen, die den Anteil an der Gesamtdauer brauchen (k.ausFeeds(feeds, {von, bis}))
+      var bisMs=Date.now(), vonMs = mode==="7tage" ? bisMs-7*864e5 : (mode==="24h" ? bisMs-864e5 : new Date().setHours(0,0,0,0));
+      var ctx={von:vonMs, bis:bisMs};
       cfg.kpis.forEach(function(k,ki){ if(!k.integrate && !k.ausFeeds)return; var el=g("kpi_"+ki); if(!el)return;
-        var ch=k.channel||cfg.channel, dec=(k.dec!=null?k.dec:1), withKey=(String(ch)==="172430"), toKw=k.intScale;
-        var wert=function(ff){ return k.ausFeeds ? k.ausFeeds(ff) : integKwh(ff,k.field,toKw); };
-        if(mode==="7tage"){
-          var wk=mode;
-          if(!sieben[ch]){ var now=Date.now(), mid=now-3.5*864e5;
-            var u1=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(now-7*864e5))+"&end="+encodeURIComponent(tsStamp(mid)),withKey);
-            var u2=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(mid))+"&end="+encodeURIComponent(tsStamp(now)),withKey);
-            sieben[ch]=Promise.all([j(u1),j(u2)]).then(function(rr){ return ((rr[0]&&rr[0].feeds)||[]).concat((rr[1]&&rr[1].feeds)||[]); }); }
-          sieben[ch].then(function(ff){ if(mode!==wk)return;  // Zeitraum inzwischen gewechselt
-            el.textContent = fmt(wert(ff), dec); }).catch(function(){});
-        } else {
-          el.textContent = fmt(wert(byChan[String(ch)]||[]), dec);
-        }
+        var ch=k.channel||cfg.channel, dec=(k.dec!=null?k.dec:1), toKw=k.intScale;
+        var wert=function(ff){ return k.ausFeeds ? k.ausFeeds(ff,ctx) : integKwh(ff,k.field,toKw); };
+        var wk=mode;
+        // Hauptwert: aus den Feeds des Kanals dieser Kennzahl
+        (mode==="7tage" ? siebenTage(ch) : Promise.resolve(byChan[String(ch)]||[])).then(function(ff){ if(mode!==wk)return;  // Zeitraum inzwischen gewechselt
+          el.textContent = fmt(wert(ff), dec); }).catch(function(){});
+        // Pruefwert in Klammern (k.pruef): zweite Rechnung aus einem anderen Kanal, nur zum Gegenpruefen
+        if(k.pruef){ var ce=g("kpi_"+ki+"_chk");
+          (mode==="7tage" ? siebenTage(k.pruef.channel) : Promise.resolve(byChan[String(k.pruef.channel)]||[])).then(function(ff){ if(mode!==wk||!ce)return;
+            var pv=k.pruef.rechne(ff); ce.textContent = pv===null ? "" : "("+k.pruef.label+" "+fmt(pv,dec)+" "+(k.unit||"")+")"; }).catch(function(){}); }
       });
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
         var series=c.lines.map(function(ln){ var pts=[]; var ff=byChan[String(ln.channel||cfg.channel)]||[];
@@ -1324,7 +1332,8 @@ function simpleView(cfg){
       mode = "heute";  // bei jedem Mount auf Standard (passt zum aktiven Button)
       // KPI-Kacheln (Text-Werte kleiner). Mit cfg.sections in beschriftete Gruppen getrennt -
       // je Gruppe eine Quelle mit eigener Aktualitaet ("Stand vor ...", ggf. veraltet).
-      function cards(filter){ return cfg.kpis.map(function(k,i){ return filter(k) ? kpiCard(k.label,"kpi_"+i,k.unit||"",k.map?"txt":"") : ""; }).join(""); }
+      function cards(filter){ return cfg.kpis.map(function(k,i){ return filter(k) ? kpiCard(k.label,"kpi_"+i,k.unit||"",k.map?"txt":"",
+        k.pruef ? '<span class="chk" id="kpi_'+i+'_chk" title="'+k.pruef.titel+'"></span>' : "") : ""; }).join(""); }
       // Breit (ab 1500 px) stehen die Gruppen nebeneinander, jede Kachel gleich breit und ohne
       // Umbruch: Gruppe = so viele Spalten wie Kacheln, mindestens 2 (Platz fuer Titel + "Stand").
       var nSec=function(s){ return Math.max(2, cfg.kpis.filter(function(k){ return k.sec===s.key; }).length); };
@@ -1451,9 +1460,15 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
     {sec:"zyk",label:"Gluterhaltung",dec:0,ausFeeds:function(ff){ return heizPhasen(ff).length-heizVoll(ff).length; }},
     {sec:"zyk",label:"Brennzeit",unit:"h",dec:1,ausFeeds:function(ff){ return heizPhasen(ff).reduce(function(s,p){ return s+p.min; },0)/60; }},
     {sec:"zyk",label:"Ø Heizzyklus",unit:"min",dec:0,ausFeeds:function(ff){ var v=heizVoll(ff); return v.length ? v.reduce(function(s,p){ return s+p.min; },0)/v.length : null; }},
-    // Auslastung (stuendlich im Wallbox-Kanal 172228, field1): Mittel ueber den Zeitraum
-    {sec:"zyk",channel:172228,label:"Ø Auslastung",unit:"%",dec:0,ausFeeds:function(ff){ var s=0, n=0;
-      ff.forEach(function(x){ var v=num(x.field1); if(v!==null){ s+=v; n++; } }); return n ? s/n : null; }}
+    // Auslastung = Anteil des gewaehlten Zeitraums, in dem die Heizung gebrannt hat (Brennzeit / Zeitraum),
+    // direkt aus den Heizungsdaten gerechnet (gleiche Zaehlung wie Heizzyklen/Brennzeit). In Klammern
+    // zum Gegenpruefen der Wert des ThingSpeak-Skripts (HSH-Auslastung, Wallbox-Kanal 172228 field1):
+    // Mittel der Stundenwerte im Zeitraum. TEMPORAER - nach der Pruefung die Klammer (pruef) entfernen.
+    {sec:"zyk",label:"Auslastung",unit:"%",dec:0,
+      ausFeeds:function(ff,ctx){ var dauer=(ctx.bis-ctx.von)/60000; if(!(dauer>0)) return null;
+        var m=heizPhasen(ff).reduce(function(s,p){ return s+p.min; },0); return Math.min(100, 100*m/dauer); },
+      pruef:{channel:172228, label:"TS", titel:"ThingSpeak-Skript (Ø der Stundenwerte im Zeitraum), temporär zum Prüfen",
+        rechne:function(ff){ var s=0, n=0; ff.forEach(function(x){ var v=num(x.field1); if(v!==null){ s+=v; n++; } }); return n ? s/n : null; }}}
   ],
   charts:[
     {title:"Kesseltemperaturen", unit:"°C", zero:false, minmaxField:"field1", minmaxGueltig:kesselOk, lines:[{field:"field1",label:"Oben",color:"var(--amber)",gueltig:kesselOk},{field:"field2",label:"Mitte",color:"var(--blue)",gueltig:kesselOk}]},
