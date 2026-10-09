@@ -70,6 +70,7 @@ Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
 | `scripts/tibber_token_neu.ps1` | Frischen Tibber-Refresh-Token erzeugen |
 | `scripts/id3_tibber_cloud.py` | Früherer GitHub-Actions-Poller (Reserve) |
 | `scripts/thingspeak_trigger_id3.m` | ThingSpeak-TimeControl-Auslöser (Alternative) |
+| `scripts/thingspeak_hsh_auslastung.m` | ThingSpeak-Skript für die HSH-Auslastung (stündlich, Brennanteil der letzten 6 h) |
 | `.github/workflows/id3-tibber.yml` | GitHub-Workflow des früheren Pollers – **deaktiviert** |
 
 ## ThingSpeak-Kanäle
@@ -82,6 +83,35 @@ Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
 | 502977 | Boiler | |
 | 3510388 | Tracker-Tagesmittel | 2. Account, Mittags-Mittelwert je MPP-Tracker |
 | 3514838 | VW ID.3 (E-Auto) | Ladezustand via Tibber, siehe unten |
+
+### HSH-Auslastung (ThingSpeak-Skript)
+
+Feld 1 im Wallbox-Kanal 172228 („HSH-Auslastung", stündlich) schreibt ein
+**MATLAB-Skript in ThingSpeak** (MATLAB Analysis + TimeControl), nicht ein Arduino.
+Das Dashboard zeigt den Durchschnitt als **Ø Auslastung** im Tab Heizung.
+
+**Die alte Formel** (`mean(Abgas) − 1.1·min(Abgas) − 0.7·max(0, max − 200)` über die
+letzten 360 Einträge) ist nachgerechnet und reproduziert die ThingSpeak-Werte exakt
+(Abweichung 0.00). Sie ist aber **kein Zeitanteil**, sondern ein Temperaturmass:
+
+| Problem | Folge |
+|---|---|
+| Der kälteste Wert im Fenster zählt (Min.) | Nach einem Heizungsstart steht der kalte Anlauf (z. B. 19 °C) ~6 h im Fenster: am 08.10.2026 zeigte sie bis 15 Uhr bis zu **70 %**, gemessen waren 37 %. Mit dem Verlassen des Fensters sprang sie auf 32 %. |
+| Bei Dauerbetrieb steigt das Minimum | Die Formel fällt gegen 0, obwohl die Heizung dauernd brennt |
+| Fühler-Lesefehler (0.0, −127) | Das Minimum wird 0 oder −127: Wert steht auf 100 % bzw. 1 % |
+| „Letzte 360 Einträge" statt 6 Stunden | Nach Pausen reicht das Fenster über Tage oder Monate zurück |
+| Mittlere Abweichung zum echten Brennanteil | **11 Punkte** (236 Fälle aus 2023–25, Korrelation 0.72); am 22.11.2023 stand sie bei 30 %, die Heizung brannte 87 % |
+| Schreibkonflikte | Der Wallbox-Arduino schreibt jede Minute in denselben Kanal. Ein Wert, der innerhalb von 15 s danach kommt, wird abgelehnt: etwa jede vierte Stunde fehlt. |
+
+**Neues Skript:** [`scripts/thingspeak_hsh_auslastung.m`](scripts/thingspeak_hsh_auslastung.m)
+liefert den **Anteil der Zeit, in dem die Heizung in den letzten 6 Stunden gebrannt
+hat**, mit derselben Zählung wie Heizzyklen und Brennzeit (Abgas − Kessel über 30 K bis
+unter 20 K), zeitgewichtet, ohne Lesefehler und mit Wiederholung beim Schreiben.
+Auf den 236 Referenzfällen weicht es im Mittel **0.5 Punkte** vom gemessenen
+Brennanteil ab. Einrichtung: Inhalt in das bestehende ThingSpeak-Skript einfügen und
+die Platzhalter `<READ_API_KEY_HEIZUNG>` und `<WRITE_API_KEY_WALLBOX>` durch die
+echten Schlüssel ersetzen. **Die Schlüssel gehören nicht ins Repo** (öffentlich).
+Frühere Werte im Kanal bleiben nach der alten Formel stehen.
 
 ## Deployment
 
