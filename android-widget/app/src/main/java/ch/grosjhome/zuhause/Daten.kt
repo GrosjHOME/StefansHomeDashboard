@@ -67,13 +67,22 @@ object Daten {
     /** Brennt das Feuer? Neuester Eintrag mit gueltigem Kessel (field1) und Abgas (field8): Abgas - Kessel > 30 K. */
     private fun brennt(f: JSONArray?): Boolean {
         if (f == null) return false
-        for (i in f.length() - 1 downTo 0) {
+        // Zustand ueber die neuesten Eintraege (wie heizBrenntJetzt im Dashboard): Beginn bei Abgas - Kessel
+        // > 30 K, Ende unter 20 K; beim ersten Eintrag gilt "brennt", wenn schon > 20 K
+        var an: Boolean? = null
+        for (i in 0 until f.length()) {
             val o = f.getJSONObject(i)
-            val k = o.optString("field1", "").toDoubleOrNull()?.takeIf { it > 0 && it < 150 }
-            val a = o.optString("field8", "").toDoubleOrNull()?.takeIf { it > -100 && it < 400 }
-            if (k != null && a != null) return a - k > 30
+            val k = o.optString("field1", "").toDoubleOrNull()?.takeIf { it > 0 && it < 150 } ?: continue
+            val a = o.optString("field8", "").toDoubleOrNull()?.takeIf { it > -100 && it < 400 } ?: continue
+            val d = a - k
+            an = when {
+                an == null -> d > 20
+                !an && d > 30 -> true
+                an && d < 20 -> false
+                else -> an
+            }
         }
-        return false
+        return an == true
     }
 
     /** Zeitpunkt des neuesten Eintrags in ms (ThingSpeak: ISO-8601 in UTC), null wenn keiner da ist. */
@@ -105,7 +114,7 @@ object Daten {
         val auto = hole(3514838, 3)
         // Heizung: der Logger sendet nur in der Heizsaison. Ist der letzte Eintrag aelter als 60 min
         // (wie die Veraltet-Warnung im Dashboard), bleibt der Platz fuer den normalen Titel.
-        val heizung = hole(172428, 5)
+        val heizung = hole(172428, 10)
         val heizAktuell = letzteZeit(heizung)?.let { System.currentTimeMillis() - it < 60 * 60_000L } == true
         // Lesefehler der Fuehler (0.0, -127) ueberspringen wie im Dashboard (kesselOk)
         val kesselC = if (heizAktuell) letzter(heizung, "field1") { it > 0 && it < 150 } else null

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gluehende Kohle (nur noch Glut, kein Feuer): dunkle Brocken mit orange gluehenden Kanten und Rissen.
+     Gleiche Zeichnung wie GLUT_SVG im Dashboard. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#3b3330"
+        android:pathData="M2.5,20.5 L4.5,14 L9.5,12 L14,14.5 L15,20.5 Z"
+        android:strokeColor="#ff7a1a"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.1" />
+    <path
+        android:fillColor="#2e2826"
+        android:pathData="M10,20.5 L12,15.5 L17,13.5 L21.5,16.5 L22,20.5 Z"
+        android:strokeColor="#ff9a2e"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.1" />
+    <path
+        android:fillColor="#403632"
+        android:pathData="M6.5,13.5 L8.5,8.5 L13.5,7 L16.5,10.5 L14,13 Z"
+        android:strokeColor="#ffb347"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.1" />
+    <path
+        android:pathData="M5.5,18 L8.5,17 M12.5,18 L16,19 M10,10.5 L12.5,9.2"
+        android:strokeColor="#ffd24a"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.2" />
+</vector>

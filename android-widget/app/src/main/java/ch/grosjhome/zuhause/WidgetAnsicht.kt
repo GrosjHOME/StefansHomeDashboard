@@ -35,14 +35,15 @@ object WidgetAnsicht {
         // bleibt gleich gross); sonst der normale Titel. Etwas kleinere Schrift, damit es neben Uhrzeit
         // und Knopf in die Kopfzeile passt.
         if (w.kesselC != null) {
-            // Gag: grosse Flamme, wenn das Feuer brennt, sonst eine kleine
-            v.setViewVisibility(R.id.flamme, View.VISIBLE)
-            v.setTextViewTextSize(R.id.flamme, TypedValue.COMPLEX_UNIT_SP, if (w.brennt) 19f else 10f)
+            // Flamme = Feuer brennt, gluehende Kohle = nur noch Glut
+            v.setViewVisibility(R.id.flamme, if (w.brennt) View.VISIBLE else View.GONE)
+            v.setViewVisibility(R.id.glut, if (w.brennt) View.GONE else View.VISIBLE)
             v.setTextViewText(R.id.titel, " ${w.kesselC.roundToInt()} °C" +
                     (if (w.fuellstand != null) " · 🪵 ${w.fuellstand.roundToInt()} %" else ""))
             v.setTextViewTextSize(R.id.titel, TypedValue.COMPLEX_UNIT_SP, 13f)
         } else {
             v.setViewVisibility(R.id.flamme, View.GONE)
+            v.setViewVisibility(R.id.glut, View.GONE)
             v.setTextViewText(R.id.titel, ctx.getString(R.string.titel))
             v.setTextViewTextSize(R.id.titel, TypedValue.COMPLEX_UNIT_SP, 15f)
         }
