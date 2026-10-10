@@ -1221,6 +1221,9 @@ function simpleView(cfg){
     j(api(cfg.channel, "/feeds.json?results=10", false)).then(function(d){
       var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
       var last=f[f.length-1];
+      // Heizung: Symbol der Gruppe = Flamme (Feuer) oder gluehende Kohle (Glut); grau, wenn > 60 min nichts kam
+      var ico=g("feuer_ico"); if(ico){ var brennt=heizBrenntJetzt(f), aktuell=(Date.now()-Date.parse(last.created_at))<3600000;
+        ico.innerHTML=feuerSymbolHtml(brennt, aktuell); ico.title=!aktuell?"keine aktuellen Daten":(brennt?"Feuer brennt":"nur noch Glut"); }
       function L(fd,ok){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null && (!ok||ok(v)))return v;} return null; }   // ok: Lesefehler uebergehen
       cfg.kpis.forEach(function(k,i){ if(k.integrate||k.ausFeeds)return; if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field,k.gueltig); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
         el.textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0);
@@ -1400,7 +1403,8 @@ function simpleView(cfg){
       var nSec=function(s){ return Math.max(2, cfg.kpis.filter(function(k){ return k.sec===s.key; }).length); };
       var kp = cfg.sections
         ? '<div class="kp-grid" style="--cols:'+cfg.sections.map(function(s){ return "minmax(0,"+nSec(s)+"fr)"; }).join(" ")+'">'+
-          cfg.sections.map(function(s){ return '<div class="kp-sec"><div class="sec-head"><h2>'+s.title+'</h2><span class="tag" id="sec_'+s.key+'"></span></div>'+
+          cfg.sections.map(function(s){ var titel=s.feuerSymbol ? '<span id="feuer_ico" title="Feuer brennt oder nur noch Glut">'+FEUER_EMOJI+'</span>'+s.title.replace(/^\S+/,"") : s.title;   // Symbol folgt dem Zustand
+            return '<div class="kp-sec"><div class="sec-head"><h2>'+titel+'</h2><span class="tag" id="sec_'+s.key+'"></span></div>'+
             '<div class="kpis" style="--n:'+nSec(s)+'">'+cards(function(k){ return k.sec===s.key; })+'</div></div>'; }).join("")+'</div>'
         : '<div class="kpis">'+cards(function(){ return true; })+'</div>';
       var charts=cfg.charts.map(function(c,i){
@@ -1475,6 +1479,23 @@ function fuehlerOk(v){ return v>-100 && v<150; }   // Raum-/Aussenfuehler (0 °C
 // unveraendert; an kalten Tagen und Wintern mit 30-min-Intervall zaehlt die Regel mehr, als die
 // Auswertung kannte (diese Stoesse haben die typische Form).
 var GLUT_SPRUNG_K=30, GLUT_ABKLING_K=15, GLUT_MAX_MIN=5;
+
+// Brennt das Feuer gerade? Zustand ueber die neuesten Eintraege: Beginn bei Abgas - Kessel > 30 K,
+// Ende unter 20 K (wie die Brennphasen); beim ersten Eintrag gilt "brennt", wenn schon > 20 K.
+// Lesefehler der Fuehler werden uebergangen. Sonst: nur noch Glut (Gluterhaltung).
+function heizBrenntJetzt(f){ var an=null;
+  f.forEach(function(x){ var k=num(x.field1), a=num(x.field8); if(k===null||a===null||!kesselOk(k)||!abgasOk(a)) return;
+    var d=a-k; if(an===null) an=d>20; else if(!an && d>30) an=true; else if(an && d<20) an=false; });
+  return an===true; }
+// Symbol fuer die Heizung: Flamme = Feuer brennt, gluehende Kohle = nur noch Glut. ALT/KALT: keine aktuellen
+// Daten (Heizung sendet nicht, z. B. Sommer) - Kohle ausgegraut.
+var FEUER_EMOJI='🔥';
+var GLUT_SVG='<svg viewBox="0 0 24 24" width="1.2em" height="1.2em" style="vertical-align:-.25em" aria-hidden="true">'+
+  '<path d="M2.5 20.5 L4.5 14 L9.5 12 L14 14.5 L15 20.5 Z" fill="#3b3330" stroke="#ff7a1a" stroke-width="1.1" stroke-linejoin="round"/>'+
+  '<path d="M10 20.5 L12 15.5 L17 13.5 L21.5 16.5 L22 20.5 Z" fill="#2e2826" stroke="#ff9a2e" stroke-width="1.1" stroke-linejoin="round"/>'+
+  '<path d="M6.5 13.5 L8.5 8.5 L13.5 7 L16.5 10.5 L14 13 Z" fill="#403632" stroke="#ffb347" stroke-width="1.1" stroke-linejoin="round"/>'+
+  '<path d="M5.5 18 L8.5 17 M12.5 18 L16 19 M10 10.5 L12.5 9.2" stroke="#ffd24a" stroke-width="1.2" stroke-linecap="round" fill="none"/></svg>';
+function feuerSymbolHtml(brennt, aktuell){ return brennt ? FEUER_EMOJI : '<span style="'+(aktuell?'':'filter:grayscale(1);opacity:.55;')+'">'+GLUT_SVG+'</span>'; }
 function heizPhasen(ff){
   if(heizPhasen._ff===ff) return heizPhasen._p;   // dieselben Feeds fuer mehrere KPIs nur einmal rechnen
   var out=[], an=null, maxD=0, lastT=null, v=[];
@@ -1507,7 +1528,7 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
   // rechts Werte ueber den gewaehlten Zeitraum - inkl. Ø Auslastung aus dem Wallbox-Kanal 172228.
   sections:[
     // Veraltet-Warnung nur Okt-Apr; Mai-Sep ist ein Stillstand normal ("Sommerpause")
-    {key:"hz",  title:"🔥 Kessel & Schnitzel", channel:172428, staleMin:60, season:[9,10,11,0,1,2,3]},
+    {key:"hz",  title:"🔥 Kessel & Schnitzel", feuerSymbol:true, channel:172428, staleMin:60, season:[9,10,11,0,1,2,3]},
     {key:"zyk", title:"♨️ Brennbetrieb im Zeitraum", channel:172428, staleMin:60, season:[9,10,11,0,1,2,3]}
   ],
   kpis:[
@@ -1515,7 +1536,7 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
     {sec:"hz",field:"field2",label:"Kessel mitte",unit:"°C",dec:1,gueltig:kesselOk},
     {sec:"hz",field:"field8",label:"Abgas",unit:"°C",dec:0,gueltig:abgasOk},
     {sec:"hz",field:"field4",label:"Füllstand",unit:"%",dec:0},
-    {sec:"hz",field:"field3",label:"Schnitzelbunker",unit:"°C",dec:1,warnAbove:25,gueltig:fuehlerOk},
+    {sec:"hz",field:"field3",label:"Schnitzelbunker",unit:"°C",dec:1,warnAbove:30,gueltig:fuehlerOk},
     // Zeitraum-KPIs (Heute / 24 h / 7 Tage oben rechts), siehe heizPhasen()
     {sec:"zyk",label:"Heizzyklen",dec:0,ausFeeds:function(ff){ return heizVoll(ff).length; }},
     {sec:"zyk",label:"Gluterhaltung",dec:0,ausFeeds:function(ff){ return heizPhasen(ff).length-heizVoll(ff).length; }},
@@ -1538,7 +1559,7 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
       lines:[{field:"field1",label:"Oben",color:"var(--amber)",slope:3,dec:2,gueltig:kesselOk},{field:"field2",label:"Mitte",color:"var(--blue)",slope:3,dec:2,gueltig:kesselOk}],
       note:"Temperaturänderung je Minute, über 6 min geglättet (Fühlerauflösung 0.06 K). Über 0: der Kessel heizt auf, unter 0: er kühlt ab."},
     {title:"Abgastemperatur", unit:"°C", zero:false, lines:[{field:"field8",label:"Abgas",color:"var(--red)",gueltig:abgasOk}]},
-    {title:"Temperatur vor Schnitzelbunker", unit:"°C", zero:false, threshold:25, lines:[{field:"field3",label:"Vor Bunker",color:"#b5651d",gueltig:fuehlerOk}]},
+    {title:"Temperatur vor Schnitzelbunker", unit:"°C", zero:false, threshold:30, lines:[{field:"field3",label:"Vor Bunker",color:"#b5651d",gueltig:fuehlerOk}]},
     // Austragung = Feld 6 des Loggers (Statuscode, einmal pro Minute). Die Firmware kodiert den Zustand so, dass
     // er direkt als Hoehe taugt: 0.4/0.7/1.0 Automat laeuft (wenig/normal/viel), 0.95 von Hand, 0.2 Stoerung
     // (zu lange gelaufen), 0.05 Automat bereit, 0 aus. Zeitbereiche im Hintergrund: schmaler Streifen unten =

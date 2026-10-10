@@ -19,14 +19,21 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
-        <!-- Flamme: gross, wenn das Feuer brennt, klein, wenn es nur glimmt; ohne Heizdaten ausgeblendet -->
+        <!-- Heizungs-Symbol: Flamme = Feuer brennt, gluehende Kohle = nur noch Glut; ohne Heizdaten beides ausgeblendet -->
         <TextView
             android:id="@+id/flamme"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
             android:text="🔥"
-            android:textSize="10sp"
+            android:textSize="17sp"
+            android:visibility="gone" />
+        <ImageView
+            android:id="@+id/glut"
+            android:layout_width="19dp"
+            android:layout_height="19dp"
+            android:contentDescription="nur noch Glut"
+            android:src="@drawable/ic_glut"
             android:visibility="gone" />
         <TextView
             android:layout_width="0dp"
