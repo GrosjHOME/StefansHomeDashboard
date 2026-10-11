@@ -1758,7 +1758,7 @@ PLANNER.load=function(){
       // (Ist-bisher ist bereits Vergangenheit). Solar-Deckung des Rests bewerten.
       var boilerRef=Math.round(PLANNER.boilerByMonth[o.date.getMonth()]||0);
       var boilerActual=(isToday && PLANNER._boilerTodayKwh!=null) ? Math.round(PLANNER._boilerTodayKwh) : 0;
-      var boilerKwh = isToday ? Math.max(boilerRef, boilerActual) : boilerRef;   // Anzeige: Tagesbedarf
+      var boilerKwh = boilerRef;   // Anzeige: Ø Tagesbedarf des Monats (heute steht die bisher geladene Menge in Klammern daneben)
       var boilerSub = isToday ? Math.max(0, boilerRef-boilerActual) : boilerRef; // Abzug vom Rest-Ueberschuss
       var grossSur=sur;
       sur=Math.max(0, sur-boilerSub);
