@@ -142,7 +142,7 @@
   footer{font-size:.78rem; color:var(--muted); text-align:center; margin-top:8px;}
   /* PV-Tab auf breiten Bildschirmen: ganze Breite, zwei Spalten mit zusammengehoerenden Paaren
      (Leistung | Energie, Jahre | Strom + Spannung, DC | Mittags-Strom). Darunter bleibt alles einspaltig. */
-  @media (min-width:1500px){
+  @media (min-width:1100px){
     .wrap.wide{max-width:2400px; padding-left:24px; padding-right:24px;}
     .pv-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:16px; align-items:start;
       grid-template-areas:"hero kpi" "leist energ" "jahr strom" "jahr spann" "dc verl" "lf lf";}
@@ -163,7 +163,14 @@
     .kp-grid .kpi .v{margin-top:auto;}
     .ch-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:16px; align-items:stretch;}
     .ch-grid > .panel:last-child:nth-child(odd){grid-column:1 / -1;}   /* ungerade Anzahl: letzte Grafik volle Breite */
-    /* Nutzung: Prognose-Grafik volle Breite (autoW), die 7 Tageskarten in einer Reihe */
+  }
+  /* 1100-1279 px (z. B. 1920x1200 mit 175 % Skalierung): zwei Spalten, aber nur 3 Kacheln je Reihe
+     und Gruppe - fuenf nebeneinander waeren zu schmal fuer die Beschriftungen */
+  @media (min-width:1100px) and (max-width:1279px){
+    .kp-grid .kp-sec .kpis{grid-template-columns:repeat(3,minmax(0,1fr));}
+  }
+  /* Nutzung: die 7 Tageskarten in einer Reihe - braucht mehr Breite als die zwei Spalten */
+  @media (min-width:1500px){
     .plan-wide .pldays{grid-template-columns:repeat(7,minmax(0,1fr));}
   }
   @media (max-width:560px){
@@ -689,7 +696,7 @@ var CMP_NOTES={
   alle:"Alle Monatssummen seit 2014 chronologisch, jedes Jahr in eigener Farbe.",
   gruppiert:"Je Monat die Jahre nebeneinander – zeigt, wie ein Monat im Vergleich zu den Vorjahren abschneidet."
 };
-// Zweispaltig (ab 1500 px) steht der Jahresvergleich neben Strom + Spannung: seine Hoehe wird so
+// Zweispaltig (ab 1100 px) steht der Jahresvergleich neben Strom + Spannung: seine Hoehe wird so
 // angepasst, dass beide Spalten unten buendig abschliessen (sonst Luecke bzw. Ueberhang).
 // Einspaltig: feste Hoehe 600. Ausgeloest nach dem Zeichnen und wenn Strom/Spannung die Groesse aendern.
 // ---- Leistungsfaktor (Verlust-Diagnose) ----
@@ -781,7 +788,7 @@ PV.cumH=600;
 PV.fitJahr=function(){
   var c=PV._cum; if(!c || !document.body.contains(c.holder)) return;
   var want=600;
-  if(window.matchMedia("(min-width:1500px)").matches){
+  if(window.matchMedia("(min-width:1100px)").matches){
     var q=function(s){ return document.querySelector(s); }, st=q(".a-strom"), sp=q(".a-spann"), pn=q(".a-jahr"), nt=q("#cmp-note"), svg=c.holder.querySelector("svg");
     if(!st||!sp||!pn||!nt||!svg) return;
     var target=sp.getBoundingClientRect().bottom-st.getBoundingClientRect().top;       // Hoehe der rechten Spalte
@@ -1398,7 +1405,7 @@ function simpleView(cfg){
       // je Gruppe eine Quelle mit eigener Aktualitaet ("Stand vor ...", ggf. veraltet).
       function cards(filter){ return cfg.kpis.map(function(k,i){ return filter(k) ? kpiCard(k.label,"kpi_"+i,k.unit||"",k.map?"txt":"",
         k.pruef ? '<span class="chk" id="kpi_'+i+'_chk" title="'+k.pruef.titel+'"></span>' : "") : ""; }).join(""); }
-      // Breit (ab 1500 px) stehen die Gruppen nebeneinander, jede Kachel gleich breit und ohne
+      // Breit (ab 1100 px) stehen die Gruppen nebeneinander, jede Kachel gleich breit und ohne
       // Umbruch: Gruppe = so viele Spalten wie Kacheln, mindestens 2 (Platz fuer Titel + "Stand").
       var nSec=function(s){ return Math.max(2, cfg.kpis.filter(function(k){ return k.sec===s.key; }).length); };
       var kp = cfg.sections
