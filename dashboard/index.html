@@ -139,6 +139,13 @@
   .plday .pd-sun{font-size:1.05rem; margin-bottom:6px;}
   .plday .pd-win{font-size:.78rem; color:var(--muted); margin-bottom:6px;}
   .plday .pd-rec{font-size:.85rem; line-height:1.35;}
+  .plday.sel{outline:2px solid var(--green); outline-offset:-1px;}
+  .pd-btn{margin-top:10px; width:100%; cursor:pointer; font:inherit; font-size:.8rem; font-weight:600; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 8px;}
+  .pd-btn:hover{border-color:var(--green);}
+  .pd-detail{margin-top:14px; padding-top:12px; border-top:1px solid var(--line);}
+  .pd-detail[hidden]{display:none;}
+  .pd-detail h3{font-size:.98rem; margin:0 0 2px; display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .pd-detail h4{font-size:.85rem; margin:14px 0 2px; color:var(--muted);}
   footer{font-size:.78rem; color:var(--muted); text-align:center; margin-top:8px;}
   /* PV-Tab auf breiten Bildschirmen: ganze Breite, zwei Spalten mit zusammengehoerenden Paaren
      (Leistung | Energie, Jahre | Strom + Spannung, DC | Mittags-Strom). Darunter bleibt alles einspaltig. */
@@ -1628,7 +1635,12 @@ var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
   // Kompressor) fuer "wie viele gleichzeitig", kwh = Energie je Durchgang fuer die Tagespruefung.
   // Geraete, Grundlast, Boiler-Referenz und die "Jetzt: n von 3"-Rechnung stehen auch im
   // Android-Widget (android-widget/.../Planer.kt) - Aenderungen dort nachziehen.
-  devices:[ {n:"Waschmaschine", h:3, peakKw:2, kwh:0.7}, {n:"Geschirrspüler", h:3.5, peakKw:2, kwh:0.85}, {n:"Tumbler", h:3, peakKw:0.9, kwh:1.45} ],
+  // Je Geraet ein oder mehrere Programme (progs). Waschmaschine: Normal 1 h 05, Wolle 2 h, Eco 3 h
+  // (Eco gemessen/Datenblatt; Normal und Wolle: SCHAETZWERTE - bei Bedarf korrigieren). Die Tageskarte
+  // nimmt je Geraet das laengste Programm, das an dem Tag passt.
+  devices:[ {n:"Waschmaschine", progs:[ {n:"Normal", h:65/60, peakKw:2, kwh:1.0}, {n:"Wolle", h:2, peakKw:0.5, kwh:0.4}, {n:"Eco", h:3, peakKw:2, kwh:0.7} ]},
+            {n:"Geschirrspüler", progs:[ {h:3.5, peakKw:2, kwh:0.85} ]},
+            {n:"Tumbler", progs:[ {h:3, peakKw:0.9, kwh:1.45} ]} ],
   car:{ n:"Auto (VW ID.3)", cap:58, minKw:1.3, maxKw:11, kwhPer100:19 },  // Verbrauch 19 kWh/100km
   // Haushalts-Grundlast (kW) je Monat Jan..Dez, tagsueber (von PV gedeckt, daher
   // im Netzbezug ~unsichtbar). Realer Dauerbezug ~0.5 kW (Kuehlung, Standby,
@@ -1641,6 +1653,68 @@ var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
   boilerByMonth:[8.7,5.5,6.7,6.9,7.3,5.8,5.0,7.3,6.6,6.4,8.5,7.5],
   _cache:null, _pNow:null, _todayActual:null, _boilerNow:null, _boilerThr:null, _boilerTodayKwh:null, _carNow:null, _carVorgabe:null };
 
+/* ---- Detail je Tag (Knopf "Details" in der Tageskarte) ----
+   Oben: freier Ueberschuss (kW) ueber den Tag mit den Leistungs-Schwellen der Geraete/Programme.
+   Unten: je Programm eine Linie - dick = hier kann man STARTEN, duenn = danach laeuft das Programm.
+   Start moeglich, wenn der Ueberschuss waehrend des GANZEN Programms mindestens die Spitzenleistung deckt;
+   heute nur ab jetzt. Ueberschuss = PV - Grundlast (heute in der laufenden Stunde zusaetzlich minus aktuelle
+   Boiler-/Auto-Last). Der Boiler (~Monatswert) ist nicht auf die Uhrzeit verteilt. */
+PLANNER._detailTag=null; PLANNER._det={};
+PLANNER.PROG_FARBE={"Waschmaschine Eco":"#2b83c7","Waschmaschine Wolle":"#7a5cc7","Waschmaschine Normal":"#2aa6b8","Geschirrspüler":"var(--green)","Tumbler":"var(--amber)"};
+PLANNER.zeigeDetail=function(){
+  var el=document.getElementById("pl-detail"); if(!el) return;
+  var d=PLANNER._detailTag, D=d && PLANNER._det[d];
+  document.querySelectorAll("#pl-days .plday").forEach(function(c){ c.classList.toggle("sel", c.getAttribute("data-d")===d); });
+  document.querySelectorAll("#pl-days .pd-btn").forEach(function(b){ b.textContent=(b.getAttribute("data-d")===d)?"Details ▴":"Details ▾"; });
+  if(!D){ el.hidden=true; el.innerHTML=""; return; }
+  var y=D.date.getFullYear(), m=D.date.getMonth(), dd=D.date.getDate(), STEP=0.25, now=new Date(), nowT=D.isToday ? now.getHours()+now.getMinutes()/60 : -1;
+  var at=function(h){ return new Date(y,m,dd,0,0,0).getTime()+h*36e5; };
+  var hv=function(h,k){ h=Math.max(0,Math.min(23,h)); return D.hourly[h]?D.hourly[h][k]:0; };
+  // Stundenwerte gelten fuer die ganze Stunde -> zwischen den Stundenmitten linear verbinden
+  var S=function(t){ var x=t-0.5, h0=Math.floor(x), w=x-h0; return hv(h0,"sur")+(hv(h0+1,"sur")-hv(h0,"sur"))*w; };
+  var rows=[]; PLANNER.devices.forEach(function(dev){ dev.progs.slice().sort(function(a,b){ return b.h-a.h; }).forEach(function(p){
+    var name=dev.n+(p.n?" "+p.n:""); rows.push({name:name, p:p, farbe:PLANNER.PROG_FARBE[name]||"var(--blue)"}); }); });
+  function startOk(p,s){ if(D.isToday && s<nowT-1e-9) return false; if(s+p.h>24+1e-9) return false;
+    for(var u=s; u<s+p.h; u+=STEP){ if(S(u)<p.peakKw-1e-9) return false; } return S(s+p.h)>=p.peakKw-1e-9; }
+  // Raster 0..24 h in 15-min-Schritten
+  var G=[]; for(var t=0;t<=24+1e-9;t+=STEP) G.push(t);
+  rows.forEach(function(r){ r.start=G.map(function(t){ return startOk(r.p,t); });
+    r.lauf=G.map(function(t,i){ for(var j=0;j<=i;j++){ if(r.start[j] && t<=G[j]+r.p.h+1e-9) return true; } return false; });
+    var first=r.start.indexOf(true), last=r.start.lastIndexOf(true);
+    r.text = first<0 ? "kein Start möglich" : "Start "+hmTxt(G[first])+(last>first?"–"+hmTxt(G[last]):"")+" Uhr"; });
+  function hmTxt(t){ var mm=Math.round(t*60); return ("0"+Math.floor(mm/60)).slice(-2)+":"+("0"+(mm%60)).slice(-2); }
+  var ticks=[0,3,6,9,12,15,18,21,24].map(function(h){ return {t:new Date(at(h)), label:hmTxt(h)}; });
+  // ---- Grafik 1: Ueberschuss + Schwellen ----
+  var peakMax=Math.max.apply(null,G.map(S)), schw={};   // Schwellen nach Leistung gruppieren: gleiche Leistung = eine Linie
+  rows.forEach(function(r){ (schw[r.p.peakKw]=schw[r.p.peakKw]||[]).push(r); });
+  var ser1=[{color:"var(--green)", fill:true, pts:G.map(function(t){ return {t:new Date(at(t)), v:S(t)}; })}];
+  var leg1=[{color:"var(--green)", label:"Überschuss (kW)"}];
+  Object.keys(schw).sort(function(a,b){ return b-a; }).forEach(function(k){ var rs=schw[k], eind=rs.length===1;
+    var farbe=eind?rs[0].farbe:"#8a94a0", namen=rs.map(function(r){ return r.name; }).join(", ");
+    ser1.push({color:farbe, dash:true, width:2, noTip:true, pts:[{t:new Date(at(0)),v:+k},{t:new Date(at(24)),v:+k}]});
+    leg1.push({color:farbe, dash:true, label:"ab "+String(k).replace(".",",")+" kW: "+namen}); });
+  if(D.isToday){ ser1.push({color:"var(--muted)", width:1, noTip:true, pts:[{t:new Date(at(nowT)),v:0},{t:new Date(at(nowT)),v:Math.max(peakMax,2)}]}); leg1.push({color:"var(--muted)", label:"jetzt"}); }
+  // ---- Grafik 2: Startfenster je Programm (Zeilen) ----
+  var n=rows.length, ser2=[], yt=[];
+  rows.forEach(function(r,i){ var L=n-i; yt.push({v:L, label:r.name.replace("Waschmaschine","Waschm.")});
+    var lauf=[], start=[]; G.forEach(function(t,k){ lauf.push({t:new Date(at(t)), v:r.lauf[k]?L:null}); start.push({t:new Date(at(t)), v:r.start[k]?L:null}); });
+    ser2.push({color:r.farbe, width:3, noTip:true, pts:lauf}); ser2.push({color:r.farbe, width:11, noTip:true, pts:start}); });
+  ser2.push({color:"var(--bg)", width:1, noTip:true, pts:[{t:new Date(at(0)),v:0.4},{t:new Date(at(24)),v:0.4}]});   // sorgt fuer die volle Zeitachse 0-24 h
+  if(D.isToday) ser2.push({color:"var(--muted)", width:1, noTip:true, pts:[{t:new Date(at(nowT)),v:0.4},{t:new Date(at(nowT)),v:n+0.6}]});
+  var text=rows.map(function(r){ return '<span style="white-space:nowrap"><b style="color:'+r.farbe+'">●</b> '+r.name+' ('+PLANNER.dauerTxt(r.p.h)+'): '+r.text+'</span>'; }).join(" &nbsp; ");
+  el.hidden=false;
+  el.innerHTML='<h3><span>'+D.dateTxt+' – wann laufen die Geräte?</span><button class="pd-btn" style="width:auto;margin:0" id="pl-d-x">Schliessen ✕</button></h3>'+
+    '<h4>Freier Überschuss und Leistungsbedarf der Geräte</h4><div id="pl-d-sur"></div>'+
+    '<h4>Startfenster je Programm – dick: hier starten · dünn: Programm läuft</h4><div id="pl-d-zeit"></div>'+
+    '<div class="note">'+text+'<br>Start möglich, wenn der Überschuss während des ganzen Programms mindestens die Spitzenleistung deckt'+(D.isToday?' (heute nur ab jetzt, mit der aktuellen Boiler-/Auto-Last)':'')+
+    '. Überschuss = PV-Prognose − Haushalts-Grundlast; der Boiler (~'+Math.round(PLANNER.boilerByMonth[D.date.getMonth()])+' kWh) ist nicht auf die Uhrzeit verteilt. Programme der Waschmaschine: Eco gemessen, Normal und Wolle geschätzt.</div>';
+  document.getElementById("pl-d-x").addEventListener("click",function(){ PLANNER._detailTag=null; PLANNER.zeigeDetail(); });
+  lineChart(document.getElementById("pl-d-sur"), ser1, {unit:"kW", dec:1, yMin:0, xTicks:ticks, legend:leg1, autoW:true});
+  lineChart(document.getElementById("pl-d-zeit"), ser2, {unit:"", yMin:0.4, yMax:n+0.6, yTicks:yt, xTicks:ticks, padL:150, height:90+n*38, autoW:true});
+};
+// Laufzeit lesbar: 3 -> "3 h", 3.5 -> "3,5 h", 65 min -> "1 h 05"
+PLANNER.dauerTxt=function(h){ var m=Math.round(h*60); if(m%60===0) return (m/60)+" h"; if(m%30===0) return String(m/60).replace(".",",")+" h";
+  return Math.floor(m/60)+" h "+("0"+(m%60)).slice(-2); };
 PLANNER.render=function(main){
   main.innerHTML='<div class="wrap wide plan-wide">'+
     '<div class="view-head"><h1>🗓️ Vorgeschlagene Gerätenutzung</h1><div class="meta" id="pl-meta">wird geladen…</div></div>'+
@@ -1649,11 +1723,16 @@ PLANNER.render=function(main){
       '<div class="note">Erwartete PV-Leistung – Prognose (Open-Meteo, geneigte Einstrahlung '+PLANNER.TILT+'°/Süd), pro Tagesstunde an den letzten 14 Tagen kalibriert (berücksichtigt die lokale Horizont-Verschattung im Tal, v.a. abends). Blau: Lufttemperatur 2 m über Boden (Open-Meteo, rechte Achse).</div></div>'+
     '<div class="panel"><h2>Tagesübersicht &amp; Empfehlungen</h2><div id="pl-days"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Geräte heute: 🟠 erst später · Zwischenstufen = 1 bzw. 2 Geräte gleichzeitig · 🟢 alle gleichzeitig (Spitzenleistung im aktuell freien Überschuss) · 🔴 heute nicht mehr. Folgetage: 🟢 gut machbar · 🟠 knapp · 🔴 zu wenig Überschuss. „Heute" wird ab der aktuellen Uhrzeit gerechnet und mit der aktuellen PV-Leistung nachgeführt (Nowcast); Aktualisierung alle 60 s. '+
-        'Geräte (Eco): '+PLANNER.devices.map(function(d){ return d.n+' '+d.h+' h, Spitze '+d.peakKw+' kW, '+d.kwh+' kWh'; }).join(' · ')+'. '+
+        'Geräte: '+PLANNER.devices.map(function(d){ return d.n+' '+d.progs.map(function(p){ return (p.n?p.n+' ':'')+PLANNER.dauerTxt(p.h)+', Spitze '+String(p.peakKw).replace(".",",")+' kW, '+String(p.kwh).replace(".",",")+' kWh'; }).join(' / '); }).join(' · ')+
+          ' (je Gerät zählt das längste Programm, das an dem Tag passt). '+
         'Überschuss = Brutto-PV (ab Wechselrichter) − Haushalts-Grundlast (~0.5 kW) − erwartete Boiler-Ladearbeit (Monats-Referenz, Warmwasser hat Vorrang) − aktuelle Boiler-/Auto-Ladeleistung (Vorrang Boiler → Auto → Geräte). '+
         'Boiler-Punkt: 🟢 Solar deckt den Boiler und er lädt jetzt bzw. PV liegt über der Einschaltschwelle · 🟠 knapp bzw. erst später · 🔴 zu wenig Sonne bzw. heute kein Solarfenster mehr. '+
         'Auto: '+PLANNER.car.cap+' kWh, '+PLANNER.car.minKw+'–'+PLANNER.car.maxKw+' kW, '+PLANNER.car.kwhPer100+' kWh/100 km; heute lädt es mit der PV-Ladevorgabe der Wallbox.</div></div>'+
     '<footer>Prognose: Open-Meteo · Kalibrierung: ThingSpeak Kanal '+PLANNER.CH+' · <span id="pl-err" style="color:var(--red)"></span></footer></div>';
+  PLANNER._detailTag=null;
+  document.getElementById("pl-days").addEventListener("click",function(e){ var b=e.target.closest(".pd-btn[data-d]"); if(!b) return;
+    var d=b.getAttribute("data-d"); PLANNER._detailTag=(PLANNER._detailTag===d)?null:d; PLANNER.zeigeDetail();
+    if(PLANNER._detailTag){ var pd=document.getElementById("pl-detail"); if(pd) pd.scrollIntoView({behavior:"smooth", block:"nearest"}); } });
 };
 
 // Kalibrierung pro Tagesstunde: Median(Ist-Leistung / GTI) je Stunde der letzten
@@ -1718,8 +1797,8 @@ PLANNER.load=function(){
     // Tageskarten
     var wd=["So","Mo","Di","Mi","Do","Fr","Sa"], today=ymdLocal(new Date());   // Ortszeit (UTC waere 00-02 Uhr noch der Vortag)
     var nowH=new Date().getHours();
-    var applTotal=0; PLANNER.devices.forEach(function(dv){applTotal+=dv.kwh;});  // 3 kWh
     var col={green:"var(--green)",orange:"var(--amber)",red:"var(--red)"};
+    var det={};   // Daten je Tag fuer die Detail-Grafiken (Knopf "Details")
     var cards=order.map(function(d,idx){ var o=days[d];
       var isToday=(d===today);
       // --- Nowcast HEUTE: aktuelle/heutige Ist-Produktion einbeziehen -----------
@@ -1753,12 +1832,12 @@ PLANNER.load=function(){
         kwh+=e; sur+=effSur(w); if(e>peak)peak=e; if(e>=2){ if(lo===null)lo=w.h; hi=w.h; } });
       kwh=Math.round(kwh); sur=Math.round(sur);
       // Boiler (grosser, unabhaengiger Verbraucher mit Warmwasser-Vorrang):
-      // Tages-Ladearbeit. HEUTE Ist-basiert = max(Monats-Referenz, bereits heute geladen);
-      // vom REST-Ueberschuss wird nur die noch kommende Energie abgezogen
+      // Tages-Ladearbeit = Monats-Referenz (Ø). HEUTE steht die bisher geladene Menge in Klammern daneben;
+      // vom REST-Ueberschuss wird nur die noch kommende Energie abgezogen, max(0, Referenz - geladen)
       // (Ist-bisher ist bereits Vergangenheit). Solar-Deckung des Rests bewerten.
       var boilerRef=Math.round(PLANNER.boilerByMonth[o.date.getMonth()]||0);
       var boilerActual=(isToday && PLANNER._boilerTodayKwh!=null) ? Math.round(PLANNER._boilerTodayKwh) : 0;
-      var boilerKwh = isToday ? Math.max(boilerRef, boilerActual) : boilerRef;   // Anzeige: Tagesbedarf
+      var boilerKwh = boilerRef;   // Anzeige: Ø Tagesbedarf des Monats (heute steht die bisher geladene Menge in Klammern daneben)
       var boilerSub = isToday ? Math.max(0, boilerRef-boilerActual) : boilerRef; // Abzug vom Rest-Ueberschuss
       var grossSur=sur;
       sur=Math.max(0, sur-boilerSub);
@@ -1775,18 +1854,22 @@ PLANNER.load=function(){
       var q=o.win.filter(function(w){ return (!isToday || w.h>=nowH) && effSur(w)>=1; });
       // Tagespruefung je Geraet: "red" = heute/an dem Tag nicht, "orange" = Fenster kuerzer als
       // die Laufzeit, "ok" = moeglich.
-      function dayAmpel(dev){ if(!q.length || sur < dev.kwh) return "red";
+      function progAmpel(p){ if(!q.length || sur < p.kwh) return "red";
         var avail=(q[q.length-1].h+1)-q[0].h;
-        if(avail < dev.h*0.5) return "red";
-        return avail>=dev.h ? "ok" : "orange"; }
-      var dayC=PLANNER.devices.map(dayAmpel);
+        if(avail < p.h*0.5) return "red";
+        return avail>=p.h ? "ok" : "orange"; }
+      // je Geraet das LAENGSTE Programm, das an dem Tag passt ("ok", sonst "orange", sonst das laengste = rot)
+      var dayProg=PLANNER.devices.map(function(dev){ var s=dev.progs.slice().sort(function(a,b){ return b.h-a.h; });
+        return s.filter(function(p){ return progAmpel(p)==="ok"; })[0] || s.filter(function(p){ return progAmpel(p)==="orange"; })[0] || s[0]; });
+      var dayC=dayProg.map(progAmpel);
+      var applTotal=0; dayProg.forEach(function(p){ applTotal+=p.kwh; });   // Energie der gewaehlten Programme (Auto-Rechnung)
       // HEUTE: wie viele der moeglichen Geraete koennen JETZT gleichzeitig laufen? curSur hat
       // Boiler + Auto schon abgezogen. Keine Reihenfolge - kleinste Leistung zuerst ergibt die
       // maximale Anzahl. Alle moeglichen Geraete bekommen dieselbe Farbe: orange (0, erst
       // spaeter) -> 1/3 -> 2/3 -> gruen (alle).
       var nDev=PLANNER.devices.length, nNow=0;
       if(isToday && curSur!=null){ var restKw=curSur;
-        PLANNER.devices.filter(function(d,i){ return dayC[i]==="ok"; }).map(function(d){ return d.peakKw; })
+        dayProg.filter(function(p,i){ return dayC[i]==="ok"; }).map(function(p){ return p.peakKw; })
           .sort(function(a,b){ return a-b; }).forEach(function(kw){ if(restKw>=kw){ nNow++; restKw-=kw; } }); }
       var nowCol=rampColor([[0,[245,166,35]],[nDev,[46,158,91]]], nNow);  // var(--amber) -> var(--green)
       function devColor(i){ var c=dayC[i]; if(c==="red") return col.red; if(c==="orange") return col.orange;
@@ -1805,7 +1888,7 @@ PLANNER.load=function(){
         }
       }
       var devRows=PLANNER.devices.map(function(dev,i){
-        return '<div style="display:flex;align-items:center;gap:7px;font-size:.85rem;margin:3px 0"><span style="width:11px;height:11px;border-radius:50%;background:'+devColor(i)+';flex:none"></span>'+dev.n+' <span style="color:var(--muted);white-space:nowrap">('+String(dev.h).replace(".",",")+' h)</span></div>'; }).join("");
+        return '<div style="display:flex;align-items:center;gap:7px;font-size:.85rem;margin:3px 0"><span style="width:11px;height:11px;border-radius:50%;background:'+devColor(i)+';flex:none"></span>'+dev.n+' <span style="color:var(--muted);white-space:nowrap">('+(dayProg[i].n?dayProg[i].n+' ':'')+PLANNER.dauerTxt(dayProg[i].h)+')</span></div>'; }).join("");
       if(isToday && dayC.some(function(c){ return c==="ok"; }))
         devRows+='<div style="font-size:.78rem;color:var(--muted);margin:2px 0 0 18px">Jetzt: '+nNow+' von '+nDev+' gleichzeitig ('+Math.max(0,curSur).toFixed(1)+' kW frei)</div>';
       var carKwh=Math.min(Math.max(0,Math.round(sur-applTotal)), PLANNER.car.cap);
@@ -1838,13 +1921,19 @@ PLANNER.load=function(){
         liveRow='<div class="pd-win" style="color:'+lc+';font-weight:600">Aktuell '+(curKw!=null?curKw.toFixed(1):"?")+' kW'+ex+freeTxt+(scale<0.9?" · Prognose ×"+scale.toFixed(2):"")+'</div>';
       }
       var kwhLbl = isToday ? ' <small>kWh ab jetzt</small>' : ' <small>kWh</small>';
-      return '<div class="plday"><div class="pd-date">'+dateTxt+'</div><div class="pd-kwh">'+kwh+kwhLbl+'</div>'+
+      // Stundenwerte dieses Tages (PV und Ueberschuss in kW) fuer die Detail-Grafiken
+      var hourly=[]; o.win.forEach(function(w){ hourly[w.h]={pv:effKw(w), sur:effSur(w)}; });
+      det[d]={date:o.date, isToday:isToday, hourly:hourly, dateTxt:dateTxt};
+      return '<div class="plday" data-d="'+d+'"><div class="pd-date">'+dateTxt+'</div><div class="pd-kwh">'+kwh+kwhLbl+'</div>'+
         liveRow+
         '<div class="pd-sun">'+sun+' <span style="font-size:.8rem;color:var(--muted);font-weight:600">Überschuss ~'+sur+' kWh</span></div>'+
         '<div class="pd-win">Solarfenster '+winTxt+' · Peak '+peak.toFixed(1)+' kW</div>'+
-        devRows+carRow+boilerRow+'</div>';
+        devRows+carRow+boilerRow+
+        '<button class="pd-btn" data-d="'+d+'" title="Wann am Tag laufen die Geräte? (Überschuss, Startfenster)">Details ▾</button></div>';
     }).join("");
-    if(g("pl-days")) g("pl-days").innerHTML='<div class="pldays">'+cards+'</div>';
+    PLANNER._det=det;
+    if(g("pl-days")) g("pl-days").innerHTML='<div class="pldays">'+cards+'</div><div class="pd-detail" id="pl-detail" hidden></div>';
+    PLANNER.zeigeDetail();   // gewaehlter Tag bleibt beim Aktualisieren offen
     // Wochen-Tipp: Tag mit groesstem Ueberschuss fuers Auto
     var best=order.reduce(function(a,b){return days[b].surplus>days[a].surplus?b:a;},order[0]);
     var bo=days[best]; if(g("pl-meta")) g("pl-meta").textContent="Bester Ladetag: "+wd[bo.date.getDay()]+" "+bo.date.getDate()+"."+(bo.date.getMonth()+1)+". (~"+Math.round(bo.surplus)+" kWh Überschuss)";

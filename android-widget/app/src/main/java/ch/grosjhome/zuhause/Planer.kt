@@ -14,16 +14,17 @@ import kotlin.math.roundToInt
 /**
  * "Wie viele Geraete duerfen jetzt laufen?" - dieselbe Rechnung wie die Heute-Karte im
  * Dashboard-Tab Nutzung (PLANNER in dashboard/index.html, "Jetzt: n von 3 gleichzeitig").
- * Geraete, Grundlast und Boiler-Referenz dort und hier gleich halten.
+ * Geraete (inkl. Waschmaschinen-Programme), Grundlast und Boiler-Referenz dort und hier gleich halten.
  */
 object Planer {
-    private class Geraet(val h: Double, val peakKw: Double, val kwh: Double)
+    private class Prog(val h: Double, val peakKw: Double, val kwh: Double)
 
-    // Eco-Programme: Laufdauer h, Spitzenleistung kW, Energie je Durchgang kWh
+    // Je Geraet die Programme: Laufdauer h, Spitzenleistung kW, Energie je Durchgang kWh.
+    // Waschmaschine: Eco gemessen, Normal und Wolle geschaetzt.
     private val GERAETE = listOf(
-        Geraet(3.0, 2.0, 0.7),     // Waschmaschine
-        Geraet(3.5, 2.0, 0.85),    // Geschirrspueler
-        Geraet(3.0, 0.9, 1.45)     // Tumbler
+        listOf(Prog(3.0, 2.0, 0.7), Prog(2.0, 0.5, 0.4), Prog(65.0 / 60, 2.0, 1.0)),  // Waschmaschine: Eco, Wolle, Normal
+        listOf(Prog(3.5, 2.0, 0.85)),    // Geschirrspueler
+        listOf(Prog(3.0, 0.9, 1.45))     // Tumbler
     )
     private val GRUNDLAST = doubleArrayOf(0.7, 0.7, 0.6, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.6, 0.65, 0.7)   // kW je Monat
     private val BOILER_KWH = doubleArrayOf(8.7, 5.5, 6.7, 6.9, 7.3, 5.8, 5.0, 7.3, 6.6, 6.4, 8.5, 7.5) // kWh/Tag je Monat
@@ -139,9 +140,12 @@ object Planer {
         val sur = max(0, (nowH..23).sumOf { effSur(it) }.roundToInt() - max(0, boilerRef - boilerHeute))
         val frei = (pvKw ?: (prog[nowH] * scale)) - base - last
 
-        // Geraet geht heute noch, wenn das Solarfenster (Stunden mit >= 1 kW) die Laufzeit fasst
+        // Geraet geht heute noch, wenn das Solarfenster (Stunden mit >= 1 kW) die Laufzeit eines
+        // Programms fasst; gewaehlt wird je Geraet das laengste Programm, das passt (wie im Dashboard)
         val q = (nowH..23).filter { effSur(it) >= 1 }
-        val moeglich = GERAETE.filter { d -> q.isNotEmpty() && sur >= d.kwh && (q.last() + 1 - q.first()) >= d.h }
+        val moeglich = GERAETE.mapNotNull { progs ->
+            progs.sortedByDescending { it.h }.firstOrNull { p -> q.isNotEmpty() && sur >= p.kwh && (q.last() + 1 - q.first()) >= p.h }
+        }
         // gleichzeitig: kleinste Spitzenleistung zuerst -> maximale Anzahl
         var rest = frei
         var n = 0
