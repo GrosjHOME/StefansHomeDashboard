@@ -1753,8 +1753,8 @@ PLANNER.load=function(){
         kwh+=e; sur+=effSur(w); if(e>peak)peak=e; if(e>=2){ if(lo===null)lo=w.h; hi=w.h; } });
       kwh=Math.round(kwh); sur=Math.round(sur);
       // Boiler (grosser, unabhaengiger Verbraucher mit Warmwasser-Vorrang):
-      // Tages-Ladearbeit. HEUTE Ist-basiert = max(Monats-Referenz, bereits heute geladen);
-      // vom REST-Ueberschuss wird nur die noch kommende Energie abgezogen
+      // Tages-Ladearbeit = Monats-Referenz (Ø). HEUTE steht die bisher geladene Menge in Klammern daneben;
+      // vom REST-Ueberschuss wird nur die noch kommende Energie abgezogen, max(0, Referenz - geladen)
       // (Ist-bisher ist bereits Vergangenheit). Solar-Deckung des Rests bewerten.
       var boilerRef=Math.round(PLANNER.boilerByMonth[o.date.getMonth()]||0);
       var boilerActual=(isToday && PLANNER._boilerTodayKwh!=null) ? Math.round(PLANNER._boilerTodayKwh) : 0;
