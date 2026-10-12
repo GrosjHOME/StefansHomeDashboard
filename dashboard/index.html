@@ -1641,9 +1641,9 @@ var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
   // Je Geraet ein oder mehrere Programme (progs). Waschmaschine: Normal 1 h 05, Wolle 2 h, Eco 3 h
   // (Eco gemessen/Datenblatt; Normal und Wolle: SCHAETZWERTE - bei Bedarf korrigieren). Die Tageskarte
   // nimmt je Geraet das laengste Programm, das an dem Tag passt.
-  devices:[ {n:"Waschmaschine", progs:[ {n:"Normal", h:65/60, peakKw:2, kwh:1.0}, {n:"Wolle", h:2, peakKw:0.5, kwh:0.4}, {n:"Eco", h:3, peakKw:2, kwh:0.7} ]},
-            {n:"Geschirrspüler", progs:[ {h:3.5, peakKw:2, kwh:0.85} ]},
-            {n:"Tumbler", progs:[ {h:3, peakKw:0.9, kwh:1.45} ]} ],
+  devices:[ {n:"Waschmaschine", ico:"🧺", progs:[ {n:"Normal", h:65/60, peakKw:2, kwh:1.0}, {n:"Wolle", h:2, peakKw:0.5, kwh:0.4}, {n:"Eco", h:3, peakKw:2, kwh:0.7} ]},
+            {n:"Geschirrspüler", ico:"🍽️", progs:[ {h:3.5, peakKw:2, kwh:0.85} ]},
+            {n:"Tumbler", ico:"🌀", progs:[ {h:3, peakKw:0.9, kwh:1.45} ]} ],
   car:{ n:"Auto (VW ID.3)", cap:58, minKw:1.3, maxKw:11, kwhPer100:19 },  // Verbrauch 19 kWh/100km
   // Haushalts-Grundlast (kW) je Monat Jan..Dez, tagsueber (von PV gedeckt, daher
   // im Netzbezug ~unsichtbar). Realer Dauerbezug ~0.5 kW (Kuehlung, Standby,
@@ -1676,7 +1676,9 @@ PLANNER.zeigeDetail=function(){
   // Stundenwerte gelten fuer die ganze Stunde -> zwischen den Stundenmitten linear verbinden
   var S=function(t){ var x=t-0.5, h0=Math.floor(x), w=x-h0; return hv(h0,"sur")+(hv(h0+1,"sur")-hv(h0,"sur"))*w; };
   var rows=[]; PLANNER.devices.forEach(function(dev){ dev.progs.slice().sort(function(a,b){ return b.h-a.h; }).forEach(function(p){
-    var name=dev.n+(p.n?" "+p.n:""); rows.push({name:name, p:p, farbe:PLANNER.PROG_FARBE[name]||"var(--blue)"}); }); });
+    var name=dev.n+(p.n?" "+p.n:"");
+    // kurz = Beschriftung mit Symbol; die Geraete-Gruppe steht nur einmal im Klartext (Waschmaschine: Programmname)
+    rows.push({name:name, dev:dev, p:p, kurz:dev.ico+" "+(p.n||dev.n), farbe:PLANNER.PROG_FARBE[name]||"var(--blue)"}); }); });
   function startOk(p,s){ if(D.isToday && s<nowT-1e-9) return false; if(s+p.h>24+1e-9) return false;
     for(var u=s; u<s+p.h; u+=STEP){ if(S(u)<p.peakKw-1e-9) return false; } return S(s+p.h)>=p.peakKw-1e-9; }
   // Raster 0..24 h in 15-min-Schritten
@@ -1693,18 +1695,24 @@ PLANNER.zeigeDetail=function(){
   var ser1=[{color:"var(--green)", fill:true, pts:G.map(function(t){ return {t:new Date(at(t)), v:S(t)}; })}];
   var leg1=[{color:"var(--green)", label:"Überschuss (kW)"}];
   Object.keys(schw).sort(function(a,b){ return b-a; }).forEach(function(k){ var rs=schw[k], eind=rs.length===1;
-    var farbe=eind?rs[0].farbe:"#8a94a0", namen=rs.map(function(r){ return r.name; }).join(", ");
+    var farbe=eind?rs[0].farbe:"#8a94a0", namen=rs.map(function(r){ return r.kurz; }).join(", ");
     ser1.push({color:farbe, dash:true, width:2, noTip:true, pts:[{t:new Date(at(0)),v:+k},{t:new Date(at(24)),v:+k}]});
     leg1.push({color:farbe, dash:true, label:"ab "+String(k).replace(".",",")+" kW: "+namen}); });
   if(D.isToday){ ser1.push({color:"var(--muted)", width:1, noTip:true, pts:[{t:new Date(at(nowT)),v:0},{t:new Date(at(nowT)),v:Math.max(peakMax,2)}]}); leg1.push({color:"var(--muted)", label:"jetzt"}); }
   // ---- Grafik 2: Startfenster je Programm (Zeilen) ----
-  var n=rows.length, ser2=[], yt=[];
-  rows.forEach(function(r,i){ var L=n-i; yt.push({v:L, label:r.name.replace("Waschmaschine","Waschm.")});
+  // Zeilen nach Geraet gruppiert: zwischen den Geraeten ein Abstand mit feiner Trennlinie, Beschriftung mit Symbol
+  var n=rows.length, ser2=[], yt=[], GAP=0.6, pos=[], Lc=1, sep=[];
+  for(var ri=n-1; ri>=0; ri--){ var neu=(ri<n-1 && rows[ri].dev!==rows[ri+1].dev); if(neu) Lc+=GAP; pos[ri]=Lc; if(neu) sep.push((pos[ri]+pos[ri+1])/2); Lc+=1; }
+  var Ltop=pos[0];
+  rows.forEach(function(r,i){ var L=pos[i]; yt.push({v:L, label:r.kurz});
     var lauf=[], start=[]; G.forEach(function(t,k){ lauf.push({t:new Date(at(t)), v:r.lauf[k]?L:null}); start.push({t:new Date(at(t)), v:r.start[k]?L:null}); });
     ser2.push({color:r.farbe, width:3, noTip:true, pts:lauf}); ser2.push({color:r.farbe, width:11, noTip:true, pts:start}); });
   ser2.push({color:"var(--bg)", width:1, noTip:true, pts:[{t:new Date(at(0)),v:0.4},{t:new Date(at(24)),v:0.4}]});   // sorgt fuer die volle Zeitachse 0-24 h
-  if(D.isToday) ser2.push({color:"var(--muted)", width:1, noTip:true, pts:[{t:new Date(at(nowT)),v:0.4},{t:new Date(at(nowT)),v:n+0.6}]});
-  var text=rows.map(function(r){ return '<span style="white-space:nowrap"><b style="color:'+r.farbe+'">●</b> '+r.name+' ('+PLANNER.dauerTxt(r.p.h)+'): '+r.text+'</span>'; }).join(" &nbsp; ");
+  sep.forEach(function(v){ ser2.push({color:"var(--muted)", width:1, dash:true, noTip:true, pts:[{t:new Date(at(0)),v:v},{t:new Date(at(24)),v:v}]}); });
+  if(D.isToday) ser2.push({color:"var(--muted)", width:1, noTip:true, pts:[{t:new Date(at(nowT)),v:0.4},{t:new Date(at(nowT)),v:Ltop+0.6}]});
+  // Text je Geraet eine Zeile: Symbol + Name, dahinter die Programme (Waschmaschine) bzw. das Startfenster
+  var text=PLANNER.devices.map(function(dev){ var rs=rows.filter(function(r){ return r.dev===dev; });
+    return '<div>'+dev.ico+' <b>'+dev.n+'</b>: '+rs.map(function(r){ return '<span style="white-space:nowrap"><b style="color:'+r.farbe+'">●</b> '+(r.p.n?r.p.n+' ':'')+'('+PLANNER.dauerTxt(r.p.h)+') '+r.text+'</span>'; }).join(" &nbsp; ")+'</div>'; }).join("");
   el.hidden=false;
   el.innerHTML='<h3><span>'+D.dateTxt+' – wann laufen die Geräte?</span><button class="pd-btn" style="width:auto;margin:0" id="pl-d-x">Schliessen ✕</button></h3>'+
     '<h4>Freier Überschuss und Leistungsbedarf der Geräte</h4><div id="pl-d-sur"></div>'+
@@ -1715,7 +1723,7 @@ PLANNER.zeigeDetail=function(){
   // Beide Grafiken mit gleichem linken Rand (Zeitachsen exakt untereinander); die Programmnamen der
   // unteren stehen innerhalb der Flaeche im (ohnehin leeren) Nachtbereich links
   lineChart(document.getElementById("pl-d-sur"), ser1, {unit:"kW", dec:1, yMin:0, xTicks:ticks, legend:leg1, padL:58, autoW:true});
-  lineChart(document.getElementById("pl-d-zeit"), ser2, {unit:"", yMin:0.4, yMax:n+0.6, yTicks:yt, yInside:true, xTicks:ticks, padL:58, height:90+n*38, autoW:true});
+  lineChart(document.getElementById("pl-d-zeit"), ser2, {unit:"", yMin:0.4, yMax:Ltop+0.6, yTicks:yt, yInside:true, xTicks:ticks, padL:58, height:90+Math.round((Ltop+0.2)*38), autoW:true});
 };
 // Laufzeit lesbar: 3 -> "3 h", 3.5 -> "3,5 h", 65 min -> "1 h 05"
 PLANNER.dauerTxt=function(h){ var m=Math.round(h*60); if(m%60===0) return (m/60)+" h"; if(m%30===0) return String(m/60).replace(".",",")+" h";
