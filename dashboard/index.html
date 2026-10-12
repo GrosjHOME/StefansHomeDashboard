@@ -284,7 +284,8 @@ function lineChart(holder, series, opts){
   var all=allL.concat(allR);
   if(all.length<1){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
   // Linker Rand waechst mit der laengsten Text-Beschriftung der Y-Achse (Schrift 21 px, ~11.5 px/Zeichen)
-  var longestTick=Math.max.apply(null,[0].concat((opts.yTicks||[]).map(function(tk){ return tk.label!=null?String(tk.label).length:0; })));
+  // opts.yInside: Y-Beschriftung steht innerhalb der Zeichenflaeche (ueber der Gitterlinie), der linke Rand bleibt schmal
+  var longestTick=opts.yInside ? 0 : Math.max.apply(null,[0].concat((opts.yTicks||[]).map(function(tk){ return tk.label!=null?String(tk.label).length:0; })));
   // opts.autoW: Zeichenbreite = Pixelbreite (mind. 1000), damit Schrift und Hoehe bei sehr breiten
   // Charts (volle Bildschirmbreite) nicht mitwachsen
   var W=opts.autoW?Math.max(1000,Math.round(holder.clientWidth||0)):1000;
@@ -317,7 +318,9 @@ function lineChart(holder, series, opts){
   var ticks = opts.yTicks || [{v:L.base},{v:(L.base+L.top)/2},{v:L.top}];
   ticks.forEach(function(tk){ var y=Y(tk.v);
     grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
-    yl+='<text x="'+(padL-8)+'" y="'+(y+7)+'" text-anchor="end" font-size="21" fill="var(--muted)">'+(tk.label!=null?tk.label:ylab(tk.v))+'</text>';
+    yl+= opts.yInside
+      ? '<text x="'+(padL+8)+'" y="'+(y-9)+'" text-anchor="start" font-size="21" fill="var(--muted)">'+(tk.label!=null?tk.label:ylab(tk.v))+'</text>'
+      : '<text x="'+(padL-8)+'" y="'+(y+7)+'" text-anchor="end" font-size="21" fill="var(--muted)">'+(tk.label!=null?tk.label:ylab(tk.v))+'</text>';
     if(hasRight){ var frac=1-(y-padT)/(H-padT-padB), rv=R.base+(R.top-R.base)*frac;
       yl+='<text x="'+(W-padR+8)+'" y="'+(y+7)+'" text-anchor="start" font-size="21" fill="'+rColor+'">'+(opts.y2Fmt ? opts.y2Fmt(rv) : ylab(rv))+'</text>'; } });
   // y2Marks: zusaetzliche Beschriftungen der rechten Achse an beliebigen Werten ([{v, label}])
@@ -1709,8 +1712,10 @@ PLANNER.zeigeDetail=function(){
     '<div class="note">'+text+'<br>Start möglich, wenn der Überschuss während des ganzen Programms mindestens die Spitzenleistung deckt'+(D.isToday?' (heute nur ab jetzt, mit der aktuellen Boiler-/Auto-Last)':'')+
     '. Überschuss = PV-Prognose − Haushalts-Grundlast; der Boiler (~'+Math.round(PLANNER.boilerByMonth[D.date.getMonth()])+' kWh) ist nicht auf die Uhrzeit verteilt. Programme der Waschmaschine: Eco gemessen, Normal und Wolle geschätzt.</div>';
   document.getElementById("pl-d-x").addEventListener("click",function(){ PLANNER._detailTag=null; PLANNER.zeigeDetail(); });
-  lineChart(document.getElementById("pl-d-sur"), ser1, {unit:"kW", dec:1, yMin:0, xTicks:ticks, legend:leg1, autoW:true});
-  lineChart(document.getElementById("pl-d-zeit"), ser2, {unit:"", yMin:0.4, yMax:n+0.6, yTicks:yt, xTicks:ticks, padL:150, height:90+n*38, autoW:true});
+  // Beide Grafiken mit gleichem linken Rand (Zeitachsen exakt untereinander); die Programmnamen der
+  // unteren stehen innerhalb der Flaeche im (ohnehin leeren) Nachtbereich links
+  lineChart(document.getElementById("pl-d-sur"), ser1, {unit:"kW", dec:1, yMin:0, xTicks:ticks, legend:leg1, padL:58, autoW:true});
+  lineChart(document.getElementById("pl-d-zeit"), ser2, {unit:"", yMin:0.4, yMax:n+0.6, yTicks:yt, yInside:true, xTicks:ticks, padL:58, height:90+n*38, autoW:true});
 };
 // Laufzeit lesbar: 3 -> "3 h", 3.5 -> "3,5 h", 65 min -> "1 h 05"
 PLANNER.dauerTxt=function(h){ var m=Math.round(h*60); if(m%60===0) return (m/60)+" h"; if(m%30===0) return String(m/60).replace(".",",")+" h";
