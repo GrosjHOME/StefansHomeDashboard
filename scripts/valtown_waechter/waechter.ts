@@ -6,7 +6,7 @@
 //    Die Heizung nur in der Heizsaison (Okt-Apr), sonst "Sommerpause".
 //    ID.3-Kanal veraltet = der Tibber-Poller (id3.ts im selben Val) laeuft nicht, z. B. Token-Kette gerissen.
 //  - meldet die PV-Steuerung die SD-Karte als OK (Kanal 172430, field7 = 1)?
-//  - ist die PV-Morgenprognose von heute um 05:00 entstanden (prognose.ts/morgens.ts im selben Val)?
+//  - ist die PV-Morgenprognose von heute um 06:00 entstanden (prognose.ts/morgens.ts im selben Val)?
 //
 // E-Mail: bei einer neuen Stoerung, wenn alles wieder in Ordnung ist, und taeglich als Erinnerung,
 // solange etwas gestoert ist. Eine Stoerung zaehlt erst, wenn sie zwei Laeufe hintereinander
@@ -71,14 +71,14 @@ async function pruefen(): Promise<Record<string, string>> {
       p[k.id] = `${k.name}: Kanal ${k.kanal} nicht abrufbar (${e})`;
     }
   }
-  // Morgenprognose: ab 06:00 muss die von heute da sein und um 05:xx entstanden sein
-  if (heute.h >= 6) {
+  // Morgenprognose: ab 07:00 muss die von heute da sein und um 06:xx entstanden sein
+  if (heute.h >= 7) {
     try {
       const r = await fetch(PROGNOSE_URL);
       const pr = await r.json();
       if (!r.ok || pr.datum !== heute.datum) p.prognose = `PV-Morgenprognose: keine Prognose für heute (${pr.fehler ?? "HTTP " + r.status})`;
-      else if (lokal(Date.parse(pr.erstellt)).h !== 5) {
-        p.prognose = `PV-Morgenprognose: erst um ${zeit(Date.parse(pr.erstellt))} erstellt statt 05:00 (Cron morgens.ts prüfen)`;
+      else if (lokal(Date.parse(pr.erstellt)).h !== 6 && pr.datum !== "2026-10-13") {   // Ausnahme 13.10.2026: Umstellung von 05:00 auf 06:00 (danach entfernen)
+        p.prognose = `PV-Morgenprognose: erst um ${zeit(Date.parse(pr.erstellt))} erstellt statt 06:00 (Cron morgens.ts prüfen)`;
       }
     } catch (e) {
       p.prognose = `PV-Morgenprognose: nicht abrufbar (${e})`;
