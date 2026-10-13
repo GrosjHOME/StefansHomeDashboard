@@ -18,7 +18,7 @@ aktualisiert sich alle 60 s · als App installierbar (Android, Windows, iOS)
 
 | Tab | Was man sieht |
 |---|---|
-| ☀️&nbsp;**PV&#8209;Anlage** | Aktuelle Leistung gegen die Soll-Leistung aus der Prognose (Soll-Strich, Toleranzband ±10 %, Farbverlauf orange → grün) · Energie heute/gestern/Monat/Jahr · Leistungsverlauf (heute mit der Morgenprognose von 05:00, blau gestrichelt) · Energie nach Tagen (mit 3-Tage-Prognose und Min/Max desselben Kalendertags der Vorjahre), Monaten und Jahren (laufende Periode gegen Ø und Min/Max **aller** Jahre ab 2014) · PV-Arbeit je Jahr · Strom und Spannung je MPP-Tracker · Tracker-Strom mittags zur Verlust-Diagnose · **Leistungsfaktor** (Ertrag ÷ Einstrahlung aus dem Open-Meteo-Archiv, wetterbereinigt, in % von 2014–16) |
+| ☀️&nbsp;**PV&#8209;Anlage** | Aktuelle Leistung gegen die Soll-Leistung aus der Prognose (Soll-Strich, Toleranzband ±10 %, Farbverlauf orange → grün) · Energie heute/gestern/Monat/Jahr · Leistungsverlauf (heute mit der Morgenprognose von 06:00, blau gestrichelt) · Energie nach Tagen (mit 3-Tage-Prognose und Min/Max desselben Kalendertags der Vorjahre), Monaten und Jahren (laufende Periode gegen Ø und Min/Max **aller** Jahre ab 2014) · PV-Arbeit je Jahr · Strom und Spannung je MPP-Tracker · Tracker-Strom mittags zur Verlust-Diagnose · **Leistungsfaktor** (Ertrag ÷ Einstrahlung aus dem Open-Meteo-Archiv, wetterbereinigt, in % von 2014–16) |
 | 🚗&nbsp;**Wallbox** | Zwei Gruppen mit eigener Aktualität: **Wallbox** (Ladeleistung, PV-Ladevorgabe, Ladestrom-Begrenzung, Verbindung, geladene Menge) und **Auto** (VW ID.3 via Tibber: Ladezustand, Ziel, Reichweite, Verbindung = Stecker + Ladestatus, Restladezeit) · Verläufe |
 | 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Symbol: 🔥 Flamme = Feuer brennt, glühende Kohle = nur noch Glut; Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **Brennbetrieb im Zeitraum**: Heizzyklen, Gluterhaltung (Glutstösse), Brennzeit, Ø Heizzyklus, **Auslastung** = Brennanteil des Zeitraums, direkt aus den Heizungsdaten gerechnet (in Klammern vorübergehend der Wert des ThingSpeak-Skripts „TS" zum Gegenprüfen) (Zählung wie in HeizungTiba `docs/Heizzyklen-Auswertung-2010-2026.xlsx`: Abgas − Kessel > 30 K bis < 20 K, ab 60 s und 45 K, unter 5 min = Glutstoss; bei heissem Kessel zusätzlich Abgas-Sprung ab 30 K, der binnen 5 min abklingt) · Verläufe, darunter die **Temperatursteigung** (°C pro Minute von Kessel oben und mitte, über 6 min geglättet; Lesefehler der Fühler wie 0.0 oder -127 werden herausgefiltert) und der **Füllstand mit der Schnitzel-Austragung** (Feld 6 des Loggers: hellgrüner Streifen unten = Automatik an, blauer Bereich = Austragung läuft, Höhe = Füllmodus wenig/normal/viel, violett = von Hand, rot = Störung) |
 | 💧&nbsp;**Boiler** | Temperaturen Mitte/Unten mit den Schaltschwellen der Steuerung (Laden ein < 45 °C, aus > 58 bzw. 63 °C) · **Temperatursteigung** (°C pro Minute, über 20 min geglättet: Aufheizen, Auskühlen, Warmwasser-Entnahme) · Ladeleistung gegen Einschaltschwelle und PV · geladene Menge |
@@ -48,7 +48,7 @@ Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
 |---|---|---|---|
 | `id3.ts` | ID.3-Ladezustand von Tibber → ThingSpeak | Cron alle 15 min | `scripts/valtown_id3_tibber.ts` |
 | `prognose.ts` | PV-Morgenprognose rechnen und ausliefern | HTTP | `scripts/valtown_pv_prognose/prognose.ts` |
-| `morgens.ts` | Prognose um 05:00 anstossen | Cron `0 3-7 * * *` | `scripts/valtown_pv_prognose/morgens.ts` |
+| `morgens.ts` | Prognose um 06:00 anstossen | Cron `0 4-8 * * *` | `scripts/valtown_pv_prognose/morgens.ts` |
 | `waechter.ts` | E-Mail bei Störungen | Cron alle 30 min | `scripts/valtown_waechter/waechter.ts` |
 
 Das Repo ist die Vorlage: Änderungen hier machen und dann in den Val kopieren.
@@ -67,7 +67,7 @@ Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
 | `index.html` | Weiterleitung auf `dashboard/` |
 | `thingspeak-dashboard/` | Früheres Dashboard mit ThingSpeak-iframes (Frameset) |
 | `scripts/valtown_id3_tibber.ts` | ID.3-Poller für Val Town – **aktiv** |
-| `scripts/valtown_pv_prognose/` | PV-Morgenprognose für Val Town (05:00, 15-min-Raster) |
+| `scripts/valtown_pv_prognose/` | PV-Morgenprognose für Val Town (06:00, 15-min-Raster) |
 | `scripts/valtown_waechter/` | Wächter für Val Town: E-Mail bei Störungen |
 | `scripts/tibber_token_neu.ps1` | Frischen Tibber-Refresh-Token erzeugen |
 | `scripts/id3_tibber_cloud.py` | Früherer GitHub-Actions-Poller (Reserve) |
@@ -224,7 +224,7 @@ System.
 
 ## PV-Morgenprognose (Val Town)
 
-Jeden Morgen um **05:00** rechnet Val Town die PV-Leistung für den
+Jeden Morgen um **06:00** rechnet Val Town die PV-Leistung für den
 ganzen Tag in **15-Minuten-Schritten** und friert sie ein. Das Dashboard zeigt sie
 in der Grafik **Leistung** (Ansicht *Heute*) als **blau gestrichelte Linie** und
 nimmt sie als **Soll** am Balken *Aktuelle Leistung*. So bleibt den ganzen Tag
@@ -234,7 +234,7 @@ jedem Wetter-Update. Fehlt die Morgenprognose, rechnet der Balken wie bisher liv
 | | |
 |---|---|
 | **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-vier-dateien)) |
-| **Dateien** | `prognose.ts` (Trigger **HTTP**: Rechnung + Abruf) und `morgens.ts` (Trigger **Cron** `0 3-7 * * *`) |
+| **Dateien** | `prognose.ts` (Trigger **HTTP**: Rechnung + Abruf) und `morgens.ts` (Trigger **Cron** `0 4-8 * * *`) |
 | **Quelltext** | `scripts/valtown_pv_prognose/` – hier ändern, dann in den Val kopieren |
 | **Speicher** | Blob `pv_prognose_YYYY-MM-DD` je Tag (bleibt erhalten, `?datum=…` liefert ältere Tage) |
 | **Web-Adresse** | <https://steffgrosjean--23dbba40c0d911f1a70c1607ee4eb77e.web.val.run/> – im Dashboard `PV.PROGNOSE_URL` |
@@ -249,10 +249,10 @@ jedem Wetter-Update. Fehlt die Morgenprognose, rechnet der Balken wie bisher liv
   Intervalls (Stempel 13:15 = 13:00–13:15), ThingSpeak-Stundenmittel tragen den
   Stempel des Intervall*beginns*. Die Rechnung ordnet beide passend zu.
 
-**Zeitplan:** Der Cron läuft stündlich von 03 bis 07 Uhr UTC. Er rechnet beim
-ersten Lauf ab 05:00 Ortszeit, also im Sommer wie im Winter um 05:00. Die
+**Zeitplan:** Der Cron läuft stündlich von 04 bis 08 Uhr UTC. Er rechnet beim
+ersten Lauf ab 06:00 Ortszeit, also im Sommer wie im Winter um 06:00. Die
 weiteren Läufe holen die Rechnung nur nach, falls ein Lauf gescheitert ist. Fragt
-das Dashboard nach 05:00 und es gibt noch keine Prognose, rechnet `prognose.ts`
+das Dashboard nach 06:00 und es gibt noch keine Prognose, rechnet `prognose.ts`
 sofort. Die Legende zeigt dann die tatsächliche Uhrzeit.
 
 <details>
@@ -264,10 +264,10 @@ sofort. Die Legende zeigt dann die tatsächliche Uhrzeit.
    wählen. Den Vorlagen-Code vorher ganz ersetzen.
 3. Datei **`morgens.ts`** anlegen, den Inhalt von
    `scripts/valtown_pv_prognose/morgens.ts` einfügen und als Trigger **Cron** mit
-   dem Ausdruck `0 3-7 * * *` wählen.
+   dem Ausdruck `0 4-8 * * *` wählen.
 4. Umgebungsvariablen braucht es keine. Der PV-Lese-Key ist derselbe öffentliche
    wie im Dashboard.
-5. Test: die Web-Adresse von `prognose.ts` im Browser öffnen. Nach 05:00 kommt
+5. Test: die Web-Adresse von `prognose.ts` im Browser öffnen. Nach 06:00 kommt
    JSON mit `datum`, `tagesKwh` und 96 `punkte`.
 6. Diese Adresse in `dashboard/index.html` bei `PV.PROGNOSE_URL` eintragen.
 
@@ -295,7 +295,7 @@ eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
 | ID.3 (Kanal 3514838) | seit 90 min kein neuer Wert, z. B. Tibber-Token-Kette gerissen |
 | Heizung (Kanal 172428) | in der Heizsaison (Okt–Apr) seit 2 h kein neuer Wert |
 | SD-Karte der PV-Steuerung | Feld 7 meldet Fehler |
-| PV-Morgenprognose | ab 06:00 keine Prognose von heute oder nicht um 05:00 erstellt |
+| PV-Morgenprognose | ab 07:00 keine Prognose von heute oder nicht um 06:00 erstellt |
 
 **Wann eine Mail kommt:**
 - **Neue Störung:** Eine Störung zählt erst, wenn sie zwei Läufe hintereinander

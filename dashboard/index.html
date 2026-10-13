@@ -877,7 +877,7 @@ PV.sollJetzt=function(c){
   if(!a||!b) return null;
   return a.v+(b.v-a.v)*(now-a.t)/(b.t-a.t);
 };
-// PV-Morgenprognose vom Server (Val Town, scripts/valtown_pv_prognose/): um 05:00 fuer den
+// PV-Morgenprognose vom Server (Val Town, scripts/valtown_pv_prognose/): um 06:00 fuer den
 // ganzen Tag in 15-min-Schritten gerechnet und eingefroren. Grafik "Leistung" (heute, blau
 // gestrichelt) und Soll am Balken nehmen sie; fehlt sie, rechnet der Balken live wie bisher.
 PV.PROGNOSE_URL="https://steffgrosjean--23dbba40c0d911f1a70c1607ee4eb77e.web.val.run/";   // Val GrosjeansHomeDashboard, prognose.ts (leer = aus)
@@ -915,7 +915,7 @@ PV.updateSoll=function(pKW){
   function neutral(){ bar.style.background=""; if(mk)mk.style.display="none"; if(bd)bd.style.display="none"; if(tx)tx.textContent="";
     if(sm){ sm.textContent="15 kW"; sm.style.left="50%"; sm.className="mid"; } }   // ohne Soll: feste Mitte
   if(pKW===null){ neutral(); return; }
-  // Soll: Morgenprognose (05:00) zur aktuellen Uhrzeit, sonst Live-Prognose
+  // Soll: Morgenprognose (06:00) zur aktuellen Uhrzeit, sonst Live-Prognose
   PV.morgenPrognose().then(function(mp){
     var sm0=mp ? PV.morgenBei(mp, Date.now()) : null;
     if(sm0!==null) return {s:sm0, q:"Prognose von "+hhmm(Date.parse(mp.erstellt))+" Uhr"};
@@ -1210,7 +1210,7 @@ PV.loadEnergy=function(){
           b.tipExtra=txt+(b.tipExtra?"<br>"+b.tipExtra:""); }); }
       var leg=[{color:"var(--amber)",label:"Ist"},{color:"var(--amber-lt)",label:"Prognose"}];
       if(anyMark){ var avg=devs.reduce(function(a,x){return a+x;},0)/(devs.length||1);
-        leg.push({color:"var(--blue)",label:"Prognose 05:00"+(devs.length?" (Ø Abweichung ±"+Math.round(avg)+" % über "+devs.length+" Tag"+(devs.length>1?"e":"")+")":"")}); }
+        leg.push({color:"var(--blue)",label:"Prognose 06:00"+(devs.length?" (Ø Abweichung ±"+Math.round(avg)+" % über "+devs.length+" Tag"+(devs.length>1?"e":"")+")":"")}); }
       if(hasHist) leg.push({color:"var(--muted)",label:(PV.DAY_REF_WIN ? "Min/Max ±"+PV.DAY_REF_WIN+" Tage " : "Min/Max gleicher Tag ")+hSpan});
       barChart(holder,bars,{unit:"kWh",color:"var(--amber)",legend:leg});
     }).catch(function(){ holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });

@@ -1,7 +1,7 @@
 // PV-Morgenprognose fuer das Dashboard (Val Town, Val "GrosjeansHomeDashboard", Datei prognose.ts,
 // Trigger: HTTP). Einrichtung: README, Abschnitt "PV-Morgenprognose (Val Town)".
 //
-// Jeden Morgen um 05:00 (Datei morgens.ts, Cron) wird die PV-Leistung fuer den ganzen Tag
+// Jeden Morgen um 06:00 (Datei morgens.ts, Cron) wird die PV-Leistung fuer den ganzen Tag
 // in 15-min-Schritten berechnet und eingefroren (Blob "pv_prognose_YYYY-MM-DD"). Das Dashboard
 // holt sie hier ab und zeigt sie in der Grafik "Leistung" (blau gestrichelt) und als Soll am
 // Balken "Aktuelle Leistung". So sieht man den ganzen Tag, was am Morgen erwartet wurde.
@@ -17,7 +17,7 @@
 //    Verschattung im Tal und die Begrenzung der Wechselrichter.
 //  - Zwischen den Stunden wird der Faktor linear interpoliert (keine Treppen).
 //
-// Abruf: GET <URL dieser Datei>            -> Prognose von heute (fehlt sie nach 05:00: jetzt rechnen)
+// Abruf: GET <URL dieser Datei>            -> Prognose von heute (fehlt sie nach 06:00: jetzt rechnen)
 //        GET <URL dieser Datei>?datum=2026-10-05 -> gespeicherte Prognose dieses Tages
 //        GET <URL dieser Datei>?liste=60         -> { tage: [{datum, kwh, erstellt}] } der letzten 60 Tage
 // Antwort: { datum, erstellt, schrittMin, tagesKwh, faktoren[24], punkte: [[ms, kW], ...] }
@@ -28,7 +28,7 @@ import { blob } from "https://esm.town/v/std/blob/main.ts";
 const LAT = 46.966, LON = 7.742, TILT = 60, AZ = 0;      // Wittenbach bei Lauperswil, 60° Sued
 const PV_KANAL = 172430, PV_READ_KEY = "6GIAGINL9VN4CTL8"; // oeffentlicher Lese-Key (steht auch im Dashboard)
 const ZONE = "Europe/Zurich";
-const AB_STUNDE = 5;                                       // Prognose des Tages ab 05:00 Ortszeit
+const AB_STUNDE = 6;                                       // Prognose des Tages ab 06:00 Ortszeit
 const KEY = (datum: string) => `pv_prognose_${datum}`;
 
 export type Prognose = {
@@ -49,7 +49,7 @@ function lokal(ms: number) {
 // Abruf mit Wiederholung: Zur vollen Stunde ist Open-Meteo oft kurz ueberlastet (HTTP 503, so am
 // 07.10.2026 um 05:00). Bei 429/5xx oder Netzfehler nach 5, 15 und 25 s nochmals versuchen -
 // zusammen unter einer Minute (Laufzeitgrenze Gratis-Plan). Klappt es nicht, holt der naechste
-// Cron-Lauf (stuendlich bis 09:00) die Prognose nach.
+// Cron-Lauf (stuendlich bis 10:00) die Prognose nach.
 const WARTEN_S = [5, 15, 25];
 async function json(url: string): Promise<any> {
   const ziel = url.split("?")[0];
@@ -133,7 +133,7 @@ export async function erstellen(): Promise<Prognose> {
   };
 }
 
-// Prognose von heute: einmal ab 05:00 rechnen, danach nur noch die gespeicherte liefern
+// Prognose von heute: einmal ab 06:00 rechnen, danach nur noch die gespeicherte liefern
 export async function morgenprognose(): Promise<Prognose | null> {
   const jetzt = lokal(Date.now());
   const alt = (await blob.getJSON(KEY(jetzt.datum)).catch(() => undefined)) as Prognose | undefined;
@@ -170,7 +170,7 @@ export default async function (req: Request): Promise<Response> {
       if (!/^\d{4}-\d\d-\d\d$/.test(datum)) return antwort(400, { fehler: "datum=YYYY-MM-DD" });
       p = (await blob.getJSON(KEY(datum)).catch(() => undefined)) as Prognose | undefined;
     } else p = await morgenprognose();
-    if (!p) return antwort(404, { fehler: "keine Prognose für diesen Tag (wird ab 05:00 erstellt)" });
+    if (!p) return antwort(404, { fehler: "keine Prognose für diesen Tag (wird ab 06:00 erstellt)" });
     return antwort(200, p, { "Cache-Control": "public, max-age=300" });
   } catch (e) {
     console.error(e);
