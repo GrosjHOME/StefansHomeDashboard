@@ -1243,8 +1243,8 @@ function simpleView(cfg){
         ico.innerHTML=feuerSymbolHtml(brennt, aktuell); ico.title=!aktuell?"keine aktuellen Daten":(brennt?"Feuer brennt":"nur noch Glut"); }
       function L(fd,ok){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null && (!ok||ok(v)))return v;} return null; }   // ok: Lesefehler uebergehen
       cfg.kpis.forEach(function(k,i){ if(k.integrate||k.ausFeeds)return; if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field,k.gueltig); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
-        el.textContent = k.map ? (v===null?"–":k.map(v)) : fmt(v,k.dec||0);
-        if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
+        el.textContent = k.map ? (v===null?"–":k.map(v, k.field2?L(k.field2):null)) : fmt(v,k.dec||0);
+if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
         if(k.color) el.style.color = (v===null) ? "" : k.color(v); });
       if(g("head-meta")&&last.created_at) g("head-meta").textContent="Aktualisiert "+relTime(new Date(last.created_at));
       secStand(cfg.channel, last.created_at);
@@ -1266,7 +1266,7 @@ function simpleView(cfg){
         var f=(d&&d.feeds)?d.feeds:[];
         function L2(fd){ for(var i=f.length-1;i>=0;i--){ var v=num(f[i][fd]); if(v!==null)return v; } return null; }
         extra[ch].forEach(function(o){ var g2=g("kpi_"+o.i); if(!g2)return; var v=L2(o.k.field); if(v!==null&&o.k.scale)v=v*o.k.scale;
-          g2.textContent = o.k.map ? (v===null?"–":o.k.map(v)) : fmt(v,o.k.dec||0);
+          g2.textContent = o.k.map ? (v===null?"–":o.k.map(v, o.k.field2?L2(o.k.field2):null)) : fmt(v,o.k.dec||0);   // field2: zweites Feld fuer map(v, v2)
           // Warnung, wenn der Kanal seit staleMin Minuten nichts Neues geliefert hat (z. B. Poller ausgefallen)
           if(o.k.staleMin){ var card=g2.closest(".kpi"), w=card.querySelector(".stale");
             if(!w){ w=document.createElement("div"); w.className="stale"; card.appendChild(w); }
@@ -1460,8 +1460,12 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
     {sec:"auto",channel:3514838,field:"field1",label:"Ladezustand",unit:"%",dec:0},
     {sec:"auto",channel:3514838,field:"field4",label:"Ziel-Ladezustand",unit:"%",dec:0},
     {sec:"auto",channel:3514838,field:"field2",label:"Reichweite",unit:"km",dec:0},
-    {sec:"auto",channel:3514838,field:"field6",label:"Stecker",map:function(v){return Math.round(v)===1?"Verbunden":"Getrennt";}},
-    {sec:"auto",channel:3514838,field:"field5",label:"Ladestatus",map:function(v){return Math.round(v)===1?"Lädt":"Lädt nicht";}}
+    // Stecker (field6) + Ladestatus (field5) in einer Kachel, Darstellung wie "Verbindung" der Wallbox
+    {sec:"auto",channel:3514838,field:"field6",field2:"field5",label:"Verbindung",map:function(v,lade){
+      return Math.round(v)!==1 ? "Getrennt" : (lade!==null && Math.round(lade)===1 ? "Lädt" : "Lädt nicht"); }},
+    // Restladezeit bis zum Ziel-Ladezustand (Tibber, in Minuten); 0 = laedt nicht
+    {sec:"auto",channel:3514838,field:"field7",label:"Restladezeit",map:function(v){ var m=Math.round(v); if(m<=0) return "–";
+      return m<60 ? m+" min" : Math.floor(m/60)+" h "+("0"+(m%60)).slice(-2)+" min"; }}
   ],
   charts:[
     {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001,fill:true},{field:"field7",label:"PV-Ladevorgabe",color:"var(--blue)",scale:0.001,dash:true},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},

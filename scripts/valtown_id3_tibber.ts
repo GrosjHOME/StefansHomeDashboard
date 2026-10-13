@@ -13,7 +13,8 @@
 // Umgebungsvariablen (Val Town, links in der Val-Seitenleiste):
 //   TIBBER_CLIENT_ID, TIBBER_CLIENT_SECRET, TIBBER_REFRESH_TOKEN, TS_WRITE_KEY
 // ThingSpeak: field1 SoC %, field2 Reichweite km, field4 Ziel-SoC %,
-//             field5 Ladestatus (1 = laedt), field6 Stecker (1 = verbunden)
+//             field5 Ladestatus (1 = laedt), field6 Stecker (1 = verbunden),
+//             field7 Restladezeit in min (0 = laedt nicht)
 
 import { blob } from "https://esm.town/v/std/blob/main.ts";
 
@@ -87,30 +88,6 @@ async function call(access: string, path: string): Promise<any> {
 }
 const list = (x: any, key: string): any[] => (Array.isArray(x) ? x : x?.[key]) ?? [];
 
-// ---- DIAGNOSE (voruebergehend): zeigt im Val-Log, was Tibber fuer das Fahrzeug alles liefert ----
-// Auf true lassen, einmal laufen lassen (Val "Run" oder Cron-Lauf), im Log nach "DIAGNOSE" suchen,
-// danach wieder auf false setzen bzw. den Block entfernen. Die Fahrgestellnummer wird maskiert.
-const DIAGNOSE = true;
-const maskVin = (s: string) => s.replace(/\b([A-HJ-NPR-Z0-9]{3})[A-HJ-NPR-Z0-9]{10}([A-HJ-NPR-Z0-9]{4})\b/g, "$1**********$2");
-async function diagnose(access: string, homeId: string, deviceId: string, det: any) {
-  // Gesamte Geraete-Antwort: Identitaet, Attribute, alle Capabilities (id/Wert/Einheit/Beschreibung), supportedHistory
-  console.log("DIAGNOSE Geraet:", maskVin(JSON.stringify(det, null, 1)));
-  console.log("DIAGNOSE Capability-IDs:", (det.capabilities ?? []).map((c: any) => c.id).join(", "));
-  console.log("DIAGNOSE Attribute:", maskVin(JSON.stringify(det.attributes ?? null)));
-  console.log("DIAGNOSE supportedHistory:", JSON.stringify(det.supportedHistory ?? null), "maxRetentionDays:", det.maxRetentionDays);
-  // Verlauf (nur wenn das Geraet ihn unterstuetzt): letzte 24 h in der feinsten Aufloesung
-  const res: string[] = det.supportedHistory ?? [];
-  if (res.length) {
-    const since = new Date(Date.now() - 24 * 3600_000).toISOString();
-    for (const r of res.includes("quarterHour") ? ["quarterHour"] : [res[0]]) {
-      try {
-        const h = await call(access, `/homes/${homeId}/devices/${deviceId}/history?resolution=${r}&since=${encodeURIComponent(since)}`);
-        console.log(`DIAGNOSE Verlauf (${r}):`, maskVin(JSON.stringify(h)).slice(0, 3000));
-      } catch (e) { console.warn(`DIAGNOSE Verlauf (${r}) fehlgeschlagen: ${e}`); }
-    }
-  }
-}
-
 // Fahrzeug = das Geraet mit Ladezustand (storage.stateOfCharge)
 async function findVehicle(access: string): Promise<Record<string, any> | null> {
   for (const h of list(await call(access, "/homes"), "homes")) {
@@ -118,10 +95,7 @@ async function findVehicle(access: string): Promise<Record<string, any> | null> 
       const det = await call(access, `/homes/${h.id}/devices/${d.id}`);
       const caps: Record<string, any> = {};
       for (const c of det.capabilities ?? []) caps[c.id] = c.value;
-      if ("storage.stateOfCharge" in caps) {
-        if (DIAGNOSE) await diagnose(access, h.id, d.id, det).catch((e) => console.warn(`DIAGNOSE fehlgeschlagen: ${e}`));
-        return caps;
-      }
+      if ("storage.stateOfCharge" in caps) return caps;
     }
   }
   return null;
@@ -134,12 +108,16 @@ async function run(_interval?: unknown) {
 
   const soc = v["storage.stateOfCharge"];
   const rangeM = v["range.remaining"];
+  const timeH = v["charging.timeToFullyCharged"];
   const fields: Record<string, number | null | undefined> = {
     field1: soc,
     field2: typeof rangeM === "number" ? Math.round(rangeM / 1000) : null,
     field4: v["storage.targetStateOfCharge"],
     field5: v["charging.status"] === "charging" ? 1 : 0,
     field6: v["connector.status"] === "connected" ? 1 : 0,
+    // Restladezeit in Minuten (Tibber: charging.timeToFullyCharged in Stunden). Nur waehrend des Ladens
+    // sinnvoll - sonst 0 schreiben, damit im Dashboard nicht der letzte alte Wert stehen bleibt.
+    field7: v["charging.status"] === "charging" && typeof timeH === "number" ? Math.round(timeH * 60) : 0,
   };
   const params = new URLSearchParams({ api_key: env("TS_WRITE_KEY") });
   for (const [k, val] of Object.entries(fields)) if (val !== null && val !== undefined) params.set(k, String(val));
@@ -147,7 +125,7 @@ async function run(_interval?: unknown) {
   const body = (await r.text()).trim();
   if (!r.ok || body === "0") throw new Error(`ThingSpeak hat den Eintrag abgelehnt (HTTP ${r.status}, Antwort "${body}")`);
   console.log(`SoC=${soc}% Ziel=${fields.field4}% ${fields.field2} km Laden=${v["charging.status"]} ` +
-    `Stecker=${v["connector.status"]} -> ThingSpeak-Eintrag ${body}`);
+    `Stecker=${v["connector.status"]} Restzeit=${fields.field7} min -> ThingSpeak-Eintrag ${body}`);
 }
 
 // Val Town ruft beim Cron die exportierte Funktion auf (Default-Export; zusaetzlich
