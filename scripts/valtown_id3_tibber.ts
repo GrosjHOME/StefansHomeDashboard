@@ -13,7 +13,8 @@
 // Umgebungsvariablen (Val Town, links in der Val-Seitenleiste):
 //   TIBBER_CLIENT_ID, TIBBER_CLIENT_SECRET, TIBBER_REFRESH_TOKEN, TS_WRITE_KEY
 // ThingSpeak: field1 SoC %, field2 Reichweite km, field4 Ziel-SoC %,
-//             field5 Ladestatus (1 = laedt), field6 Stecker (1 = verbunden)
+//             field5 Ladestatus (1 = laedt), field6 Stecker (1 = verbunden),
+//             field7 Restladezeit in min (0 = laedt nicht)
 
 import { blob } from "https://esm.town/v/std/blob/main.ts";
 
@@ -107,12 +108,16 @@ async function run(_interval?: unknown) {
 
   const soc = v["storage.stateOfCharge"];
   const rangeM = v["range.remaining"];
+  const timeH = v["charging.timeToFullyCharged"];
   const fields: Record<string, number | null | undefined> = {
     field1: soc,
     field2: typeof rangeM === "number" ? Math.round(rangeM / 1000) : null,
     field4: v["storage.targetStateOfCharge"],
     field5: v["charging.status"] === "charging" ? 1 : 0,
     field6: v["connector.status"] === "connected" ? 1 : 0,
+    // Restladezeit in Minuten (Tibber: charging.timeToFullyCharged in Stunden). Nur waehrend des Ladens
+    // sinnvoll - sonst 0 schreiben, damit im Dashboard nicht der letzte alte Wert stehen bleibt.
+    field7: v["charging.status"] === "charging" && typeof timeH === "number" ? Math.round(timeH * 60) : 0,
   };
   const params = new URLSearchParams({ api_key: env("TS_WRITE_KEY") });
   for (const [k, val] of Object.entries(fields)) if (val !== null && val !== undefined) params.set(k, String(val));
@@ -120,7 +125,7 @@ async function run(_interval?: unknown) {
   const body = (await r.text()).trim();
   if (!r.ok || body === "0") throw new Error(`ThingSpeak hat den Eintrag abgelehnt (HTTP ${r.status}, Antwort "${body}")`);
   console.log(`SoC=${soc}% Ziel=${fields.field4}% ${fields.field2} km Laden=${v["charging.status"]} ` +
-    `Stecker=${v["connector.status"]} -> ThingSpeak-Eintrag ${body}`);
+    `Stecker=${v["connector.status"]} Restzeit=${fields.field7} min -> ThingSpeak-Eintrag ${body}`);
 }
 
 // Val Town ruft beim Cron die exportierte Funktion auf (Default-Export; zusaetzlich
