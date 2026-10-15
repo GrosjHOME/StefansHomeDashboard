@@ -89,7 +89,7 @@ object WidgetAnsicht {
             p.laeuft -> Color.rgb(43, 131, 199)
             else -> Color.rgb(149, 161, 173)
         })
-        if (p.starts != null) v.setTextViewText(R.id.pumpe_zahl, "${p.starts}×")
+        if (p.starts != null) v.setTextViewText(R.id.pumpe_zahl, "${p.starts}")
     }
 
     private fun mix(a: Int, b: Int, t: Float) = (a + (b - a) * t).toInt()
