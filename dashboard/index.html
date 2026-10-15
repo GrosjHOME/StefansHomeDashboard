@@ -118,6 +118,12 @@
   .head-ctl .seg{margin-left:0;}
   .seg button{cursor:pointer; border:0; background:transparent; color:var(--muted); font-family:inherit; font-size:.76rem; font-weight:600; padding:4px 10px; border-radius:6px;}
   .seg button.active{background:var(--card); color:var(--ink); box-shadow:var(--shadow);}
+  /* Kurz-Zeitraeume (10 min ... 12 h): Knopf mit Auswahlmenue */
+  .kurz-wrap{position:relative; display:inline-flex;}
+  .kurz-menu{position:absolute; top:calc(100% + 4px); left:0; z-index:30; display:flex; flex-direction:column; min-width:100%; background:var(--card); border:1px solid var(--line); border-radius:8px; box-shadow:var(--shadow); padding:3px;}
+  .kurz-menu[hidden]{display:none;}
+  .kurz-menu button{text-align:left; white-space:nowrap; color:var(--ink); background:transparent;}
+  .kurz-menu button.sel{background:var(--bg);}
   .chart-wrap{position:relative;}
   .tip{position:absolute; pointer-events:none; background:var(--card); color:var(--ink); border:1px solid var(--line); box-shadow:var(--shadow); border-radius:8px; padding:6px 9px; font-size:.78rem; line-height:1.35; white-space:nowrap; opacity:0; transition:opacity .08s; z-index:5;}
   svg.chart{width:100%; height:auto; display:block;}
@@ -539,11 +545,15 @@ function steigung(ff, field, wMin, ok){
   return out;
 }
 
+/* Gewaehlter Zeitraum, gilt fuer alle Tabs (bleibt beim Wechseln erhalten) und die Kurz-Auswahl hinter dem ersten Knopf. */
+var ZEIT={mode:"heute", kurz:"3h"};
+var KURZ={"10m":10, "1h":60, "3h":180, "6h":360, "12h":720};                       // Minuten
+var KURZ_TXT={"10m":"10 min", "1h":"1 h", "3h":"3 h", "6h":"6 h", "12h":"12 h"};
 /* Zeitraum-Query je Modus:
    "heute" = ab lokaler Mitternacht (ThingSpeak start-Param, in UTC = korrekter Zeitpunkt),
    "3h" = letzte 3 Stunden, "24h" = rollierende letzte 24 h, "7tage" = letzte 7 Tage. */
 function midnightStartUTC(){ var d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,19).replace('T',' '); }
-function periodQuery(mode){ if(mode==="3h") return "/feeds.json?minutes=180"; if(mode==="7tage") return "/feeds.json?days=7"; if(mode==="24h") return "/feeds.json?days=1";
+function periodQuery(mode){ if(KURZ[mode]) return "/feeds.json?minutes="+KURZ[mode];  if(mode==="7tage") return "/feeds.json?days=7"; if(mode==="24h") return "/feeds.json?days=1";
   if(mode==="frei"){ var z=zeitraumMs("frei"); return "/feeds.json?start="+encodeURIComponent(tsStamp(z.von))+"&end="+encodeURIComponent(tsStamp(z.bis)); }
   return "/feeds.json?start="+encodeURIComponent(midnightStartUTC()); }
 
@@ -554,7 +564,7 @@ var FREI_FENSTER_MS=3*864e5, _freiCache={};
 // Anfang/Ende (ms) des gewaehlten Zeitraums, Ende nie in der Zukunft
 function zeitraumMs(mode){ var bis=Date.now();
   if(mode==="frei") return {von:FREI.von, bis:Math.min(FREI.bis,bis)};
-  if(mode==="3h") return {von:bis-3*36e5, bis:bis};
+  if(KURZ[mode]) return {von:bis-KURZ[mode]*60000, bis:bis};
   if(mode==="24h") return {von:bis-864e5, bis:bis};
   if(mode==="7tage") return {von:bis-7*864e5, bis:bis};
   return {von:new Date().setHours(0,0,0,0), bis:bis}; }
@@ -575,7 +585,11 @@ function freiText(){ var a=new Date(FREI.von), b=new Date(Math.min(FREI.bis,Date
   var hm=function(d){ return p2(d.getHours())+":"+p2(d.getMinutes()); };
   return a.getDate()+"."+(a.getMonth()+1)+". "+hm(a)+" – "+(FREI.bis>Date.now()?"jetzt":(b.toDateString()===a.toDateString()?"":b.getDate()+"."+(b.getMonth()+1)+". ")+hm(b)); }
 // HTML: Zeitraum-Umschalter inkl. Kalender-Knopf und das aufklappbare Feld (Start, Zeit, Dauer)
-function zeitraumLeisteHtml(){ return '<span class="seg" id="seg-period"><button data-m="3h">3 h</button><button data-m="heute" class="active">Heute</button><button data-m="24h">24 h</button><button data-m="7tage">7 Tage</button><button data-m="frei" id="btn-frei" title="Freien Zeitraum wählen: Startdatum, Zeit und Dauer">📅</button></span>'; }
+function zeitraumLeisteHtml(){ var m=ZEIT.mode, a=function(x){ return m===x?' class="active"':''; };
+  return '<span class="seg" id="seg-period"><span class="kurz-wrap"><button data-m="'+ZEIT.kurz+'" id="btn-kurz"'+(KURZ[m]?' class="active"':'')+' title="Kurzer Zeitraum wählen">'+KURZ_TXT[ZEIT.kurz]+' ▾</button>'+
+    '<div class="kurz-menu" id="kurz-menu" hidden>'+Object.keys(KURZ).map(function(k){ return '<button data-k="'+k+'"'+(k===ZEIT.kurz?' class="sel"':'')+'>'+KURZ_TXT[k]+'</button>'; }).join("")+'</div></span>'+
+    '<button data-m="heute"'+a("heute")+'>Heute</button><button data-m="24h"'+a("24h")+'>24 h</button><button data-m="7tage"'+a("7tage")+'>7 Tage</button>'+
+    '<button data-m="frei" id="btn-frei"'+a("frei")+' title="Freien Zeitraum wählen: Startdatum, Zeit und Dauer">'+(m==="frei"?"📅 "+freiText():"📅")+'</button></span>'; }
 function freiPanelHtml(){ return '<div class="frei" id="frei-panel" hidden>'+
   '<label>Start<input type="date" id="fr-d"></label><label>Zeit<input type="time" id="fr-t"></label>'+
   '<label>Dauer<select id="fr-n">'+FREI_DAUER.map(function(x){ return '<option value="'+x[1]+'">'+x[0]+'</option>'; }).join("")+'</select></label>'+
@@ -586,16 +600,24 @@ function zeitraumBinden(setMode){
   var d=document.getElementById("fr-d"), t=document.getElementById("fr-t"), n=document.getElementById("fr-n"), msg=document.getElementById("fr-msg"), p2=function(x){ return ("0"+x).slice(-2); };
   function vorbelegen(){ var s=FREI.von ? new Date(FREI.von) : new Date(Date.now()-6*36e5); if(!FREI.von) s.setMinutes(0,0,0);
     d.value=ymdLocal(s); d.max=ymdLocal(new Date()); t.value=p2(s.getHours())+":"+p2(s.getMinutes()); n.value=String(FREI.dauerMin); msg.textContent=""; }
+  var kb=document.getElementById("btn-kurz"), km=document.getElementById("kurz-menu");
+  function kurzZu(){ if(km) km.hidden=true; }
+  document.addEventListener("click",function(e){ if(!document.body.contains(seg)) return; if(!e.target.closest(".kurz-wrap")) kurzZu(); });
+  if(km) km.addEventListener("click",function(e){ var kk=e.target.closest("button[data-k]"); if(!kk)return; var k=kk.getAttribute("data-k");
+    ZEIT.kurz=k; ZEIT.mode=k; kb.setAttribute("data-m",k); kb.textContent=KURZ_TXT[k]+" ▾";
+    Array.prototype.forEach.call(km.querySelectorAll("button"),function(x){ x.classList.toggle("sel",x===kk); });
+    km.hidden=true; panel.hidden=true; bf.textContent="📅"; segActive(seg,kb); setMode(k); });
   seg.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; var m=b.getAttribute("data-m");
-    if(m==="frei"){ if(panel.hidden){ vorbelegen(); panel.hidden=false; } else panel.hidden=true; return; }   // Zeitraum wechselt erst mit "Anzeigen"
-    panel.hidden=true; bf.textContent="📅"; segActive(seg,b); setMode(m); });
+    if(b===kb){ km.hidden=!km.hidden; return; }   // Kurz-Knopf: Auswahlmenue auf/zu, der Zeitraum wechselt mit dem Eintrag
+    if(m==="frei"){ kurzZu(); if(panel.hidden){ vorbelegen(); panel.hidden=false; } else panel.hidden=true; return; }   // Zeitraum wechselt erst mit "Anzeigen"
+    kurzZu(); ZEIT.mode=m; panel.hidden=true; bf.textContent="📅"; segActive(seg,b); setMode(m); });
   document.getElementById("fr-x").addEventListener("click",function(){ panel.hidden=true; });
   document.getElementById("fr-ok").addEventListener("click",function(){
     var s=new Date(d.value+"T"+(t.value||"00:00"));
     if(!d.value||isNaN(s.getTime())){ msg.textContent="Bitte ein Startdatum wählen."; return; }
     if(s.getTime()>Date.now()){ msg.textContent="Der Start liegt in der Zukunft."; return; }
     var dm=parseInt(n.value,10); FREI={von:s.getTime(), bis:s.getTime()+dm*60000, dauerMin:dm};
-    panel.hidden=true; bf.textContent="📅 "+freiText(); segActive(seg,bf); setMode("frei"); });
+    panel.hidden=true; ZEIT.mode="frei"; bf.textContent="📅 "+freiText(); segActive(seg,bf); setMode("frei"); });
 }
 // Trapez-Integral einer Leistungsreihe (W) -> kWh. Datenluecken >2 h werden uebersprungen.
 // Trapez-Integral einer Leistungsreihe -> kWh. toKw skaliert den Rohwert auf kW
@@ -613,7 +635,7 @@ function omStart(a){ return (a||[]).slice(1).concat([null]); }
 var PV={ CH:172430, period:"heute", energyMode:"tage", energyYear:null, cmpMode:"kumuliert", cmpToken:0 };
 function segActive(container, btn){ Array.prototype.forEach.call(container.querySelectorAll("button"), function(b){ b.classList.toggle("active", b===btn); }); }
 PV.render=function(main){
-  PV.period="heute";  // bei jedem Mount auf Standard (passt zum aktiven Button)
+  PV.period=ZEIT.mode;  // Zeitraum bleibt beim Tabwechsel erhalten (passt zum aktiven Button)
   PV.lfMode="jahre";
   PV.energyMode="tage"; PV.energyYear=null; PV.cmpMode="kumuliert";
   var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 Monate</option>'; for(var _y=_cy;_y>=2014;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
@@ -1000,7 +1022,7 @@ PV.load=function(){
 
 PV.loadPower=function(){
   var holder=document.getElementById("chart-power"); if(!holder)return;
-  var mpr = (PV.period==="heute" || PV.period==="3h") ? PV.morgenPrognose() : Promise.resolve(null);
+  var mpr = (PV.period==="heute" || KURZ[PV.period]) ? PV.morgenPrognose() : Promise.resolve(null);
   Promise.all([ holeZeitraum(PV.CH, PV.period, true), mpr ]).then(function(r){
     var d=r[0], mp=r[1];
     var f=(d&&d.feeds)?d.feeds:[],pts=[]; f.forEach(function(x){ var v=num(x.field1); if(v!==null)pts.push({t:new Date(x.created_at),v:v/1000}); });
@@ -1009,7 +1031,7 @@ PV.loadPower=function(){
     // (je ein Nullpunkt davor/danach), sonst reichte die Zeitachse bis Mitternacht
     if(mp){ var pp=mp.punkte.map(function(x){ return {t:new Date(x[0]), v:x[1]}; });
       var a=0, b=pp.length-1;
-      if(PV.period==="3h"){   // nur das Zeitfenster der Messwerte (sonst wuerde die Achse bis Tagesende reichen)
+      if(KURZ[PV.period]){   // nur das Zeitfenster der Messwerte (sonst wuerde die Achse bis Tagesende reichen)
         var t0=pts.length?pts[0].t.getTime():0, t1=pts.length?pts[pts.length-1].t.getTime():0;
         pp=pp.filter(function(p){ return p.t.getTime()>=t0-450000 && p.t.getTime()<=t1+450000; }); b=pp.length-1;
       } else { while(a<b && pp[a+1].v<=0.05) a++; while(b>a && pp[b-1].v<=0.05) b--; }
@@ -1238,7 +1260,7 @@ PV.loadEnergy=function(){
 
 /* ========== Generische Ansicht (Wallbox/Heizung/Boiler) ========== */
 function simpleView(cfg){
-  var mode = "heute";  // "3h" | "heute" (ab Mitternacht) | "24h" | "7tage" (steuert alle Charts der Ansicht)
+  var mode = "heute";  // "10m" | "1h" | "3h" | "6h" | "12h" | "heute" (ab Mitternacht) | "24h" | "7tage" | "frei" (steuert alle Charts der Ansicht)
   function g(id){ return document.getElementById(id); }
 
 
@@ -1439,7 +1461,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
 
   return {
     render:function(main){
-      mode = "heute";  // bei jedem Mount auf Standard (passt zum aktiven Button)
+      mode = ZEIT.mode;  // Zeitraum bleibt beim Tabwechsel erhalten (passt zum aktiven Button)
       // KPI-Kacheln (Text-Werte kleiner). Mit cfg.sections in beschriftete Gruppen getrennt -
       // je Gruppe eine Quelle mit eigener Aktualitaet ("Stand vor ...", ggf. veraltet).
       function cards(filter){ return cfg.kpis.map(function(k,i){ return filter(k) ? kpiCard(k.label,"kpi_"+i,k.unit||"",k.map?"txt":"",
