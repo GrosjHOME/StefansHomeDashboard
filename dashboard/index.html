@@ -1812,7 +1812,7 @@ PLANNER.render=function(main){
       '<div id="pl-chart"><div class="chart-empty">wird geladen…</div></div>'+
       '<div class="note">Erwartete PV-Leistung – Prognose (Open-Meteo, geneigte Einstrahlung '+PLANNER.TILT+'°/Süd), pro Tagesstunde an den letzten 14 Tagen kalibriert (berücksichtigt die lokale Horizont-Verschattung im Tal, v.a. abends). Blau: Lufttemperatur 2 m über Boden (Open-Meteo, rechte Achse).</div></div>'+
     '<div class="panel"><h2>Tagesübersicht &amp; Empfehlungen</h2><div id="pl-days"><div class="chart-empty">wird geladen…</div></div>'+
-      '<div class="note">Geräte heute: 🟠 erst später · Zwischenstufen = 1 bzw. 2 Geräte gleichzeitig · 🟢 alle gleichzeitig (Spitzenleistung im aktuell freien Überschuss) · 🔴 heute nicht mehr. Folgetage: 🟢 gut machbar · 🟠 knapp · 🔴 zu wenig Überschuss. „Heute" wird ab der aktuellen Uhrzeit gerechnet und mit der aktuellen PV-Leistung nachgeführt (Nowcast); Aktualisierung alle 60 s. '+
+      '<div class="note">Geräte heute: 🟠 erst später · Zwischenstufen = 1 bzw. 2 Geräte gleichzeitig · 🟢 alle gleichzeitig (Spitzenleistung im aktuell freien Überschuss) · 🔴 heute nicht mehr. Folgetage: Geräte 🟢 Start möglich (Überschuss deckt das ganze Programm) · 🔴 kein Start; Auto und Boiler 🟢 gut machbar · 🟠 knapp · 🔴 zu wenig Überschuss. „Heute" wird ab der aktuellen Uhrzeit gerechnet und mit der aktuellen PV-Leistung nachgeführt (Nowcast); Aktualisierung alle 60 s. '+
         'Geräte: '+PLANNER.devices.map(function(d){ return d.n+' '+d.progs.map(function(p){ return (p.n?p.n+' ':'')+PLANNER.dauerTxt(p.h)+', Spitze '+String(p.peakKw).replace(".",",")+' kW, '+String(p.kwh).replace(".",",")+' kWh'; }).join(' / '); }).join(' · ')+
           ' (je Gerät zählt das längste Programm, das an dem Tag passt). '+
         'Überschuss = Brutto-PV (ab Wechselrichter) − Haushalts-Grundlast (~0.5 kW) − erwartete Boiler-Ladearbeit (Monats-Referenz, Warmwasser hat Vorrang) − aktuelle Boiler-/Auto-Ladeleistung (Vorrang Boiler → Auto → Geräte). '+
@@ -1942,26 +1942,20 @@ PLANNER.load=function(){
       var chargeKw=Math.max(PLANNER.car.minKw, Math.min(PLANNER.car.maxKw, Math.round(vorgabe!=null ? vorgabe : peak-o.base)));
       // Geraete-Ampel: Stunden (heute ab jetzt) mit Ueberschuss >= 1 kW; reicht die Fensterdauer fuer die Laufzeit?
       var q=o.win.filter(function(w){ return (!isToday || w.h>=nowH) && effSur(w)>=1; });
-      // Tagespruefung je Geraet: "red" = heute/an dem Tag nicht, "orange" = Fenster kuerzer als
-      // die Laufzeit, "ok" = moeglich.
-      // HEUTE gleiche Pruefung wie im Detail (Startfenster): Es muss einen Start ab jetzt geben, bei dem der
+      // Tagespruefung je Geraet: "ok" = Start moeglich, "red" = an dem Tag nicht.
+      // Gleiche Pruefung wie im Detail (Startfenster): Es muss einen Start geben (heute ab jetzt), bei dem der
       // Ueberschuss waehrend des GANZEN Programms die Spitzenleistung deckt (Stundenwerte linear zwischen den
-      // Stundenmitten, 15-min-Raster). Sonst waere die Karte gruener als "Details" (Programm laeuft in den Abend).
+      // Stundenmitten, 15-min-Raster). So ist die Karte nie gruener als "Details".
       var hSur=[]; o.win.forEach(function(w){ hSur[w.h]=effSur(w); });
       function SH(t){ var x=t-0.5, h0=Math.floor(x), w=x-h0, g=function(h){ h=Math.max(0,Math.min(23,h)); return hSur[h]||0; }; return g(h0)+(g(h0+1)-g(h0))*w; }
-      function startHeute(p){ var nd=new Date(), nowT=nd.getHours()+nd.getMinutes()/60;
-        for(var s0=Math.ceil(nowT*4-1e-9)/4; s0+p.h<=24+1e-9; s0+=0.25){ var ok=true;
+      function progAmpel(p){ var nd=new Date(), s0=isToday ? Math.ceil((nd.getHours()+nd.getMinutes()/60)*4-1e-9)/4 : 0;
+        for(; s0+p.h<=24+1e-9; s0+=0.25){ var ok=true;
           for(var u=s0; u<s0+p.h; u+=0.25){ if(SH(u)<p.peakKw-1e-9){ ok=false; break; } }
-          if(ok && SH(s0+p.h)>=p.peakKw-1e-9) return true; }
-        return false; }
-      function progAmpel(p){ if(isToday) return startHeute(p) ? "ok" : "red";
-        if(!q.length || sur < p.kwh) return "red";
-        var avail=(q[q.length-1].h+1)-q[0].h;
-        if(avail < p.h*0.5) return "red";
-        return avail>=p.h ? "ok" : "orange"; }
-      // je Geraet das LAENGSTE Programm, das an dem Tag passt ("ok", sonst "orange", sonst das laengste = rot)
+          if(ok && SH(s0+p.h)>=p.peakKw-1e-9) return "ok"; }
+        return "red"; }
+      // je Geraet das LAENGSTE Programm, das an dem Tag passt ("ok", sonst das laengste = rot)
       var dayProg=PLANNER.devices.map(function(dev){ var s=dev.progs.slice().sort(function(a,b){ return b.h-a.h; });
-        return s.filter(function(p){ return progAmpel(p)==="ok"; })[0] || s.filter(function(p){ return progAmpel(p)==="orange"; })[0] || s[0]; });
+        return s.filter(function(p){ return progAmpel(p)==="ok"; })[0] || s[0]; });
       var dayC=dayProg.map(progAmpel);
       var applTotal=0; dayProg.forEach(function(p){ applTotal+=p.kwh; });   // Energie der gewaehlten Programme (Auto-Rechnung)
       // HEUTE: wie viele der moeglichen Geraete koennen JETZT gleichzeitig laufen? curSur hat
@@ -1973,7 +1967,7 @@ PLANNER.load=function(){
         dayProg.filter(function(p,i){ return dayC[i]==="ok"; }).map(function(p){ return p.peakKw; })
           .sort(function(a,b){ return a-b; }).forEach(function(kw){ if(restKw>=kw){ nNow++; restKw-=kw; } }); }
       var nowCol=rampColor([[0,[245,166,35]],[nDev,[46,158,91]]], nNow);  // var(--amber) -> var(--green)
-      function devColor(i){ var c=dayC[i]; if(c==="red") return col.red; if(c==="orange") return col.orange;
+      function devColor(i){ var c=dayC[i]; if(c==="red") return col.red;
         return isToday ? nowCol : col.green; }
       // Boiler-Ampel: Deckt der (Rest-)Ueberschuss die noch kommende Ladung? Heute wie bei
       // Geraeten/Auto: ohne verbleibendes Solarfenster rot, und gruen nur, wenn der Boiler JETZT
