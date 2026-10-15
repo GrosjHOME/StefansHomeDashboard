@@ -1378,11 +1378,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
           if(ln.deltaBar){   // Differenz zweier Zaehler je Meldung: Laufsekunden pro Minute (0-60) + Zahl der Starts
             // Zaehler sind sekundengenau, daher geht auch ein Lauf zwischen zwei Meldungen nicht verloren.
             // Negative Differenz = Zaehler zurueckgesetzt (Mitternacht): diese Meldung wird uebersprungen.
-            var db=ln.deltaBar, dp=[], prev=null;
-            ff.forEach(function(x){ var a=num(x[db.field]), b=db.starts?num(x[db.starts]):0, t=Date.parse(x.created_at); if(a===null)return;
-              if(prev && a>=prev.a && (b===null || prev.b===null || b>=prev.b)){ var min=(t-prev.t)/60000;
-                if(min>0) dp.push({t:t, sec:(a-prev.a)*(db.scale||1), n:(b!==null&&prev.b!==null)?b-prev.b:0, min:min}); }
-              prev={a:a,b:b,t:t}; });
+            var db=ln.deltaBar, dp=zaehlerDeltas(ff, db.field, db.starts, db.scale);
             // viele Minuten (7 Tage): zu Bloecken zusammenfassen, Wert = Durchschnitt Sekunden je Minute, Starts summiert
             var gr=Math.max(1,Math.ceil(dp.length/(db.maxBars||600))), out=[];
             for(var i=0;i<dp.length;i+=gr){ var sl=dp.slice(i,i+gr), ss=0, mm=0, nn=0; sl.forEach(function(o){ ss+=o.sec; mm+=o.min; nn+=o.n; });
@@ -1667,6 +1663,29 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
     {title:"Ladeleistung &amp; Einschaltschwelle", unit:"W", yMax:7000, lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0,fill:true},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?10:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0},{field:"field4",label:"Einschaltschwelle",color:"var(--blue)",dec:0,dash:true}]}
   ]});
 
+// Zaehler-Differenzen je Minutenmeldung: [{t, sec, n, min}] = Zunahme der Laufzeit (Zaehler fSec, mal scale),
+// der Starts (Zaehler fStart) und der Minuten seit der vorherigen Meldung. Negative Differenz = Zaehler
+// zurueckgesetzt (Mitternacht): diese Meldung wird uebersprungen. Fuer Balkendiagramm und Pumpwerk-Kennzahlen.
+function zaehlerDeltas(ff, fSec, fStart, scale){
+  var dp=[], prev=null;
+  ff.forEach(function(x){ var a=num(x[fSec]), b=fStart?num(x[fStart]):0, t=Date.parse(x.created_at); if(a===null)return;
+    if(prev && a>=prev.a && (b===null || prev.b===null || b>=prev.b)){ var min=(t-prev.t)/60000;
+      if(min>0) dp.push({t:t, sec:(a-prev.a)*(scale||1), n:(b!==null&&prev.b!==null)?b-prev.b:0, min:min}); }
+    prev={a:a,b:b,t:t}; });
+  return dp; }
+// Kennzahlen zur Schalthaeufigkeit im gewaehlten Zeitraum (Genauigkeit: Minutenraster der Meldungen).
+// Max. Starts pro Stunde: Starts je volle Uhrzeit-Stunde (lokal), groesster Wert.
+function pumpStartsProStunde(ff){ var h={}, mx=null; zaehlerDeltas(ff,"field3","field2",1).forEach(function(o){
+    var d=new Date(o.t), k=d.getFullYear()+"-"+d.getMonth()+"-"+d.getDate()+"-"+d.getHours(); h[k]=(h[k]||0)+o.n; });
+  Object.keys(h).forEach(function(k){ if(mx===null||h[k]>mx) mx=h[k]; }); return mx; }
+// Ø Laufdauer je Start: Laufsekunden aller Minuten / Starts (nur wenn Starts gezaehlt wurden)
+function pumpLaufdauerJeStart(ff){ var sec=0, n=0; zaehlerDeltas(ff,"field3","field2",1).forEach(function(o){ sec+=o.sec; n+=o.n; });
+  return n>0 ? sec/n : null; }
+// Kurzlaeufe: Anteil der Starts in Minuten, deren Laufzeit je Start unter 10 s liegt (Naeherung -
+// mehrere Starts in einer Minute werden gemeinsam bewertet)
+function pumpKurzlaeufe(ff){ var kurz=0, n=0; zaehlerDeltas(ff,"field3","field2",1).forEach(function(o){
+    if(o.n>0){ n+=o.n; if(o.sec/o.n<10) kurz+=o.n; } });
+  return n>0 ? kurz/n*100 : null; }
 /* ================= View: Pumpwerk (Frischwasser-Pumpwerk Biral, Logger PumpwerkBiral) ================= */
 // Kanal 3484334, vom Arduino-Logger jede Minute geschrieben (Repo GrosjHOME/PumpwerkBiral):
 // field1 Pumpe laeuft jetzt [0/1], field2 Einschaltungen heute, field3 Laufzeit heute [s],
@@ -1690,7 +1709,11 @@ var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
     {field:"field7",label:"Störzeit heute",map:pumpDauer},
     {field:"field4",label:"Einschaltungen gesamt",unit:"×",dec:0},
     {field:"field5",label:"Laufzeit gesamt",unit:"h",dec:1},
-    {field:"field8",label:"Störzeit gesamt",map:pumpDauer}
+    {field:"field8",label:"Störzeit gesamt",map:pumpDauer},
+    // Zeitraum-Kennzahlen (folgen 3 h / Heute / 24 h / 7 Tage): Schalthaeufigkeit der Pumpe
+    {label:"Max. Starts pro Stunde",unit:"×/h",dec:0,ausFeeds:pumpStartsProStunde},
+    {label:"Ø Laufdauer je Start",unit:"s",dec:0,ausFeeds:pumpLaufdauerJeStart},
+    {label:"Kurzläufe unter 10 s",unit:"%",dec:0,ausFeeds:pumpKurzlaeufe}
   ],
   charts:[
     {title:"Laufsekunden pro Minute", unit:"s", yMin:0, yMax:60, yTicks:[{v:0},{v:15},{v:30},{v:45},{v:60}],
