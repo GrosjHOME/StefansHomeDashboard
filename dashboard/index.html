@@ -141,6 +141,12 @@
   tr.sum td{font-weight:700; border-top:2px solid var(--line);}
   .wr-head{font-weight:700; color:var(--blue);}
   .note{font-size:.8rem; color:var(--muted); margin-top:10px;}
+  .tbl-wrap{overflow-x:auto;}
+  .tbl{width:100%; table-layout:fixed; border-collapse:collapse; font-size:.74rem; font-variant-numeric:tabular-nums;}
+  .tbl th{color:var(--muted); font-weight:600; font-size:.66rem; text-align:right; padding:4px 3px; border-bottom:1px solid var(--line); white-space:nowrap;}
+  .tbl td{text-align:right; padding:6px 3px; border-bottom:1px solid var(--line); white-space:nowrap;}
+  .tbl th:first-child,.tbl td:first-child{text-align:left;}
+  .tbl tr:last-child td{border-bottom:0;}
   /* Tageskarten: hoechstens 4 nebeneinander (7 Tage -> 4 + 3, weniger Zeilenumbrueche in den
      Karten); schmale Bildschirme wie bisher mit weniger Spalten (mind. 180 px je Karte) */
   .pldays{display:grid; grid-template-columns:repeat(auto-fit,minmax(max(180px, calc((100% - 3*12px)/4)),1fr)); gap:12px;}
@@ -576,13 +582,16 @@ function zeitraumMs(mode){ var bis=Date.now();
 // kommen mit einer Abfrage; ein freier Zeitraum in 3-Tage-Fenstern (ThingSpeak liefert je Abfrage hoechstens
 // ~8000 Eintraege, bei minuetlichen Daten ~5.5 Tage) und ohne doppelte Eintraege an den Fenstergrenzen.
 // Liegt der freie Zeitraum ganz in der Vergangenheit, bleibt das Ergebnis im Speicher (kein Neuladen jede Minute).
+// Messwerte einer beliebigen Zeitspanne (ms): in 3-Tage-Fenstern geholt, ohne doppelte Eintraege an den Grenzen
+function holeBereich(ch, von, bis, withKey, datei){ datei=datei||"feeds.json";
+  var fenster=[]; for(var s=von; s<bis; s+=FREI_FENSTER_MS) fenster.push([s, Math.min(s+FREI_FENSTER_MS, bis)]);
+  return Promise.all(fenster.map(function(w){ return j(api(ch, "/"+datei+"?start="+encodeURIComponent(tsStamp(w[0]))+"&end="+encodeURIComponent(tsStamp(w[1])), withKey)); }))
+    .then(function(rs){ var seen={}, feeds=[]; rs.forEach(function(r){ ((r&&r.feeds)||[]).forEach(function(x){ if(!seen[x.entry_id]){ seen[x.entry_id]=1; feeds.push(x); } }); }); return {feeds:feeds}; }); }
 function holeZeitraum(ch, mode, withKey, datei){ datei=datei||"feeds.json";
   if(mode!=="frei") return j(api(ch, periodQuery(mode).replace("feeds.json",datei), withKey));
   var z=zeitraumMs("frei"), key=ch+"|"+datei+"|"+z.von+"|"+z.bis, fertig=z.bis<Date.now()-300000;
   if(fertig && _freiCache[key]) return _freiCache[key];
-  var fenster=[]; for(var s=z.von; s<z.bis; s+=FREI_FENSTER_MS) fenster.push([s, Math.min(s+FREI_FENSTER_MS, z.bis)]);
-  var p=Promise.all(fenster.map(function(w){ return j(api(ch, "/"+datei+"?start="+encodeURIComponent(tsStamp(w[0]))+"&end="+encodeURIComponent(tsStamp(w[1])), withKey)); }))
-    .then(function(rs){ var seen={}, feeds=[]; rs.forEach(function(r){ ((r&&r.feeds)||[]).forEach(function(x){ if(!seen[x.entry_id]){ seen[x.entry_id]=1; feeds.push(x); } }); }); return {feeds:feeds}; });
+  var p=holeBereich(ch, z.von, z.bis, withKey, datei);
   if(fertig){ if(Object.keys(_freiCache).length>12) _freiCache={}; _freiCache[key]=p; }
   return p; }
 function freiText(){ var a=new Date(FREI.von), b=new Date(Math.min(FREI.bis,Date.now())), p2=function(n){ return ("0"+n).slice(-2); };
@@ -1469,8 +1478,16 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
     }).catch(function(){ if(g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
   }
 
+  // Tabelle unter den Grafiken (cfg.tabelle): letzte Tage in 3-Tage-Fenstern holen, hoechstens alle 10 min neu
+  var tabT=0;
+  function loadTabelle(){ var c=cfg.tabelle; if(!c || Date.now()-tabT<600000) return; tabT=Date.now();
+    var bis=Date.now(), d0=new Date(); d0.setHours(0,0,0,0); var von=d0.getTime()-(c.tage-1)*864e5;
+    holeBereich(cfg.channel, von, bis, String(cfg.channel)==="172430").then(function(d){ var el=g("tab_body"); if(!el)return;
+      el.innerHTML=c.rechne((d&&d.feeds)?d.feeds:[]); }).catch(function(){ tabT=0; var el=g("tab_body"); if(el) el.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; }); }
+
   return {
     render:function(main){
+      tabT=0;
       mode = ZEIT.mode;  // Zeitraum bleibt beim Tabwechsel erhalten (passt zum aktiven Button)
       // KPI-Kacheln (Text-Werte kleiner). Mit cfg.sections in beschriftete Gruppen getrennt -
       // je Gruppe eine Quelle mit eigener Aktualitaet ("Stand vor ...", ggf. veraltet).
@@ -1497,10 +1514,11 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
           '<div class="meta" id="head-meta">wird geladen…</div>'+
         '</div></div>'+
         freiPanelHtml()+kp+'<div class="ch-grid">'+charts+'</div>'+
+        (cfg.tabelle ? '<div class="panel" style="padding-left:10px;padding-right:10px"><h2>'+cfg.tabelle.title+' <span class="tag">letzte '+cfg.tabelle.tage+' Tage</span></h2><div id="tab_body"><div class="chart-empty">wird geladen…</div></div><div class="note">'+cfg.tabelle.note+'</div></div>' : '')+
         '<footer>Datenquelle: ThingSpeak Kanal '+cfg.channel+' · Aktualisierung alle 60 s · <span id="err2" style="color:var(--red)"></span></footer></div>';
       zeitraumBinden(function(m){ mode=m; loadCharts(); });
     },
-    load:function(){ loadKpis(); loadCharts(); }
+    load:function(){ loadKpis(); loadCharts(); loadTabelle(); }
   };
 }
 
@@ -1718,6 +1736,27 @@ function pumpLaufdauerJeStart(ff){ var sec=0, n=0; zaehlerDeltas(ff,"field3","fi
 function pumpKurzlaeufe(ff){ var kurz=0, n=0; zaehlerDeltas(ff,"field3","field2",1).forEach(function(o){
     if(o.n>0){ n+=o.n; if(o.sec/o.n<10) kurz+=o.n; } });
   return n>0 ? kurz/n*100 : null; }
+// Tagesuebersicht der Pumpe: je lokalem Kalendertag Starts, Laufzeit, Ø Laufdauer je Start, max. Starts pro Stunde,
+// Anteil Kurzlaeufe (< 10 s je Start, Naeherung im Minutenraster) und Nachtstarts (0-5 Uhr). Neueste Tage zuerst.
+// "abd" = Anteil des Tages, fuer den Messmeldungen vorliegen (Logger/Netz aus -> weniger als 100 %).
+function pumpTage(ff){ var tage={};
+  zaehlerDeltas(ff,"field3","field2",1).forEach(function(o){ var d=new Date(o.t), k=ymdLocal(d), T=tage[k]||(tage[k]={tag:k, starts:0, sec:0, kurz:0, nacht:0, min:0, std:{}});
+    T.starts+=o.n; T.sec+=o.sec; T.min+=o.min; if(o.n>0 && o.sec/o.n<10) T.kurz+=o.n; if(d.getHours()<5) T.nacht+=o.n;
+    T.std[d.getHours()]=(T.std[d.getHours()]||0)+o.n; });
+  return Object.keys(tage).sort().reverse().map(function(k){ var T=tage[k], mx=0; Object.keys(T.std).forEach(function(h){ if(T.std[h]>mx) mx=T.std[h]; });
+    return {tag:k, starts:T.starts, sec:T.sec, avg:T.starts>0?T.sec/T.starts:null, maxH:mx, kurzPct:T.starts>0?T.kurz/T.starts*100:null, nacht:T.nacht, abd:Math.min(1,T.min/1440)}; }); }
+// kompakte Dauer fuer die Tabelle: 45 s | 57 min | 1:27 h
+function pumpDauerKompakt(sec){ sec=Math.round(sec); if(sec<60) return sec+" s"; var m=Math.round(sec/60); if(m<60) return m+" min"; return Math.floor(m/60)+":"+("0"+(m%60)).slice(-2)+" h"; }
+function pumpTageHtml(tage){
+  if(!tage.length) return '<div class="chart-empty">noch keine Daten</div>';
+  var heute=ymdLocal(new Date()), wd=["So","Mo","Di","Mi","Do","Fr","Sa"];
+  var rows=tage.map(function(t){ var d=new Date(t.tag+"T12:00:00"), istH=t.tag===heute, lab=istH?"Heute":wd[d.getDay()]+" "+d.getDate()+"."+(d.getMonth()+1)+".";
+    var kc=t.kurzPct===null?"":(t.kurzPct>=50?"var(--red)":(t.kurzPct>=30?"var(--amber)":"")), nc=t.nacht>=5?"var(--amber)":"";
+    var unv=t.abd<0.9 && !istH;   // unvollstaendiger Tag (Messluecken)
+    return '<tr'+(unv?' style="opacity:.6" title="Messwerte fehlen: nur '+Math.round(t.abd*100)+' % des Tages"':'')+'><td>'+lab+'</td>'+
+      '<td>'+fmt(t.starts,0)+'</td><td>'+pumpDauerKompakt(t.sec)+'</td><td>'+(t.avg===null?"–":fmt(t.avg,0)+" s")+'</td><td>'+fmt(t.maxH,0)+'</td>'+
+      '<td'+(kc?' style="color:'+kc+'"':'')+'>'+(t.kurzPct===null?"–":fmt(t.kurzPct,0)+" %")+'</td><td'+(nc?' style="color:'+nc+'"':'')+'>'+fmt(t.nacht,0)+'</td></tr>'; }).join("");
+  return '<div class="tbl-wrap"><table class="tbl"><colgroup><col style="width:23%"><col style="width:11%"><col style="width:15%"><col style="width:13%"><col style="width:11%"><col style="width:14%"><col style="width:13%"></colgroup><thead><tr><th>Tag</th><th>Starts</th><th>Laufzeit</th><th>Ø/Start</th><th>Max/h</th><th>Kurz</th><th>Nacht</th></tr></thead><tbody>'+rows+'</tbody></table></div>'; }
 /* ================= View: Pumpwerk (Frischwasser-Pumpwerk Biral, Logger PumpwerkBiral) ================= */
 // Kanal 3484334, vom Arduino-Logger jede Minute geschrieben (Repo GrosjHOME/PumpwerkBiral):
 // field1 Pumpe laeuft jetzt [0/1], field2 Einschaltungen heute, field3 Laufzeit heute [s],
@@ -1731,6 +1770,8 @@ function pumpDauer(s){ s=Math.round(s); if(s<60) return s+" s"; var m=Math.floor
 var PUMPE_SVG='<svg viewBox="0 0 24 24" width="1.2em" height="1.2em" style="vertical-align:-.25em" aria-hidden="true"><g fill="#2b83c7"><rect x="8.6" y="2.2" width="12.4" height="3.6" rx="1.3"/><rect x="8.6" y="2.2" width="3.8" height="8.6" rx="1.4"/><rect x="19.6" y="1" width="3" height="6" rx="1"/><rect x="13.2" y="0.4" width="3.2" height="1.8" rx="0.8"/><ellipse cx="10.5" cy="13.4" rx="1" ry="1.5"/><path d="M4.6 16 H16.4 L15.2 22.6 H5.8 Z"/></g><path d="M16.2 17.4 H17.4 A2.4 2.4 0 0 1 17.4 22 H15.6" fill="none" stroke="#2b83c7" stroke-width="1.6" stroke-linecap="round"/></svg>';
 (function(){ var e=document.getElementById("ico-pumpe"); if(e) e.innerHTML=PUMPE_SVG; })();
 var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
+  tabelle:{ title:"Tagesübersicht", tage:14, rechne:function(ff){ return pumpTageHtml(pumpTage(ff)); },
+    note:"Je Kalendertag aus den sekundengenauen Zählern: <b>Starts</b>, <b>Laufzeit</b>, <b>Ø/Start</b> (Laufzeit je Start), <b>Max/h</b> (die meisten Starts in einer Stunde), <b>Kurz</b> (Anteil der Starts mit unter 10 s Laufzeit, Näherung im Minutenraster) und <b>Nacht</b> (Starts zwischen 0 und 5 Uhr). Orange/rot: Kurz ab 30 % bzw. 50 %, Nacht ab 5 Starts – ein Hinweis auf zu wenig Vordruck im Membranbehälter bzw. eine kleine Leckage. Ausgegraut: für den Tag fehlen Messwerte. Unabhängig vom gewählten Zeitraum." },
   kpis:[
     {field:"field1",label:"Pumpe",map:function(v){ return v>=0.5 ? "Läuft" : "Steht"; },
       color:function(v){ return v>=0.5 ? "var(--green)" : ""; }},
