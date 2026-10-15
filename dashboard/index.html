@@ -1944,7 +1944,18 @@ PLANNER.load=function(){
       var q=o.win.filter(function(w){ return (!isToday || w.h>=nowH) && effSur(w)>=1; });
       // Tagespruefung je Geraet: "red" = heute/an dem Tag nicht, "orange" = Fenster kuerzer als
       // die Laufzeit, "ok" = moeglich.
-      function progAmpel(p){ if(!q.length || sur < p.kwh) return "red";
+      // HEUTE gleiche Pruefung wie im Detail (Startfenster): Es muss einen Start ab jetzt geben, bei dem der
+      // Ueberschuss waehrend des GANZEN Programms die Spitzenleistung deckt (Stundenwerte linear zwischen den
+      // Stundenmitten, 15-min-Raster). Sonst waere die Karte gruener als "Details" (Programm laeuft in den Abend).
+      var hSur=[]; o.win.forEach(function(w){ hSur[w.h]=effSur(w); });
+      function SH(t){ var x=t-0.5, h0=Math.floor(x), w=x-h0, g=function(h){ h=Math.max(0,Math.min(23,h)); return hSur[h]||0; }; return g(h0)+(g(h0+1)-g(h0))*w; }
+      function startHeute(p){ var nd=new Date(), nowT=nd.getHours()+nd.getMinutes()/60;
+        for(var s0=Math.ceil(nowT*4-1e-9)/4; s0+p.h<=24+1e-9; s0+=0.25){ var ok=true;
+          for(var u=s0; u<s0+p.h; u+=0.25){ if(SH(u)<p.peakKw-1e-9){ ok=false; break; } }
+          if(ok && SH(s0+p.h)>=p.peakKw-1e-9) return true; }
+        return false; }
+      function progAmpel(p){ if(isToday) return startHeute(p) ? "ok" : "red";
+        if(!q.length || sur < p.kwh) return "red";
         var avail=(q[q.length-1].h+1)-q[0].h;
         if(avail < p.h*0.5) return "red";
         return avail>=p.h ? "ok" : "orange"; }
