@@ -31,6 +31,7 @@ object WidgetAnsicht {
         v.setTextViewText(R.id.auto, Daten.auto(w.autoKw, w.wallbox))
         v.setTextViewText(R.id.id3, Daten.id3(w.soc, w.zielSoc, w.reichweiteKm))
         geraete(v, w.geraete)
+        pumpe(v, w.pumpe)
         // Titel links: in der Heizsaison Kessel oben und Schnitzel-Fuellstand (spart Platz, das Widget
         // bleibt gleich gross); sonst der normale Titel. Etwas kleinere Schrift, damit es neben Uhrzeit
         // und Knopf in die Kopfzeile passt.
@@ -75,6 +76,20 @@ object WidgetAnsicht {
             g.jetzt == 0 -> "erst später · $frei"
             else -> frei
         })
+    }
+
+    /** Pumpwerk-Symbol in der Kopfzeile: blau = laeuft, grau = steht, rot = Stoerung; daneben Einschaltungen heute. */
+    private fun pumpe(v: RemoteViews, p: Pumpe?) {
+        val an = if (p == null) View.GONE else View.VISIBLE
+        v.setViewVisibility(R.id.pumpe, an)
+        v.setViewVisibility(R.id.pumpe_zahl, if (p?.starts == null) View.GONE else View.VISIBLE)
+        if (p == null) return
+        v.setInt(R.id.pumpe, "setColorFilter", when {
+            p.stoerung -> Color.rgb(214, 69, 69)
+            p.laeuft -> Color.rgb(43, 131, 199)
+            else -> Color.rgb(149, 161, 173)
+        })
+        if (p.starts != null) v.setTextViewText(R.id.pumpe_zahl, "${p.starts}×")
     }
 
     private fun mix(a: Int, b: Int, t: Float) = (a + (b - a) * t).toInt()

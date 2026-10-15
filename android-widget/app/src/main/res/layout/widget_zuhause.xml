@@ -46,6 +46,26 @@
             android:textColor="@color/ink"
             android:textSize="15sp"
             android:textStyle="bold" />
+        <!-- Pumpwerk: Hahn-Symbol (blau = laeuft, grau = steht, rot = Stoerung) + Einschaltungen heute;
+             ohne aktuelle Pumpendaten ausgeblendet -->
+        <ImageView
+            android:id="@+id/pumpe"
+            android:layout_width="17dp"
+            android:layout_height="17dp"
+            android:layout_marginEnd="2dp"
+            android:contentDescription="Pumpwerk"
+            android:src="@drawable/ic_pumpe"
+            android:visibility="gone" />
+        <TextView
+            android:id="@+id/pumpe_zahl"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:textColor="@color/muted"
+            android:textSize="12sp"
+            android:visibility="gone" />
         <TextView
             android:id="@+id/stand"
             android:layout_width="wrap_content"

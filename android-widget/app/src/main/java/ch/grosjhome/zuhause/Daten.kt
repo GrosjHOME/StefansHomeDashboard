@@ -27,6 +27,7 @@ data class Werte(
     val fuellstand: Double?,   // Holzschnitzel-Fuellstand in % (field4), dito
     val brennt: Boolean,       // Feuer brennt: Abgas mehr als 30 K ueber Kessel oben (wie die Brennphase im Dashboard)
     val geraete: Planer.Ergebnis?, // wie viele Geraete jetzt laufen duerfen (null = Prognose fehlt)
+    val pumpe: Pumpe?,         // Pumpwerk (Kanal 3484334); null = keine aktuellen Daten
     val zeit: Long,            // Zeitpunkt des Abrufs
     val fehler: String?        // erster Fehler beim Abruf (kurz, deutsch), null = alles geladen
 ) {
@@ -34,9 +35,13 @@ data class Werte(
     val leer: Boolean get() = pvKw == null && boilerW == null && autoKw == null && wallbox == null && soc == null
 }
 
+/** Pumpwerk: laeuft jetzt (Momentaufnahme der letzten Minutenmeldung), Stoerung, Einschaltungen seit Mitternacht. */
+data class Pumpe(val laeuft: Boolean, val stoerung: Boolean, val starts: Int?)
+
 object Daten {
     // Derselbe Lese-Key wie im (oeffentlichen) Dashboard; nur Lesen, kein Schreiben.
     const val PV_READ_KEY = "6GIAGINL9VN4CTL8"
+    const val PUMPE_READ_KEY = "FLN0B77PU7DVEVYX"   // Pumpwerk-Kanal, ebenfalls oeffentlich im Dashboard
 
     fun json(url: String): JSONObject {
         val c = URL(url).openConnection() as HttpURLConnection
@@ -85,6 +90,17 @@ object Daten {
         return an == true
     }
 
+    /** Pumpwerk aus den neuesten Eintraegen; null, wenn der letzte aelter als 30 min ist (Logger meldet jede Minute). */
+    private fun pumpeAus(f: JSONArray?): Pumpe? {
+        val t = letzteZeit(f) ?: return null
+        if (System.currentTimeMillis() - t > 30 * 60_000L) return null
+        return Pumpe(
+            laeuft = (letzter(f, "field1") ?: 0.0) >= 0.5,
+            stoerung = (letzter(f, "field6") ?: 0.0) >= 0.5,
+            starts = letzter(f, "field2")?.roundToInt()
+        )
+    }
+
     /** Zeitpunkt des neuesten Eintrags in ms (ThingSpeak: ISO-8601 in UTC), null wenn keiner da ist. */
     private fun letzteZeit(f: JSONArray?): Long? {
         if (f == null || f.length() == 0) return null
@@ -120,6 +136,7 @@ object Daten {
         val kesselC = if (heizAktuell) letzter(heizung, "field1") { it > 0 && it < 150 } else null
         val fuellstand = if (heizAktuell) letzter(heizung, "field4") else null
         val feuer = heizAktuell && brennt(heizung)
+        val pumpe = pumpeAus(hole(3484334, 3, PUMPE_READ_KEY))
         val pvKw = letzter(pv, "field1")?.div(1000)
         val boilerW = letzter(boiler, "field3")
         val autoKw = letzter(wallbox, "field4")?.times(1e-6)
@@ -141,6 +158,7 @@ object Daten {
             fuellstand = fuellstand,
             brennt = feuer,
             geraete = geraete,
+            pumpe = pumpe,
             zeit = System.currentTimeMillis(),
             fehler = fehler
         )
