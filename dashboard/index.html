@@ -333,8 +333,8 @@ function lineChart(holder, series, opts){
   var paths="";
   series.forEach(function(s){ if(s.bars){   // Balkenreihe (z. B. Laufsekunden pro Minute): ein Balken je Punkt, Breite = Abstand der Punkte
       var YB=YF(s), bw=Math.max(3,Math.min(14,(W-padL-padR)/Math.max(1,s.pts.length)*0.9));
-      s.pts.forEach(function(p){ if(p.v==null||p.v<=0)return; var x=X(p.t.getTime()), y=YB(p.v);
-        paths+='<rect x="'+(x-bw/2)+'" y="'+y+'" width="'+bw+'" height="'+Math.max(1,H-padB-y)+'" fill="'+s.color+'"/>';
+      s.pts.forEach(function(p){ if(p.v==null||(p.v<=0&&!(p.n>0)))return; var x=X(p.t.getTime()), y=YB(p.v);   // Start ohne Laufsekunden in dieser Minute: nur der Marker
+        if(p.v>0) paths+='<rect x="'+(x-bw/2)+'" y="'+y+'" width="'+bw+'" height="'+Math.max(1,H-padB-y)+'" fill="'+s.color+'"/>';
         if(p.n>0) paths+='<circle cx="'+x+'" cy="'+(y-7)+'" r="'+Math.min(6,2.5+p.n)+'" fill="'+(s.markColor||"var(--amber)")+'"/>'; });
       return; }
     if(s.pts.length<2)return; var YS=YF(s);
