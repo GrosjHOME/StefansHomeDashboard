@@ -101,14 +101,30 @@ object WidgetAnsicht {
         AppWidgetManager.getInstance(ctx).partiallyUpdateAppWidget(ids(ctx), v)
     }
 
+    /**
+     * Intent zum Oeffnen des Dashboards. Ist die PWA installiert (unter Android ein "WebAPK", Paketname
+     * beginnt mit org.chromium.webapk bzw. enthaelt "webapk"), wird sie direkt angesprochen - ein normaler
+     * https-Intent landet sonst im Browser. Ohne installierte App: normaler Link wie bisher.
+     */
+    private fun dashboardIntent(ctx: Context): Intent {
+        val link = Intent(Intent.ACTION_VIEW, Uri.parse(DASHBOARD)).addCategory(Intent.CATEGORY_BROWSABLE)
+        try {
+            val app = ctx.packageManager.queryIntentActivities(link, 0)
+                .map { it.activityInfo }
+                .firstOrNull { it.packageName.contains("webapk", ignoreCase = true) }
+            if (app != null) return Intent(link).setClassName(app.packageName, app.name)
+        } catch (e: Exception) { /* Fallback unten */ }
+        return link
+    }
+
     private fun klicks(ctx: Context, v: RemoteViews) {
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         // ganzes Widget antippen = neu laden
         val neu = Intent(ctx, ZuhauseWidget::class.java).setAction(ZuhauseWidget.AKTION_NEU_LADEN)
         v.setOnClickPendingIntent(R.id.root, PendingIntent.getBroadcast(ctx, 0, neu, flags))
         // Kopfzeile (Titel, Uhrzeit, Knopf ↗) = Dashboard oeffnen - grosse Tippflaeche;
-        // ist die PWA installiert, oeffnet Android sie direkt
-        val oeffnen = PendingIntent.getActivity(ctx, 1, Intent(Intent.ACTION_VIEW, Uri.parse(DASHBOARD)), flags)
+        // ist die PWA installiert, wird sie direkt gestartet (siehe dashboardIntent), sonst der Browser
+        val oeffnen = PendingIntent.getActivity(ctx, 1, dashboardIntent(ctx), flags)
         v.setOnClickPendingIntent(R.id.kopf, oeffnen)
         v.setOnClickPendingIntent(R.id.oeffnen, oeffnen)
     }
