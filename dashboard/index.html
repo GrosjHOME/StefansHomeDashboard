@@ -1671,7 +1671,7 @@ var PUMPE=simpleView({ channel:3484334, icon:"🚰", title:"Pumpwerk",
   kpis:[
     {field:"field1",label:"Pumpe",map:function(v){ return v>=0.5 ? "Läuft" : "Steht"; },
       color:function(v){ return v>=0.5 ? "var(--green)" : ""; }},
-    {field:"field6",label:"Störung",map:function(v){ return v>=0.5 ? "Störung" : "OK"; },
+    {field:"field6",label:"Betrieb",map:function(v){ return v>=0.5 ? "Störung" : "OK"; },
       color:function(v){ return v>=0.5 ? "var(--red)" : "var(--green)"; }},
     {field:"field2",label:"Einschaltungen heute",unit:"×",dec:0},
     {field:"field3",label:"Laufzeit heute",map:pumpDauer},
