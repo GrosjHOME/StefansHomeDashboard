@@ -64,6 +64,9 @@
   .view-head h1{font-size:1.3rem; margin:0; display:flex; align-items:center; gap:8px;}
   .meta{font-size:.82rem; color:var(--muted); text-align:right;}
   .akt-kurz{display:none;}
+  /* Status (SD-Karte, aktualisiert) links neben den Zeitraum-Knoepfen, in allen Breiten */
+  .view-head .meta{order:-1; text-align:left; min-width:0; white-space:nowrap;}
+  .view-head .seg{flex:none;}
   .dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle;}
   .dot.ok{background:var(--green);} .dot.bad{background:var(--red);} .dot.na{background:#b0b8c0;}
 
@@ -192,8 +195,6 @@
     .akt-lang{display:none;} .akt-kurz{display:inline;}  /* ... und kurzer Aktualisiert-Text auf einer Zeile */
     /* Zeitraum-Knoepfe und Status in einer Zeile: Status links (ggf. 2 kurze Zeilen), Knoepfe rechts */
     .view-head>div{flex-wrap:nowrap !important; width:100%; justify-content:space-between;}
-    .view-head .meta{order:-1; text-align:left; min-width:0; white-space:nowrap;}
-    .view-head .seg{flex:none;}
     .hero .val{font-size:2.2rem;}
     .panel{padding:12px 12px;}
     .kpis{gap:8px; grid-template-columns:repeat(auto-fit,minmax(130px,1fr));}
