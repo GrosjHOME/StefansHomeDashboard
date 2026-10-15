@@ -63,6 +63,7 @@
   .view-head{display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px;}
   .view-head h1{font-size:1.3rem; margin:0; display:flex; align-items:center; gap:8px;}
   .meta{font-size:.82rem; color:var(--muted); text-align:right;}
+  .akt-kurz{display:none;}
   .dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle;}
   .dot.ok{background:var(--green);} .dot.bad{background:var(--red);} .dot.na{background:#b0b8c0;}
 
@@ -188,6 +189,8 @@
     .tabs{order:3; flex:1 1 100%; flex-wrap:nowrap; justify-content:space-between;}
     .tabs a{padding:6px 10px; font-size:1.15rem; white-space:nowrap;}
     .tabs a .tl{display:none;}  /* wenig Platz -> nur Icons */
+    .akt-lang{display:none;}  /* ... und kurzer Aktualisiert-Text auf einer Zeile */
+    .meta>div{display:inline-block; margin-left:10px; white-space:nowrap;}
     .hero .val{font-size:2.2rem;}
     .panel{padding:12px 12px;}
     .kpis{gap:8px; grid-template-columns:repeat(auto-fit,minmax(130px,1fr));}
@@ -249,6 +252,8 @@
 function j(u){ return fetch(u,{cache:"no-store"}).then(function(r){return r.json();}); }
 function num(x){ return (x===null||x===undefined||x==="")?null:parseFloat(x); }
 function fmt(v,d){ return v===null?"–":v.toLocaleString("de-CH",{minimumFractionDigits:d,maximumFractionDigits:d}); }
+// "Aktualisiert vor 9 s": bei wenig Platz (nur Icons) nur "↻ vor 9 s" (CSS .akt-lang / .akt-kurz)
+var AKT_PRE='<span class="akt-lang">Aktualisiert </span><span class="akt-kurz">↻ </span>';
 function relTime(dt){ var s=Math.round((Date.now()-dt.getTime())/1000); if(s<90)return "vor "+s+" s"; var m=Math.round(s/60); if(m<90)return "vor "+m+" min"; var h=Math.round(m/60); if(h<48)return "vor "+h+" h"; return "vor "+Math.round(h/24)+" T"; }
 function niceMax(m){ if(m<=0)return 1; var p=Math.pow(10,Math.floor(Math.log10(m))); var c=[1,1.5,2,2.5,3,4,5,6,8,10]; for(var i=0;i<c.length;i++){ if(c[i]*p>=m) return c[i]*p; } return 10*p; }
 function ylab(v){ return (Math.abs(v-Math.round(v))<1e-9)?String(Math.round(v)):v.toFixed(1); }
@@ -965,7 +970,7 @@ PV.load=function(){
     g("e-month").textContent=fmt(L("field3"),0); g("e-lastmonth").textContent=fmt(L("field6"),0);
     g("e-year").textContent=fmt(L("field4"),0); g("dc-mean").textContent=fmt(L("field8"),0);
     var sd=L("field7"); g("sd-status").innerHTML= sd===1?'<span class="dot ok"></span>SD-Karte OK':(sd===0?'<span class="dot bad"></span>SD-Karte Fehler':'<span class="dot na"></span>SD-Karte');
-    if(last.created_at) g("updated").textContent="Aktualisiert "+relTime(new Date(last.created_at));
+    if(last.created_at) g("updated").innerHTML=AKT_PRE+relTime(new Date(last.created_at));
   });
   PV.loadPower(); PV.loadEnergy(); PV.loadCumYear(); PV.loadLF();
   var p4=PV.loadTrackers();
@@ -1256,7 +1261,7 @@ function simpleView(cfg){
         el.textContent = k.map ? (v===null?"–":k.map(v, k.field2?L(k.field2):null)) : fmt(v,k.dec||0);
 if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
         if(k.color) el.style.color = (v===null) ? "" : k.color(v); });
-      if(g("head-meta")&&last.created_at) g("head-meta").textContent="Aktualisiert "+relTime(new Date(last.created_at));
+      if(g("head-meta")&&last.created_at) g("head-meta").innerHTML=AKT_PRE+relTime(new Date(last.created_at));
       secStand(cfg.channel, last.created_at);
       // Ampel-Faerbung: KPI-Wert nach aktueller PV-Leistung gegenueber der Schwelle
       // (rot = keine PV-Leistung, orange bis zur Schwelle, gruen ab Schwelle)
