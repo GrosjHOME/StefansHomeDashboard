@@ -1421,11 +1421,11 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
           if(ln.laufJeLauf){   // ein Punkt je Lauf (Dauer der Pumpe je Start), dazwischen 0 - Laeufe als Block ueber Minutengrenzen
             // Lauf = zusammenhaengende Minuten mit Laufzeit; Punkt am Ende des Laufs (Summe Laufsekunden / Starts im Block).
             // Minuten ohne Lauf = 0; Folgen von Nullen werden auf Anfang und Ende reduziert (Linie bleibt scharf).
-            var dl=zaehlerDeltas(ff, ln.laufJeLauf.field, ln.laufJeLauf.starts, 1), ljp=[], blockVon={};
-            pumpBloecke(dl).forEach(function(b){ for(var tt=b.t; tt<=b.letzt; tt+=60000) blockVon[tt]=b; });   // Meldezeit -> Lauf
-            dl.forEach(function(o){ var b=blockVon[o.t]||null;
+            var dl=zaehlerDeltas(ff, ln.laufJeLauf.field, ln.laufJeLauf.starts, 1), ljp=[], blockAt=[];
+            pumpBloecke(dl).forEach(function(b){ for(var bi=b.von; bi<=b.bis; bi++) blockAt[bi]=b; });   // Position in dl -> Lauf (Meldezeiten haben Sekundenversatz)
+            dl.forEach(function(o,oi){ var b=blockAt[oi]||null;
               if(!b) ljp.push({t:new Date(o.t), v:0});
-              else if(b.letzt===o.t) ljp.push({t:new Date(o.t), v:b.sec/Math.max(1,b.starts), n:b.starts}); });
+              else if(b.bis===oi) ljp.push({t:new Date(o.t), v:b.sec/Math.max(1,b.starts), n:b.starts}); });
             var kp=[]; ljp.forEach(function(q,k){ var a=ljp[k-1], c=ljp[k+1]; if(a && c && a.v===0 && q.v===0 && c.v===0) return; kp.push(q); });
             return {color:ln.color, width:ln.width, axis:ln.axis, dec:ln.dec, fill:ln.fill, fmt:ln.fmt, pts:kp};
           }
@@ -1746,11 +1746,11 @@ function pumpLaufdauerJeStart(ff){ var sec=0, n=0; zaehlerDeltas(ff,"field3","fi
   return n>0 ? sec/n : null; }
 // Laeufe aus den Minuten-Differenzen: zusammenhaengende Minuten mit Laufzeit (oder Start) bilden EINEN Block.
 // Ein Lauf, der ueber eine Minutengrenze geht, wird sonst in "kurzer Start" + "Rest ohne Start" zerschnitten.
-// Block = {t (erste Meldung), starts, sec}; Abstand zwischen zwei Meldungen max. 1.5 Minuten.
+// Block = {t (erste Meldung), letzt, starts, sec, von, bis (Positionen in dp)}; Abstand zwischen zwei Meldungen max. 1.5 Minuten.
 function pumpBloecke(dp){ var out=[], cur=null;
-  dp.forEach(function(o){ var aktiv=o.sec>0 || o.n>0;
-    if(aktiv && cur && o.min<=1.5 && Math.abs(cur.letzt-(o.t-o.min*60000))<1){ cur.starts+=o.n; cur.sec+=o.sec; cur.letzt=o.t; }
-    else if(aktiv){ cur={t:o.t, starts:o.n, sec:o.sec, letzt:o.t}; out.push(cur); }
+  dp.forEach(function(o,i){ var aktiv=o.sec>0 || o.n>0;
+    if(aktiv && cur && o.min<=1.5 && Math.abs(cur.letzt-(o.t-o.min*60000))<1){ cur.starts+=o.n; cur.sec+=o.sec; cur.letzt=o.t; cur.bis=i; }
+    else if(aktiv){ cur={t:o.t, starts:o.n, sec:o.sec, letzt:o.t, von:i, bis:i}; out.push(cur); }   // von/bis: Position in dp
     else cur=null; });
   return out; }
 // Kuerzeste Pause (Schaetzung, Sekunden). Der Minutentakt der Meldungen zeigt Pausen nur grob; die Zaehler erlauben aber
