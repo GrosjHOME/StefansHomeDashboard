@@ -1163,6 +1163,19 @@ function pvRefBand(b, refs, what, span, unit, dec){
 }
 function pvRefLegend(span){ return [{color:"var(--amber)",label:"Ist"},{color:"var(--amber-lt)",label:"Ø "+span},{color:"var(--muted)",label:"Min/Max "+span}]; }
 
+// Tagesertrag je Tag aus den Feeds (field2 = Tagesenergie, kumuliert): wie in pvDayTotals wird nach Zaehler-Reset
+// getrennt statt nach Kalenderdatum, weil der Zaehler erst zwischen 00:00 und 01:00 zurueckgesetzt wird - die Eintraege
+// 00:00-00:59 tragen noch den Vortag. Datum des Tages = erster Eintrag nach dem Reset. Der Eintrag, in dem der Reset
+// liegt, ist bei Mittelwert-Feeds (average=15) ein Mischwert aus alt und neu und zaehlt deshalb nicht als Tagesmaximum.
+// Liefert [{v, dt}] zeitlich sortiert; der erste (angeschnittene) Tag des Fensters kann den Vortag enthalten.
+function pvTageMax(f){ var mx={}, seg=null, prev=null;
+  f.forEach(function(x){ var v=num(x.field2); if(v===null||v<0||v>PV.DAY_MAX_KWH)return; var dt=new Date(x.created_at), day=ymdStr(dt);
+    var reset = prev!==null && v<prev-1;
+    if(seg===null || reset || (day!==seg.k && prev!==null && prev<1)){ seg={k:day, dt:dt, max:reset?0:v}; }
+    if(!reset && v>seg.max) seg.max=v;   // der Reset-Eintrag selbst (Mischwert) zaehlt nicht
+    if(!mx[seg.k] || seg.max>mx[seg.k].v) mx[seg.k]={v:seg.max, dt:mx[seg.k]?mx[seg.k].dt:seg.dt};
+    prev=v; });
+  return Object.keys(mx).sort().map(function(k){ return mx[k]; }); }
 // Tagesertraege vergangener Jahre fuer das Vergleichsband im Tage-Modus. Feld 2 = Tages-
 // energie (kumuliert). ACHTUNG: der Zaehler wird nicht genau um Mitternacht zurueckgesetzt,
 // sondern erst zwischen 00:00 und 01:00 - der 00:00-Wert ist noch der Vortag. Darum wird
@@ -1270,9 +1283,8 @@ PV.loadEnergy=function(){
       function band(b, ymd, todayYmd){ if(!hist)return; var t=Math.round((new Date(ymd+"T12:00")-new Date(todayYmd+"T12:00"))/864e5);
         var r=hist(t); if(!r)return; b.lo=r.lo; b.hi=r.hi; hasHist=true;
         b.tipExtra=(b.tipExtra?b.tipExtra+"<br>":"")+"Max "+fmt(r.hi,0)+" kWh ("+r.hiDate+") · Min "+fmt(r.lo,0)+" kWh ("+r.loDate+")"; }
-      var f=(d&&d.feeds)?d.feeds:[],byDay={}; f.forEach(function(x){ var v=num(x.field2); if(v===null)return; var dt=new Date(x.created_at);
-        var key=dt.getFullYear()+"-"+dt.getMonth()+"-"+dt.getDate(); if(!byDay[key]||v>byDay[key].v)byDay[key]={v:v,dt:dt}; });
-      var arr=Object.keys(byDay).map(function(k){return byDay[k];}).sort(function(a,b){return a.dt-b.dt;}).slice(-14);
+      var f=(d&&d.feeds)?d.feeds:[];
+      var arr=pvTageMax(f).slice(-14);
       var bars=arr.map(function(o){return {label:o.dt.getDate()+"."+(o.dt.getMonth()+1)+".",v:o.v,dt:o.dt};});
       function ymdOf(dt){ return dt.getFullYear()+"-"+("0"+(dt.getMonth()+1)).slice(-2)+"-"+("0"+dt.getDate()).slice(-2); }
       if(fc && fc.fc && fc.fc.hourly){
@@ -2305,7 +2317,10 @@ PLANNER.load=function(){
     ((r[4]&&r[4].feeds)?r[4].feeds:[]).forEach(function(x){ if(x.created_at.slice(0,10)!==td)return; var p=num(x.field3); if(p===null)return; bt+=Math.max(0,p)/1000; bany=true; });
     PLANNER._boilerTodayKwh = bany ? bt : null;
     // aktuelle Auto-Ladeleistung (kW, field4 in µW) – nur wenn Wallbox laedt (Status 67)
-    var wfs=(r[3]&&r[3].feeds)?r[3].feeds:[], wf=wfs.length?wfs[wfs.length-1]:null;
+    // Stuendlich schreibt der Kanal einen Eintrag nur mit field1 (HSH-Auslastung): dort fehlen Status und Leistung,
+    // deshalb den letzten Eintrag mit Status (field8) nehmen - sonst gilt ein ladendes Auto als Last 0.
+    var wfs=(r[3]&&r[3].feeds)?r[3].feeds:[], wf=null;
+    for(var wk=wfs.length-1;wk>=0;wk--){ if(num(wfs[wk].field8)!==null){ wf=wfs[wk]; break; } }
     PLANNER._carNow = wf ? (Math.round(num(wf.field8))===67 ? Math.max(0,(num(wf.field4)||0)*1e-6) : 0) : null;
     // geglaettete Lade-Vorgabe der Wallbox (kW, field7 in W) – letzter vorhandener Wert
     PLANNER._carVorgabe=null;
@@ -2331,7 +2346,8 @@ function switchView(v){
 // (im Hintergrund pausiert der Browser den 60-s-Takt).
 document.addEventListener("visibilitychange",function(){ if(document.hidden || Date.now()-state.lastLoad<=20000) return; laden(); });
 document.getElementById("tabs").addEventListener("click",function(e){ var a=e.target.closest("a[data-view]"); if(!a)return; e.preventDefault(); switchView(a.getAttribute("data-view")); });
-window.addEventListener("hashchange",function(){ switchView(location.hash.slice(1)); });
+window.addEventListener("hashchange",function(){ var v=location.hash.slice(1); if(v===state.view) return;   // von switchView selbst gesetzt
+  switchView(v); });
 switchView(location.hash.slice(1) || "pv");
 
 // PWA: Service Worker registrieren (macht die Seite als App installierbar). Geht nur
