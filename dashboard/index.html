@@ -120,7 +120,7 @@
   .seg button.active{background:var(--card); color:var(--ink); box-shadow:var(--shadow);}
   /* Kurz-Zeitraeume (10 min ... 12 h): Knopf mit Auswahlmenue */
   .kurz-wrap{position:relative; display:inline-flex;}
-  .kurz-menu{position:absolute; top:calc(100% + 4px); left:0; z-index:30; display:flex; flex-direction:column; min-width:100%; background:var(--card); border:1px solid var(--line); border-radius:8px; box-shadow:var(--shadow); padding:3px;}
+  .kurz-menu{position:absolute; top:calc(100% + 4px); right:0; z-index:30; display:flex; flex-direction:column; min-width:100%; background:var(--card); border:1px solid var(--line); border-radius:8px; box-shadow:var(--shadow); padding:3px;}
   .kurz-menu[hidden]{display:none;}
   .kurz-menu button{text-align:left; white-space:nowrap; color:var(--ink); background:transparent;}
   .kurz-menu button.sel{background:var(--bg);}
@@ -553,9 +553,10 @@ function steigung(ff, field, wMin, ok){
 }
 
 /* Gewaehlter Zeitraum, gilt fuer alle Tabs (bleibt beim Wechseln erhalten) und die Kurz-Auswahl hinter dem ersten Knopf. */
-var ZEIT={mode:"heute", kurz:"3h"};
+var ZEIT={mode:"heute", dd:"7tage"};   // dd = Beschriftung des Knopfs mit Auswahlmenue (rechts neben 24 h)
 var KURZ={"10m":10, "1h":60, "3h":180, "6h":360, "12h":720, "3tage":4320};          // Minuten (Eintraege, die den Kurz-Knopf beschriften)
-var KURZ_TXT={"10m":"10 min", "1h":"1 h", "3h":"3 h", "6h":"6 h", "12h":"12 h", "3tage":"3 T"};
+var KURZ_TXT={"10m":"10 min", "1h":"1 h", "3h":"3 h", "6h":"6 h", "12h":"12 h", "3tage":"3 T", "7tage":"7 Tage"};
+var FEST_KNOPF={"3h":1, "heute":1, "24h":1};      // diese Zeitraeume haben einen eigenen festen Knopf
 // Auswahlmenue hinter dem Kurz-Knopf: erst die kurzen Zeitraeume, dann (nach dem Strich) die festen Knoepfe
 // daneben - die schaltet das Menue nur um, der Kurz-Knopf behaelt seine Beschriftung.
 var KURZ_MENU=["10m","1h","3h","6h","12h","3tage"], FEST_MENU=[["heute","Heute"],["24h","24 h"],["7tage","7 Tage"]];
@@ -599,12 +600,12 @@ function freiText(){ var a=new Date(FREI.von), b=new Date(Math.min(FREI.bis,Date
   return a.getDate()+"."+(a.getMonth()+1)+". "+hm(a)+" – "+(FREI.bis>Date.now()?"jetzt":(b.toDateString()===a.toDateString()?"":b.getDate()+"."+(b.getMonth()+1)+". ")+hm(b)); }
 // HTML: Zeitraum-Umschalter inkl. Kalender-Knopf und das aufklappbare Feld (Start, Zeit, Dauer)
 function zeitraumLeisteHtml(){ var m=ZEIT.mode, a=function(x){ return m===x?' class="active"':''; };
-  // Menue: erst die Kurz-Zeitraeume, dann (mit Trennstrich) die festen Knoepfe; der aktuelle Eintrag ist markiert
+  // Menue hinter dem Knopf rechts neben "24 h": erst die kurzen Zeitraeume, dann (mit Trennstrich) Heute / 24 h / 7 Tage; der aktuelle Eintrag ist markiert
   var items=KURZ_MENU.map(function(k){ return {k:k, txt:KURZ_TXT[k], cls:""}; }).concat(FEST_MENU.map(function(f,i){ return {k:f[0], txt:f[1], cls:i===0?"trenn":""}; }));
   var menu=items.map(function(o){ var c=(o.cls+(o.k===m?" sel":"")).trim(); return '<button data-k="'+o.k+'"'+(c?' class="'+c+'"':'')+'>'+o.txt+'</button>'; }).join("");
-  return '<span class="seg" id="seg-period"><span class="kurz-wrap"><button data-m="'+ZEIT.kurz+'" id="btn-kurz"'+(KURZ[m]?' class="active"':'')+' title="Zeitraum wählen">'+KURZ_TXT[ZEIT.kurz]+' ▾</button>'+
+  return '<span class="seg" id="seg-period"><button data-m="3h"'+a("3h")+'>3 h</button><button data-m="heute"'+a("heute")+'>Heute</button><button data-m="24h"'+a("24h")+'>24 h</button>'+
+    '<span class="kurz-wrap"><button data-m="'+ZEIT.dd+'" id="btn-kurz"'+(m===ZEIT.dd&&!FEST_KNOPF[m]?' class="active"':'')+' title="Zeitraum wählen">'+KURZ_TXT[ZEIT.dd]+' ▾</button>'+
     '<div class="kurz-menu" id="kurz-menu" hidden>'+menu+'</div></span>'+
-    '<button data-m="heute"'+a("heute")+'>Heute</button><button data-m="24h"'+a("24h")+'>24 h</button><button data-m="7tage"'+a("7tage")+'>7 Tage</button>'+
     '<button data-m="frei" id="btn-frei"'+a("frei")+' title="Freien Zeitraum wählen: Startdatum, Zeit und Dauer">'+(m==="frei"?"📅 "+freiText():"📅")+'</button></span>'; }
 function freiPanelHtml(){ return '<div class="frei" id="frei-panel" hidden>'+
   '<label>Start<input type="date" id="fr-d"></label><label>Zeit<input type="time" id="fr-t"></label>'+
@@ -620,14 +621,14 @@ function zeitraumBinden(setMode){
   function kurzZu(){ if(km) km.hidden=true; }
   document.addEventListener("click",function(e){ if(!document.body.contains(seg)) return; if(!e.target.closest(".kurz-wrap")) kurzZu(); });
   if(km) km.addEventListener("click",function(e){ var kk=e.target.closest("button[data-k]"); if(!kk)return; var k=kk.getAttribute("data-k");
-    var knopf;   // Kurz-Zeitraum: beschriftet den Kurz-Knopf; Heute / 24 h / 7 Tage: schaltet den festen Knopf daneben
-    if(KURZ[k]){ ZEIT.kurz=k; kb.setAttribute("data-m",k); kb.textContent=KURZ_TXT[k]+" ▾"; knopf=kb; }
-    else knopf=seg.querySelector('button[data-m="'+k+'"]');
+    var knopf;   // 3 h / Heute / 24 h: schaltet den festen Knopf daneben; alles andere beschriftet den Menue-Knopf
+    if(FEST_KNOPF[k]) knopf=seg.querySelector('button[data-m="'+k+'"]');
+    else { ZEIT.dd=k; kb.setAttribute("data-m",k); kb.textContent=KURZ_TXT[k]+" ▾"; knopf=kb; }
     ZEIT.mode=k;
     Array.prototype.forEach.call(km.querySelectorAll("button"),function(x){ x.classList.toggle("sel",x===kk); });
     km.hidden=true; panel.hidden=true; bf.textContent="📅"; segActive(seg,knopf); setMode(k); });
   seg.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; var m=b.getAttribute("data-m");
-    if(b===kb){ km.hidden=!km.hidden; if(!km.hidden) Array.prototype.forEach.call(km.querySelectorAll("button"),function(x){ x.classList.toggle("sel",x.getAttribute("data-k")===ZEIT.mode); }); return; }   // Kurz-Knopf: Auswahlmenue auf/zu, der Zeitraum wechselt mit dem Eintrag
+    if(b===kb){ km.hidden=!km.hidden; if(!km.hidden) Array.prototype.forEach.call(km.querySelectorAll("button"),function(x){ x.classList.toggle("sel",x.getAttribute("data-k")===ZEIT.mode); }); return; }   // Menue-Knopf: Auswahlmenue auf/zu, der Zeitraum wechselt mit dem Eintrag
     if(m==="frei"){ kurzZu(); if(panel.hidden){ vorbelegen(); panel.hidden=false; } else panel.hidden=true; return; }   // Zeitraum wechselt erst mit "Anzeigen"
     kurzZu(); ZEIT.mode=m; panel.hidden=true; bf.textContent="📅"; segActive(seg,b); setMode(m); });
   document.getElementById("fr-x").addEventListener("click",function(){ panel.hidden=true; });
