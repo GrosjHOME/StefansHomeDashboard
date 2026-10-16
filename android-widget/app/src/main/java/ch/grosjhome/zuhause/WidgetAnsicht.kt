@@ -78,7 +78,7 @@ object WidgetAnsicht {
         })
     }
 
-    /** Pumpwerk-Symbol in der Kopfzeile: blau = laeuft, grau = steht, rot = Stoerung; daneben Einschaltungen heute. */
+    /** Pumpwerk-Symbol in der Kopfzeile: gruen = laeuft, blau = steht, rot = Stoerung; daneben Einschaltungen heute. */
     private fun pumpe(v: RemoteViews, p: Pumpe?) {
         val an = if (p == null) View.GONE else View.VISIBLE
         v.setViewVisibility(R.id.pumpe, an)
@@ -86,8 +86,8 @@ object WidgetAnsicht {
         if (p == null) return
         v.setInt(R.id.pumpe, "setColorFilter", when {
             p.stoerung -> Color.rgb(214, 69, 69)
-            p.laeuft -> Color.rgb(43, 131, 199)
-            else -> Color.rgb(149, 161, 173)
+            p.laeuft -> Color.rgb(46, 158, 91)
+            else -> Color.rgb(43, 131, 199)
         })
         if (p.starts != null) v.setTextViewText(R.id.pumpe_zahl, "${p.starts}")
     }

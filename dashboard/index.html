@@ -1300,6 +1300,7 @@ function simpleView(cfg){
       var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
       var last=f[f.length-1];
       // Heizung: Symbol der Gruppe = Flamme (Feuer) oder gluehende Kohle (Glut); grau, wenn > 60 min nichts kam
+      if(cfg.statusIcon){ var si=g("stat_ico"); if(si){ var sr=cfg.statusIcon(f,last); si.innerHTML=sr.html; si.title=sr.title; } }
       var ico=g("feuer_ico"); if(ico){ var brennt=heizBrenntJetzt(f), aktuell=(Date.now()-Date.parse(last.created_at))<3600000;
         ico.innerHTML=feuerSymbolHtml(brennt, aktuell); ico.title=!aktuell?"keine aktuellen Daten":(brennt?"Feuer brennt":"nur noch Glut"); }
       function L(fd,ok){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null && (!ok||ok(v)))return v;} return null; }   // ok: Lesefehler uebergehen
@@ -1509,7 +1510,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
         var leg = (c.lines && (c.lines.length>1 || c.minmaxField)) ? '<div class="legend">'+items.join("")+'</div>' : "";
         return '<div class="panel"><h2>'+c.title+' <span class="tag" id="ct_'+i+'"></span></h2>'+leg+'<div id="chart_'+i+'"><div class="chart-empty">wird geladen…</div></div>'+(c.note?'<div class="note">'+c.note+'</div>':'')+'</div>';
       }).join("");
-      main.innerHTML='<div class="wrap wide"><div class="view-head"><h1>'+cfg.icon+" "+cfg.title+'</h1>'+
+      main.innerHTML='<div class="wrap wide"><div class="view-head"><h1><span id="stat_ico">'+cfg.icon+'</span> '+cfg.title+'</h1>'+
         '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
           zeitraumLeisteHtml()+
           '<div class="meta" id="head-meta">wird geladen…</div>'+
@@ -1768,9 +1769,17 @@ function pumpTageHtml(tage){
 function pumpDauer(s){ s=Math.round(s); if(s<60) return s+" s"; var m=Math.floor(s/60), r=s%60;
   if(m<60) return m+" min"+(r?" "+r+" s":""); var h=Math.floor(m/60); return h+" h "+("0"+(m%60)).slice(-2)+" min"; }
 // Pumpwerk-Symbol: blauer Wasserhahn mit Becher (statt des Emojis 🚰, das als gefuelltes blaues Viereck erscheint)
-var PUMPE_SVG='<svg viewBox="0 0 24 24" width="1.2em" height="1.2em" style="vertical-align:-.25em" aria-hidden="true"><g fill="#2b83c7"><rect x="8.6" y="2.2" width="12.4" height="3.6" rx="1.3"/><rect x="8.6" y="2.2" width="3.8" height="8.6" rx="1.4"/><rect x="19.6" y="1" width="3" height="6" rx="1"/><rect x="13.2" y="0.4" width="3.2" height="1.8" rx="0.8"/><ellipse cx="10.5" cy="13.4" rx="1" ry="1.5"/><path d="M4.6 16 H16.4 L15.2 22.6 H5.8 Z"/></g><path d="M16.2 17.4 H17.4 A2.4 2.4 0 0 1 17.4 22 H15.6" fill="none" stroke="#2b83c7" stroke-width="1.6" stroke-linecap="round"/></svg>';
+// Pumpwerk-Symbol (Hahn mit Becher) in einer Farbe: blau = steht (Standard), gruen = laeuft, rot = Stoerung, grau = keine aktuellen Daten
+function pumpeSvg(farbe){ return '<svg viewBox="0 0 24 24" width="1.2em" height="1.2em" style="vertical-align:-.25em" aria-hidden="true"><g fill="'+farbe+'"><rect x="8.6" y="2.2" width="12.4" height="3.6" rx="1.3"/><rect x="8.6" y="2.2" width="3.8" height="8.6" rx="1.4"/><rect x="19.6" y="1" width="3" height="6" rx="1"/><rect x="13.2" y="0.4" width="3.2" height="1.8" rx="0.8"/><ellipse cx="10.5" cy="13.4" rx="1" ry="1.5"/><path d="M4.6 16 H16.4 L15.2 22.6 H5.8 Z"/></g><path d="M16.2 17.4 H17.4 A2.4 2.4 0 0 1 17.4 22 H15.6" fill="none" stroke="'+farbe+'" stroke-width="1.6" stroke-linecap="round"/></svg>'; }
+var PUMPE_SVG=pumpeSvg("#2b83c7");
 (function(){ var e=document.getElementById("ico-pumpe"); if(e) e.innerHTML=PUMPE_SVG; })();
 var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
+  // Symbol im Titel folgt dem Zustand (wie Flamme/Kohle bei der Heizung): gruen = Pumpe laeuft, blau = steht,
+  // rot = Stoerung, grau = laenger als 30 min keine Meldung. "Laeuft" = Momentaufnahme der letzten Minutenmeldung.
+  statusIcon:function(f,last){ var aktuell=(Date.now()-Date.parse(last.created_at))<30*60000, st=num(last.field6)>=0.5, lauft=num(last.field1)>=0.5;
+    if(!aktuell) return {html:pumpeSvg("#95a1ad"), title:"keine aktuellen Daten"};
+    if(st) return {html:pumpeSvg("#d64545"), title:"Störung"};
+    return lauft ? {html:pumpeSvg("#2e9e5b"), title:"Pumpe läuft"} : {html:pumpeSvg("#2b83c7"), title:"Pumpe steht"}; },
   tabelle:{ title:"Tagesübersicht", tage:14, rechne:function(ff){ return pumpTageHtml(pumpTage(ff)); },
     note:"Je Kalendertag aus den sekundengenauen Zählern: <b>Starts</b>, <b>Laufzeit</b>, <b>Ø/Start</b> (Laufzeit je Start), <b>Max/h</b> (die meisten Starts in einer Stunde), <b>Kurz</b> (Anteil der Starts mit unter 10 s Laufzeit, Näherung im Minutenraster) und <b>Nacht</b> (Starts zwischen 0 und 5 Uhr). Orange/rot: Kurz ab 30 % bzw. 50 %, Nacht ab 5 Starts – ein Hinweis auf zu wenig Vordruck im Membranbehälter bzw. eine kleine Leckage. Ausgegraut: für den Tag fehlen Messwerte. Unabhängig vom gewählten Zeitraum." },
   kpis:[

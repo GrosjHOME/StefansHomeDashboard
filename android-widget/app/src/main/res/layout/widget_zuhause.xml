@@ -46,7 +46,7 @@
             android:textColor="@color/ink"
             android:textSize="15sp"
             android:textStyle="bold" />
-        <!-- Pumpwerk: Hahn-Symbol (blau = laeuft, grau = steht, rot = Stoerung) + Einschaltungen heute;
+        <!-- Pumpwerk: Hahn-Symbol (gruen = laeuft, blau = steht, rot = Stoerung) + Einschaltungen heute;
              ohne aktuelle Pumpendaten ausgeblendet -->
         <ImageView
             android:id="@+id/pumpe"
