@@ -656,6 +656,9 @@ function freiPanelHtml(){ return '<div class="frei" id="frei-panel" hidden>'+
   '<label>Dauer<select id="fr-n">'+FREI_DAUER.map(function(x){ return '<option value="'+x[1]+'">'+x[0]+'</option>'; }).join("")+'</select></label>'+
   '<button class="btn" id="fr-ok">Anzeigen</button><button class="btn" id="fr-x">Schliessen</button><span class="frei-msg" id="fr-msg"></span></div>'; }
 // Verdrahtet Umschalter und Feld; setMode(m) bekommt "3h" | "heute" | "24h" | "7tage" | "frei" und laedt neu.
+// Einmal fuer die ganze Seite (nicht je Render, sonst sammeln sich Listener mit den alten Ansichten an): Klick ausserhalb
+// des Zeitraum-Menues schliesst das Menue der aktuellen Ansicht.
+document.addEventListener("click",function(e){ if(e.target.closest(".kurz-wrap")) return; var km=document.getElementById("kurz-menu"); if(km) km.hidden=true; });
 function zeitraumBinden(setMode){
   var seg=document.getElementById("seg-period"), panel=document.getElementById("frei-panel"), bf=document.getElementById("btn-frei"); if(!seg||!panel) return;
   var d=document.getElementById("fr-d"), t=document.getElementById("fr-t"), n=document.getElementById("fr-n"), msg=document.getElementById("fr-msg"), p2=function(x){ return ("0"+x).slice(-2); };
@@ -663,7 +666,6 @@ function zeitraumBinden(setMode){
     d.value=ymdLocal(s); d.max=ymdLocal(new Date()); t.value=p2(s.getHours())+":"+p2(s.getMinutes()); n.value=String(FREI.dauerMin); msg.textContent=""; }
   var kb=document.getElementById("btn-kurz"), km=document.getElementById("kurz-menu");
   function kurzZu(){ if(km) km.hidden=true; }
-  document.addEventListener("click",function(e){ if(!document.body.contains(seg)) return; if(!e.target.closest(".kurz-wrap")) kurzZu(); });
   if(km) km.addEventListener("click",function(e){ var kk=e.target.closest("button[data-k]"); if(!kk)return; var k=kk.getAttribute("data-k");
     var knopf;   // 3 h / Heute / 24 h: schaltet den festen Knopf daneben; alles andere beschriftet den Menue-Knopf
     if(FEST_KNOPF[k]) knopf=seg.querySelector('button[data-m="'+k+'"]');
@@ -1561,7 +1563,11 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
           // eigene Beschriftung: auch Hundertstel (0.05) lesbar, ohne Rundung auf eine Stelle
           yTicks=[]; for(var tv=yMin; tv<=yMax+1e-9; tv+=step){ var tr=Math.round(tv*1e6)/1e6; yTicks.push({v:tr, label:String(Math.round(tr*1e3)/1e3)}); }
           series.push({color:"var(--muted)", width:1, noTip:true, pts:[{t:new Date(t0z),v:0},{t:new Date(t1z),v:0}]}); }
-        if(g("ct_"+i)){ if(lastTs) standZeit(g("ct_"+i), lastTs); else { g("ct_"+i).removeAttribute("data-ts"); g("ct_"+i).textContent=""; } }
+        // "Stand": neueste Meldung der Kanaele, die DIESE Grafik zeichnet - bei mehreren der aelteste davon (z. B. ID.3-Kanal
+        // alle 15 min neben dem Wallbox-Logger im Minutentakt), sonst wirkt eine veraltete Linie frisch.
+        var chTs=null; (c.lines||[]).forEach(function(ln){ [ln.channel||cfg.channel].concat(ln.uses||[]).forEach(function(ch){ var fc=byChan[String(ch)]||[];
+          if(fc.length){ var t=new Date(fc[fc.length-1].created_at); if(!chTs||t<chTs) chTs=t; } }); });
+        if(g("ct_"+i)){ if(chTs) standZeit(g("ct_"+i), chTs); else { g("ct_"+i).removeAttribute("data-ts"); g("ct_"+i).textContent=""; } }
         // autoW: Zeichenbreite = Pixelbreite (mind. 1000) - noetig, wenn eine Grafik die volle Breite hat
         lineChart(holder, series, {unit:c.unit, zero:c.zero, padL:c.padL, yMin:yMin, yMax:yMax, yTicks:yTicks, unit2:c.unit2, zero2:c.zero2, yMin2:c.yMin2, yMax2:c.yMax2, y2Fmt:c.y2Fmt, y2Color:c.y2Color, y2Marks:c.y2Marks, padR:c.padR, autoW:true});
       });
@@ -2332,8 +2338,11 @@ PLANNER.load=function(){
     // aktuelle Einschaltschwelle (W, field4): ab dieser PV-Leistung laedt der Boiler
     PLANNER._boilerThr = bf ? num(bf.field4) : null;
     // heute bereits geladene Boiler-Energie (kWh) aus Stundenmittel field3 integriert
-    var bt=0, bany=false;
-    ((r[4]&&r[4].feeds)?r[4].feeds:[]).forEach(function(x){ if(x.created_at.slice(0,10)!==td)return; var p=num(x.field3); if(p===null)return; bt+=Math.max(0,p)/1000; bany=true; });
+    // Stundenmittel x 1 h = kWh; die laufende Stunde zaehlt nur mit ihrem abgelaufenen Anteil (ihr Mittel gilt erst fuer
+    // die vergangenen Minuten - sonst stuende um 10:05 schon die ganze Stunde da)
+    var bt=0, bany=false, bNow=new Date(), bH=bNow.getHours(), bFrac=bNow.getMinutes()/60;
+    ((r[4]&&r[4].feeds)?r[4].feeds:[]).forEach(function(x){ if(x.created_at.slice(0,10)!==td)return; var p=num(x.field3); if(p===null)return;
+      var h=parseInt(x.created_at.slice(11,13),10), w=(h===bH)?bFrac:1; bt+=Math.max(0,p)/1000*w; bany=true; });
     PLANNER._boilerTodayKwh = bany ? bt : null;
     // aktuelle Auto-Ladeleistung (kW, field4 in µW) – nur wenn Wallbox laedt (Status 67)
     // Stuendlich schreibt der Kanal einen Eintrag nur mit field1 (HSH-Auslastung): dort fehlen Status und Leistung,
@@ -2357,6 +2366,7 @@ function switchView(v){
   var tabs=document.querySelectorAll("#tabs a");
   tabs.forEach(function(a){ a.classList.toggle("active", a.getAttribute("data-view")===v); });
   var main=document.getElementById("view");
+  if(PV._ro){ PV._ro.disconnect(); PV._ro=null; }   // Beobachter der PV-Ansicht nicht ueber den Tabwechsel hinaus halten
   VIEWS[v].render(main);
   laden();
   if(location.hash.slice(1)!==v) location.hash=v;
