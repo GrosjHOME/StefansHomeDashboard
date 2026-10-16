@@ -1418,6 +1418,17 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
             cp.forEach(function(p,i){ var a=cp[i-1], b=cp[i+1]; if(a && b && a.v===p.v && b.v===p.v) return; pts.push(p); });
             return {color:ln.color, dash:ln.dash, width:ln.width, axis:ln.axis, dec:ln.dec, pts:pts};
           }
+          if(ln.laufJeLauf){   // ein Punkt je Lauf (Dauer der Pumpe je Start), dazwischen 0 - Laeufe als Block ueber Minutengrenzen
+            // Lauf = zusammenhaengende Minuten mit Laufzeit; Punkt am Ende des Laufs (Summe Laufsekunden / Starts im Block).
+            // Minuten ohne Lauf = 0; Folgen von Nullen werden auf Anfang und Ende reduziert (Linie bleibt scharf).
+            var dl=zaehlerDeltas(ff, ln.laufJeLauf.field, ln.laufJeLauf.starts, 1), ljp=[], blockVon={};
+            pumpBloecke(dl).forEach(function(b){ for(var tt=b.t; tt<=b.letzt; tt+=60000) blockVon[tt]=b; });   // Meldezeit -> Lauf
+            dl.forEach(function(o){ var b=blockVon[o.t]||null;
+              if(!b) ljp.push({t:new Date(o.t), v:0});
+              else if(b.letzt===o.t) ljp.push({t:new Date(o.t), v:b.sec/Math.max(1,b.starts), n:b.starts}); });
+            var kp=[]; ljp.forEach(function(q,k){ var a=ljp[k-1], c=ljp[k+1]; if(a && c && a.v===0 && q.v===0 && c.v===0) return; kp.push(q); });
+            return {color:ln.color, width:ln.width, axis:ln.axis, dec:ln.dec, fill:ln.fill, fmt:ln.fmt, pts:kp};
+          }
           if(ln.deltaBar){   // Differenz zweier Zaehler je Meldung: Laufsekunden pro Minute (0-60) + Zahl der Starts
             // Zaehler sind sekundengenau, daher geht auch ein Lauf zwischen zwei Meldungen nicht verloren.
             // Negative Differenz = Zaehler zurueckgesetzt (Mitternacht): diese Meldung wird uebersprungen.
@@ -1840,6 +1851,11 @@ var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
     {title:"Laufzeit heute", unit:"min", yMin:0,
       note:"Aufsummierte Laufzeit seit Mitternacht (lokale Zeit), jede Nacht wieder bei 0. Jeder Anstieg ist ein Lauf der Pumpe.",
       lines:[{field:"field3",label:"Laufzeit heute (min)",color:"var(--green)",scale:1/60,dec:1,fill:true}]},
+    {title:"Laufzeit je Lauf", unit:"s", yMin:0, threshold:PUMPE_KURZ_S,
+      note:"Ein Punkt je Lauf der Pumpe: so lange lief sie am Stück (bei mehreren Starts in einem Lauf: Durchschnitt je Start). Läuft sie nicht, steht die Linie bei 0. Die rot gestrichelte Linie bei 30 s ist die Grenze für Kurzläufe: Punkte darunter zählen als Kurzlauf.",
+      lines:[{field:"field3",label:"Laufzeit je Lauf",color:"var(--green)",dec:0,width:1.5,
+        laufJeLauf:{field:"field3",starts:"field2"},
+        fmt:function(v,p){ return v<=0 ? "Pumpe steht" : Math.round(v)+" s Laufzeit"+(p&&p.n>1?" ("+p.n+" Starts)":""); }}]},
     {title:"Einschaltungen heute", unit:"×", yMin:0,
       note:"Wie oft die Pumpe seit Mitternacht eingeschaltet hat. Sehr viele kurze Einschaltungen belasten Pumpe und Druckbehälter (Verschleiss).",
       lines:[{field:"field2",label:"Einschaltungen heute",color:"var(--amber)",dec:0}]},
