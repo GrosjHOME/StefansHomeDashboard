@@ -270,7 +270,8 @@ function j(u){ return fetch(u,{cache:"no-store"}).then(function(r){return r.json
 function num(x){ return (x===null||x===undefined||x==="")?null:parseFloat(x); }
 function fmt(v,d){ return v===null?"–":v.toLocaleString("de-CH",{minimumFractionDigits:d,maximumFractionDigits:d}); }
 // "Aktualisiert vor 9 s": bei wenig Platz (nur Icons) nur "↻ vor 9 s" (CSS .akt-lang / .akt-kurz)
-// Zeitpunkt der neuesten Messung der aktuellen Ansicht; aktTick() rechnet "vor x s" damit jede Sekunde neu (statt nur beim Laden alle 60 s).
+// Zeitpunkt des letzten erfolgreichen Abrufs der aktuellen Ansicht (Kopfzeile: "Aktualisiert vor x s", springt bei jedem Abruf auf 0);
+// aktTick() rechnet das jede Sekunde neu. Das Alter der Messung selbst steht in den "Stand vor x s"-Hinweisen (data-ts).
 var AKT_TS=null;
 function aktTick(){
   if(AKT_TS){ var el=document.getElementById("head-meta")||document.getElementById("updated"); if(el) el.innerHTML=AKT_PRE+relTime(AKT_TS); }
@@ -1027,7 +1028,7 @@ PV.load=function(){
     g("e-month").textContent=fmt(L("field3"),0); g("e-lastmonth").textContent=fmt(L("field6"),0);
     g("e-year").textContent=fmt(L("field4"),0); g("dc-mean").textContent=fmt(L("field8"),0);
     var sd=L("field7"); g("sd-status").innerHTML= sd===1?'<span class="dot ok"></span>SD-Karte OK':(sd===0?'<span class="dot bad"></span>SD-Karte Fehler':'<span class="dot na"></span>SD-Karte');
-    if(last.created_at){ AKT_TS=new Date(last.created_at); aktTick(); }
+    if(last.created_at){ AKT_TS=new Date(); aktTick(); }
   });
   PV.loadPower(); PV.loadEnergy(); PV.loadCumYear(); PV.loadLF();
   var p4=PV.loadTrackers();
@@ -1321,7 +1322,7 @@ function simpleView(cfg){
         el.textContent = k.map ? (v===null?"–":k.map(v, k.field2?L(k.field2):null)) : fmt(v,k.dec||0);
 if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
         if(k.color) el.style.color = (v===null) ? "" : k.color(v); });
-      if(g("head-meta")&&last.created_at){ AKT_TS=new Date(last.created_at); aktTick(); }
+      if(g("head-meta")&&last.created_at){ AKT_TS=new Date(); aktTick(); }
       secStand(cfg.channel, last.created_at);
       // Ampel-Faerbung: KPI-Wert nach aktueller PV-Leistung gegenueber der Schwelle
       // (rot = keine PV-Leistung, orange bis zur Schwelle, gruen ab Schwelle)
