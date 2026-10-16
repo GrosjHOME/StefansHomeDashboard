@@ -1733,18 +1733,29 @@ function pumpStartsProStunde(ff){ var h={}, mx=null; zaehlerDeltas(ff,"field3","
 // Ø Laufdauer je Start: Laufsekunden aller Minuten / Starts (nur wenn Starts gezaehlt wurden)
 function pumpLaufdauerJeStart(ff){ var sec=0, n=0; zaehlerDeltas(ff,"field3","field2",1).forEach(function(o){ sec+=o.sec; n+=o.n; });
   return n>0 ? sec/n : null; }
-// Kurzlaeufe: Anteil der Starts in Minuten, deren Laufzeit je Start unter 10 s liegt (Naeherung -
-// mehrere Starts in einer Minute werden gemeinsam bewertet)
-function pumpKurzlaeufe(ff){ var kurz=0, n=0; zaehlerDeltas(ff,"field3","field2",1).forEach(function(o){
-    if(o.n>0){ n+=o.n; if(o.sec/o.n<10) kurz+=o.n; } });
+// Laeufe aus den Minuten-Differenzen: zusammenhaengende Minuten mit Laufzeit (oder Start) bilden EINEN Block.
+// Ein Lauf, der ueber eine Minutengrenze geht, wird sonst in "kurzer Start" + "Rest ohne Start" zerschnitten.
+// Block = {t (erste Meldung), starts, sec}; Abstand zwischen zwei Meldungen max. 1.5 Minuten.
+function pumpBloecke(dp){ var out=[], cur=null;
+  dp.forEach(function(o){ var aktiv=o.sec>0 || o.n>0;
+    if(aktiv && cur && o.min<=1.5 && Math.abs(cur.letzt-(o.t-o.min*60000))<1){ cur.starts+=o.n; cur.sec+=o.sec; cur.letzt=o.t; }
+    else if(aktiv){ cur={t:o.t, starts:o.n, sec:o.sec, letzt:o.t}; out.push(cur); }
+    else cur=null; });
+  return out; }
+// Kurzlaeufe: Anteil der Starts, bei denen die Pumpe insgesamt unter 10 s lief (Laufzeit je Start im Block)
+function pumpKurzlaeufe(ff){ var kurz=0, n=0; pumpBloecke(zaehlerDeltas(ff,"field3","field2",1)).forEach(function(b){
+    if(b.starts>0){ n+=b.starts; if(b.sec/b.starts<10) kurz+=b.starts; } });
   return n>0 ? kurz/n*100 : null; }
 // Tagesuebersicht der Pumpe: je lokalem Kalendertag Starts, Laufzeit, Ø Laufdauer je Start, max. Starts pro Stunde,
 // Anteil Kurzlaeufe (< 10 s je Start, Naeherung im Minutenraster) und Nachtstarts (0-5 Uhr). Neueste Tage zuerst.
 // "abd" = Anteil des Tages, fuer den Messmeldungen vorliegen (Logger/Netz aus -> weniger als 100 %).
 function pumpTage(ff){ var tage={};
-  zaehlerDeltas(ff,"field3","field2",1).forEach(function(o){ var d=new Date(o.t), k=ymdLocal(d), T=tage[k]||(tage[k]={tag:k, starts:0, sec:0, kurz:0, nacht:0, min:0, std:{}});
-    T.starts+=o.n; T.sec+=o.sec; T.min+=o.min; if(o.n>0 && o.sec/o.n<10) T.kurz+=o.n; if(d.getHours()<5) T.nacht+=o.n;
+  var dp=zaehlerDeltas(ff,"field3","field2",1);
+  function tagVon(ms){ var k=ymdLocal(new Date(ms)); return tage[k]||(tage[k]={tag:k, starts:0, sec:0, kurz:0, nacht:0, min:0, std:{}}); }
+  dp.forEach(function(o){ var d=new Date(o.t), T=tagVon(o.t);
+    T.starts+=o.n; T.sec+=o.sec; T.min+=o.min; if(d.getHours()<5) T.nacht+=o.n;
     T.std[d.getHours()]=(T.std[d.getHours()]||0)+o.n; });
+  pumpBloecke(dp).forEach(function(b){ if(b.starts>0 && b.sec/b.starts<10) tagVon(b.t).kurz+=b.starts; });   // Kurzlauf zaehlt am Tag des Blockbeginns
   return Object.keys(tage).sort().reverse().map(function(k){ var T=tage[k], mx=0; Object.keys(T.std).forEach(function(h){ if(T.std[h]>mx) mx=T.std[h]; });
     return {tag:k, starts:T.starts, sec:T.sec, avg:T.starts>0?T.sec/T.starts:null, maxH:mx, kurzPct:T.starts>0?T.kurz/T.starts*100:null, nacht:T.nacht, abd:Math.min(1,T.min/1440)}; }); }
 // kompakte Dauer fuer die Tabelle: 45 s | 57 min | 1:27 h
@@ -1781,7 +1792,7 @@ var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
     if(st) return {html:pumpeSvg("#d64545"), title:"Störung"};
     return lauft ? {html:pumpeSvg("#2e9e5b"), title:"Pumpe läuft"} : {html:pumpeSvg("#2b83c7"), title:"Pumpe steht"}; },
   tabelle:{ title:"Tagesübersicht", tage:14, rechne:function(ff){ return pumpTageHtml(pumpTage(ff)); },
-    note:"Je Kalendertag aus den sekundengenauen Zählern: <b>Starts</b>, <b>Laufzeit</b>, <b>Ø/Start</b> (Laufzeit je Start), <b>Max/h</b> (die meisten Starts in einer Stunde), <b>Kurz</b> (Anteil der Starts mit unter 10 s Laufzeit, Näherung im Minutenraster) und <b>Nacht</b> (Starts zwischen 0 und 5 Uhr). Orange/rot: Kurz ab 30 % bzw. 50 %, Nacht ab 10 bzw. 20 Starts – ein Hinweis auf zu wenig Vordruck im Membranbehälter bzw. eine kleine Leckage. Ausgegraut: für den Tag fehlen Messwerte. Unabhängig vom gewählten Zeitraum." },
+    note:"Je Kalendertag aus den sekundengenauen Zählern: <b>Starts</b>, <b>Laufzeit</b>, <b>Ø/Start</b> (Laufzeit je Start), <b>Max/h</b> (die meisten Starts in einer Stunde), <b>Kurz</b> (Anteil der Starts, bei denen die Pumpe insgesamt weniger als 10 s lief; ein Lauf über eine Minutengrenze zählt als ein Lauf) und <b>Nacht</b> (Starts zwischen 0 und 5 Uhr). Orange/rot: Kurz ab 30 % bzw. 50 %, Nacht ab 10 bzw. 20 Starts – ein Hinweis auf zu wenig Vordruck im Membranbehälter bzw. eine kleine Leckage. Ausgegraut: für den Tag fehlen Messwerte. Unabhängig vom gewählten Zeitraum." },
   kpis:[
     {field:"field1",label:"Pumpe",map:function(v){ return v>=0.5 ? "Läuft" : "Steht"; },
       color:function(v){ return v>=0.5 ? "var(--green)" : ""; }},
