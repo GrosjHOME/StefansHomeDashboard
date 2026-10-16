@@ -1304,7 +1304,9 @@ function simpleView(cfg){
       var ico=g("feuer_ico"); if(ico){ var brennt=heizBrenntJetzt(f), aktuell=(Date.now()-Date.parse(last.created_at))<3600000;
         ico.innerHTML=feuerSymbolHtml(brennt, aktuell); ico.title=!aktuell?"keine aktuellen Daten":(brennt?"Feuer brennt":"nur noch Glut"); }
       function L(fd,ok){ for(var i=f.length-1;i>=0;i--){var v=num(f[i][fd]); if(v!==null && (!ok||ok(v)))return v;} return null; }   // ok: Lesefehler uebergehen
-      cfg.kpis.forEach(function(k,i){ if(k.integrate||k.ausFeeds)return; if(k.channel&&k.channel!==cfg.channel)return; var v=L(k.field,k.gueltig); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
+      cfg.kpis.forEach(function(k,i){ if(k.integrate||k.ausFeeds)return; if(k.channel&&k.channel!==cfg.channel)return;
+        if(k.ausLetzten){ var ael=g("kpi_"+i), ar=k.ausLetzten(f); if(ael){ ael.textContent=ar.text; ael.style.color=ar.color||""; } return; }   // Text/Farbe aus den neuesten Meldungen
+        var v=L(k.field,k.gueltig); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
         el.textContent = k.map ? (v===null?"–":k.map(v, k.field2?L(k.field2):null)) : fmt(v,k.dec||0);
 if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
         if(k.color) el.style.color = (v===null) ? "" : k.color(v); });
@@ -1816,6 +1818,17 @@ function pumpTageHtml(tage){
       '<td>'+fmt(t.starts,0)+'</td><td>'+pumpDauerKompakt(t.sec)+'</td><td>'+(t.avg===null?"–":fmt(t.avg,0)+" s")+'</td><td>'+fmt(t.maxH,0)+'</td>'+
       '<td'+(kc?' style="color:'+kc+'"':'')+'>'+(t.kurzPct===null?"–":fmt(t.kurzPct,0)+" %")+'</td><td'+(nc?' style="color:'+nc+'"':'')+'>'+fmt(t.nacht,0)+'</td></tr>'; }).join("");
   return '<div class="tbl-wrap"><table class="tbl"><colgroup><col style="width:23%"><col style="width:11%"><col style="width:15%"><col style="width:13%"><col style="width:11%"><col style="width:14%"><col style="width:13%"></colgroup><thead><tr><th>Tag</th><th>Starts</th><th>Laufzeit</th><th>Ø/Start</th><th>Max/h</th><th>Kurz</th><th>Nacht</th></tr></thead><tbody>'+rows+'</tbody></table></div>'; }
+// Pumpenzustand aus den neuesten Meldungen (f = letzte Eintraege), 4 Zustaende:
+//   Ein    = in der letzten Minute gestartet (Einschaltungen gestiegen) und laeuft jetzt
+//   Laeuft = laeuft jetzt, ohne neuen Start
+//   Aus    = lief in der letzten Minute (Laufzeit oder Start), steht aber jetzt
+//   Steht  = steht und lief auch in der letzten Minute nicht
+// "jetzt" = Signal der letzten Minutenmeldung (Feld 1), "letzte Minute" = Zuwachs der Zaehler gegenueber der Meldung davor.
+function pumpZustand(f){ var dp=zaehlerDeltas(f,"field3","field2",1), d=dp.length?dp[dp.length-1]:null, last=f[f.length-1],
+    an=num(last.field1)>=0.5, juengst=!!d && d.min<=2, lief=juengst && (d.sec>0 || d.n>0), neu=juengst && d.n>0;
+  if(an) return neu ? "Ein" : "Läuft";
+  return lief ? "Aus" : "Steht"; }
+var PUMPE_ZUSTAND_FARBE={"Ein":"var(--green)", "Läuft":"var(--green)", "Aus":"var(--blue)", "Steht":""};
 /* ================= View: Pumpwerk (Frischwasser-Pumpwerk Biral, Logger PumpwerkBiral) ================= */
 // Kanal 3484334, vom Arduino-Logger jede Minute geschrieben (Repo GrosjHOME/PumpwerkBiral):
 // field1 Pumpe laeuft jetzt [0/1], field2 Einschaltungen heute, field3 Laufzeit heute [s],
@@ -1836,12 +1849,13 @@ var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
   statusIcon:function(f,last){ var aktuell=(Date.now()-Date.parse(last.created_at))<30*60000, st=num(last.field6)>=0.5, lauft=num(last.field1)>=0.5;
     if(!aktuell) return {html:pumpeSvg("#95a1ad"), title:"keine aktuellen Daten"};
     if(st) return {html:pumpeSvg("#d64545"), title:"Störung"};
-    return lauft ? {html:pumpeSvg("#2e9e5b"), title:"Pumpe läuft"} : {html:pumpeSvg("#2b83c7"), title:"Pumpe steht"}; },
+    var z=pumpZustand(f), grn=(z==="Ein"||z==="Läuft");
+    return {html:pumpeSvg(grn?"#2e9e5b":"#2b83c7"), title:"Pumpe: "+z}; },
   tabelle:{ title:"Tagesübersicht", tage:14, rechne:function(ff){ return pumpTageHtml(pumpTage(ff)); },
     note:"Je Kalendertag aus den sekundengenauen Zählern: <b>Starts</b>, <b>Laufzeit</b>, <b>Ø/Start</b> (Laufzeit je Start), <b>Max/h</b> (die meisten Starts in einer Stunde), <b>Kurz</b> (Anteil der Starts, bei denen die Pumpe insgesamt weniger als 30 s lief; ein Lauf über eine Minutengrenze zählt als ein Lauf) und <b>Nacht</b> (Starts zwischen 0 und 5 Uhr). Orange/rot: Kurz ab 30 % bzw. 50 %, Nacht ab 10 bzw. 20 Starts – ein Hinweis auf zu wenig Vordruck im Membranbehälter bzw. eine kleine Leckage. Ausgegraut: für den Tag fehlen Messwerte. Unabhängig vom gewählten Zeitraum. <b>Kürzeste Pause</b> (Kachel oben, folgt dem Zeitraum) ist eine grobe Schätzung: Der Minutentakt zeigt Pausen nur ungenau, deshalb gilt meist eine obere Grenze (die Pause war höchstens so lang), abgeleitet aus Minuten, in denen die Pumpe nach vollem Lauf wieder startete oder mehrmals startete. Sekundengenau kann das nur der Logger am Pumpwerk messen." },
   kpis:[
     {field:"field1",label:"Pumpe",map:function(v){ return v>=0.5 ? "Läuft" : "Steht"; },
-      color:function(v){ return v>=0.5 ? "var(--green)" : ""; }},
+      ausLetzten:function(f){ var z=pumpZustand(f); return {text:z, color:PUMPE_ZUSTAND_FARBE[z]}; }},
     {field:"field6",label:"Betrieb",map:function(v){ return v>=0.5 ? "Störung" : "OK"; },
       color:function(v){ return v>=0.5 ? "var(--red)" : "var(--green)"; }},
     {field:"field2",label:"Einschaltungen heute",unit:"×",dec:0},
