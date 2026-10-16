@@ -768,7 +768,8 @@ PV.loadTrackers=function(){
   function g(id){ return document.getElementById(id); }
   return holeZeitraum(PV.CH, PV.period, true, "status.json").then(function(d){
     var f=(d&&d.feeds)?d.feeds:[]; var last=f.length?f[f.length-1]:null; var holder=g("tracker-holder"); if(!holder)return;
-    if(last&&last.status){ standZeit(g("status-time"), new Date(last.created_at), "", false); var p=parseStatus(last.status);
+    if(last&&last.created_at) ["strom-tag","spannung-tag","status-time"].forEach(function(id){ standZeit(g(id), new Date(last.created_at)); });   // Strom, Spannung, DC: "Stand vor x s"
+    if(last&&last.status){ var p=parseStatus(last.status);
       function wr(w){ var U=p["U"+w],I=p["I"+w]; if(!U||!I)return '<tr><td class="wr-head">WR '+w+'</td><td colspan="3" style="text-align:left;color:var(--muted)">keine Daten</td></tr>';
         var rows="",sum=0; for(var t=0;t<3;t++){var pw=U[t]*I[t];sum+=pw; rows+='<tr><td>Tracker '+(t+1)+(t===2?' <span style="color:var(--muted)">(1 String)</span>':'')+'</td><td>'+U[t].toFixed(0)+' V</td><td>'+I[t].toFixed(1)+' A</td><td>'+(pw/1000).toFixed(2)+' kW</td></tr>';}
         return '<tr><td class="wr-head" colspan="4">Wechselrichter '+w+'</td></tr>'+rows+'<tr class="sum"><td>Summe WR '+w+'</td><td></td><td></td><td>'+(sum/1000).toFixed(2)+' kW</td></tr>'; }
@@ -785,7 +786,6 @@ PV.loadTrackers=function(){
       {color:cols[0],dash:true,pts:A[3]},{color:cols[1],dash:true,pts:A[4]},{color:cols[2],dash:true,pts:A[5]}].filter(function(s){return s.pts.length>1;}); }
     if(g("chart-strom")) lineChart(g("chart-strom"),mk(SI),{unit:"A"});
     if(g("chart-spannung")) lineChart(g("chart-spannung"),mk(SU),{unit:"V",zero:false});
-    if(g("spannung-tag")&&last&&last.created_at) standZeit(g("spannung-tag"), new Date(last.created_at));
   });
 };
 
@@ -1090,6 +1090,7 @@ PV.loadPower=function(){
   Promise.all([ holeZeitraum(PV.CH, PV.period, true), mpr ]).then(function(r){
     var d=r[0], mp=r[1];
     var f=(d&&d.feeds)?d.feeds:[],pts=[]; f.forEach(function(x){ var v=num(x.field1); if(v!==null)pts.push({t:new Date(x.created_at),v:v/1000}); });
+    if(pts.length) standZeit(document.getElementById("power-tag"), pts[pts.length-1].t);   // "Stand vor x s" neben dem Titel, tickt live
     var series=[{color:"var(--green)",fill:true,pts:pts}], leg=null;
     // Heute: Morgenprognose blau gestrichelt ueber den ganzen Tag - nur die Stunden mit Ertrag
     // (je ein Nullpunkt davor/danach), sonst reichte die Zeitachse bis Mitternacht
