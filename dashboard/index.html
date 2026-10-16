@@ -1753,7 +1753,7 @@ function pumpTageHtml(tage){
   if(!tage.length) return '<div class="chart-empty">noch keine Daten</div>';
   var heute=ymdLocal(new Date()), wd=["So","Mo","Di","Mi","Do","Fr","Sa"];
   var rows=tage.map(function(t){ var d=new Date(t.tag+"T12:00:00"), istH=t.tag===heute, lab=istH?"Heute":wd[d.getDay()]+" "+d.getDate()+"."+(d.getMonth()+1)+".";
-    var kc=t.kurzPct===null?"":(t.kurzPct>=50?"var(--red)":(t.kurzPct>=30?"var(--amber)":"")), nc=t.nacht>=5?"var(--amber)":"";
+    var kc=t.kurzPct===null?"":(t.kurzPct>=50?"var(--red)":(t.kurzPct>=30?"var(--amber)":"")), nc=t.nacht>=20?"var(--red)":(t.nacht>=10?"var(--amber)":"");
     var unv=t.abd<0.9 && !istH;   // unvollstaendiger Tag (Messluecken)
     return '<tr'+(unv?' style="opacity:.6" title="Messwerte fehlen: nur '+Math.round(t.abd*100)+' % des Tages"':'')+'><td>'+lab+'</td>'+
       '<td>'+fmt(t.starts,0)+'</td><td>'+pumpDauerKompakt(t.sec)+'</td><td>'+(t.avg===null?"–":fmt(t.avg,0)+" s")+'</td><td>'+fmt(t.maxH,0)+'</td>'+
@@ -1781,7 +1781,7 @@ var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
     if(st) return {html:pumpeSvg("#d64545"), title:"Störung"};
     return lauft ? {html:pumpeSvg("#2e9e5b"), title:"Pumpe läuft"} : {html:pumpeSvg("#2b83c7"), title:"Pumpe steht"}; },
   tabelle:{ title:"Tagesübersicht", tage:14, rechne:function(ff){ return pumpTageHtml(pumpTage(ff)); },
-    note:"Je Kalendertag aus den sekundengenauen Zählern: <b>Starts</b>, <b>Laufzeit</b>, <b>Ø/Start</b> (Laufzeit je Start), <b>Max/h</b> (die meisten Starts in einer Stunde), <b>Kurz</b> (Anteil der Starts mit unter 10 s Laufzeit, Näherung im Minutenraster) und <b>Nacht</b> (Starts zwischen 0 und 5 Uhr). Orange/rot: Kurz ab 30 % bzw. 50 %, Nacht ab 5 Starts – ein Hinweis auf zu wenig Vordruck im Membranbehälter bzw. eine kleine Leckage. Ausgegraut: für den Tag fehlen Messwerte. Unabhängig vom gewählten Zeitraum." },
+    note:"Je Kalendertag aus den sekundengenauen Zählern: <b>Starts</b>, <b>Laufzeit</b>, <b>Ø/Start</b> (Laufzeit je Start), <b>Max/h</b> (die meisten Starts in einer Stunde), <b>Kurz</b> (Anteil der Starts mit unter 10 s Laufzeit, Näherung im Minutenraster) und <b>Nacht</b> (Starts zwischen 0 und 5 Uhr). Orange/rot: Kurz ab 30 % bzw. 50 %, Nacht ab 10 bzw. 20 Starts – ein Hinweis auf zu wenig Vordruck im Membranbehälter bzw. eine kleine Leckage. Ausgegraut: für den Tag fehlen Messwerte. Unabhängig vom gewählten Zeitraum." },
   kpis:[
     {field:"field1",label:"Pumpe",map:function(v){ return v>=0.5 ? "Läuft" : "Steht"; },
       color:function(v){ return v>=0.5 ? "var(--green)" : ""; }},
