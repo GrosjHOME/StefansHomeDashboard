@@ -749,7 +749,11 @@ PV.render=function(main){
   if(window.ResizeObserver){ PV._ro=new ResizeObserver(function(){ requestAnimationFrame(PV.fitJahr); });
     [".a-strom",".a-spann"].forEach(function(s){ var e=main.querySelector(s); if(e) PV._ro.observe(e); }); }
   var slf=document.getElementById("seg-lf"); if(slf) slf.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.lfMode=b.getAttribute("data-m"); segActive(slf,b); PV.loadLF(); });
-  zeitraumBinden(function(m){ PV.period=m; PV.loadPower(); PV.loadTrackers(); PV.loadPeakSun(); });
+  // Zeitraum-Wechsel: Fehler je Grafik anzeigen (sonst bliebe "wird geladen…" stehen und die Zurueckweisung unbehandelt)
+  function chartFehler(ids){ return function(){ ids.forEach(function(id){ var e=document.getElementById(id); if(e) e.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; }); }; }
+  zeitraumBinden(function(m){ PV.period=m; PV.loadPower();
+    PV.loadTrackers().catch(chartFehler(["chart-strom","chart-spannung","tracker-holder"]));
+    PV.loadPeakSun().catch(function(){}); });
   function parseEnergyYear(v){ return v?parseInt(v,10):null; }
   var se=document.getElementById("seg-energy"); if(se) se.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.energyMode=b.getAttribute("data-m"); segActive(se,b);
     var sy=document.getElementById("energy-year"); if(sy){ if(PV.energyMode==="monate"){ sy.style.display=""; PV.energyYear=parseEnergyYear(sy.value); } else { sy.style.display="none"; PV.energyYear=null; } }
@@ -1103,7 +1107,7 @@ PV.loadPower=function(){
       if(pp.length>1) series.push({color:"var(--blue)",dash:true,width:2,pts:pp.slice(a,b+1)});
       leg=[{color:"var(--green)",label:"Ist"},{color:"var(--blue)",dash:true,label:"Prognose von "+hhmm(Date.parse(mp.erstellt))+" Uhr (~"+mp.tagesKwh+" kWh)"}]; }
     lineChart(holder,series,{unit:"kW",legend:series.length>1?leg:null});
-  });
+  }).catch(function(){ if(holder) holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
 };
 /* ---- Energie-Historie: schnelle Endpunkt-Abfragen + localStorage-Cache ----
    Abgeschlossene Monate aendern sich nie -> einmal holen, dann cachen; nur der
@@ -1111,7 +1115,9 @@ PV.loadPower=function(){
    authoritativen Ist-Messwerten (genauer als ThingSpeak, das Luecken hat). */
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,String(v)); }catch(e){} }
-function tsEnd(d){ function p(n){return (n<10?"0":"")+n;} return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" 23:59:59"; }
+// Ende eines lokalen Kalendertags als ThingSpeak-Zeitstempel (UTC). ThingSpeak liest end= ohne timezone-Parameter als UTC:
+// ein lokales "23:59:59" waere sonst 00:59/01:59 Ortszeit des Folgetags - nach dem naechtlichen Zaehler-Reset (0 kWh).
+function tsEnd(d){ return tsStamp(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).getTime()); }
 
 // Authoritative Jahres-Ist-Werte (kWh) aus den Abrechnungen; laufendes Jahr live.
 var PV_HIST_YEARS = {
@@ -1135,7 +1141,8 @@ function pvMonthTotal(year,m0){
   if(PV_HIST_MONTHS[year] && PV_HIST_MONTHS[year][m0]!=null) return Promise.resolve(PV_HIST_MONTHS[year][m0]);
   var now=new Date(), isCur=(year===now.getFullYear() && m0===now.getMonth());
   var key="pv_m_"+year+"_"+m0;
-  if(!isCur){ var c=lsGet(key); if(c!==null) return Promise.resolve(parseFloat(c)); }
+  // Cache nur mit plausiblem Wert (< 1 kWh = frueher falsch nach dem Reset gecacht) - sonst neu holen
+  if(!isCur){ var c=lsGet(key); if(c!==null && parseFloat(c)>=1) return Promise.resolve(parseFloat(c)); }
   var path = isCur ? "/feeds.json?results=1" : "/feeds.json?results=1&end="+encodeURIComponent(tsEnd(new Date(year,m0+1,0)));
   return j(api(PV.CH,path,true)).then(function(d){ var f=(d&&d.feeds)?d.feeds:[]; var v=f.length?num(f[f.length-1].field3):null;
     if(v!==null && !isCur) lsSet(key,v); return v; });
@@ -1145,8 +1152,8 @@ function pvYearTotal(year){
   if(PV_HIST_YEARS[year]!=null) return Promise.resolve(PV_HIST_YEARS[year]);
   var now=new Date(), isCur=(year===now.getFullYear());
   var key="pv_y_"+year;
-  if(!isCur){ var c=lsGet(key); if(c!==null) return Promise.resolve(parseFloat(c)); }
-  var path = isCur ? "/feeds.json?results=1" : "/feeds.json?results=1&end="+encodeURIComponent(year+"-12-31 23:59:59");
+  if(!isCur){ var c=lsGet(key); if(c!==null && parseFloat(c)>=1) return Promise.resolve(parseFloat(c)); }
+  var path = isCur ? "/feeds.json?results=1" : "/feeds.json?results=1&end="+encodeURIComponent(tsEnd(new Date(year,11,31)));
   return j(api(PV.CH,path,true)).then(function(d){ var f=(d&&d.feeds)?d.feeds:[]; var v=f.length?num(f[f.length-1].field4):null;
     if(v!==null && !isCur) lsSet(key,v); return v; });
 }
