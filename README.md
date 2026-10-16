@@ -6,7 +6,7 @@ mit Geräte-Empfehlungen. Rein clientseitig, ohne Build: eine HTML-Datei, die di
 Daten direkt aus ThingSpeak und Open-Meteo lädt.
 
 **➜ [Dashboard öffnen](https://grosjhome.github.io/StefansHomeDashboard/)** ·
-aktualisiert sich alle 60 s · als App installierbar (Android, Windows, iOS)
+aktualisiert sich alle 60 s und sofort beim Zurückkehren in die App (das „vor x s“ in der Kopfzeile und die „Stand vor x s“-Hinweise an Grafiken und Gruppen ticken jede Sekunde mit) · als App installierbar (Android, Windows, iOS)
 
 **Inhalt:** [Ansichten](#ansichten) · [Datenfluss](#datenfluss) ·
 [Projektstruktur](#projektstruktur) · [ThingSpeak-Kanäle](#thingspeak-kanäle) ·

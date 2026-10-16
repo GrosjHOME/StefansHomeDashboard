@@ -270,6 +270,17 @@ function j(u){ return fetch(u,{cache:"no-store"}).then(function(r){return r.json
 function num(x){ return (x===null||x===undefined||x==="")?null:parseFloat(x); }
 function fmt(v,d){ return v===null?"–":v.toLocaleString("de-CH",{minimumFractionDigits:d,maximumFractionDigits:d}); }
 // "Aktualisiert vor 9 s": bei wenig Platz (nur Icons) nur "↻ vor 9 s" (CSS .akt-lang / .akt-kurz)
+// Zeitpunkt der neuesten Messung der aktuellen Ansicht; aktTick() rechnet "vor x s" damit jede Sekunde neu (statt nur beim Laden alle 60 s).
+var AKT_TS=null;
+function aktTick(){
+  if(AKT_TS){ var el=document.getElementById("head-meta")||document.getElementById("updated"); if(el) el.innerHTML=AKT_PRE+relTime(AKT_TS); }
+  // alle "Stand vor x s"-Hinweise (Grafiken, Gruppen, Kacheln): Elemente mit data-ts werden mitgezaehlt
+  [].forEach.call(document.querySelectorAll("[data-ts]"),function(e){ e.textContent=e.getAttribute("data-pre")+(e.getAttribute("data-stand")==="0"?"":"Stand ")+relTime(new Date(+e.getAttribute("data-ts"))); }); }
+// Setzt einen Zeit-Hinweis ("<pre>Stand vor x s"), der von aktTick() live mitgezaehlt wird; ohne ts: "<pre>keine Daten". mitStand=false: nur "vor x s".
+function standZeit(el, ts, pre, mitStand){ if(!el) return; pre=pre||"";
+  if(ts){ el.setAttribute("data-ts",ts.getTime()); el.setAttribute("data-pre",pre); el.setAttribute("data-stand",mitStand===false?"0":"1"); el.textContent=pre+(mitStand===false?"":"Stand ")+relTime(ts); }
+  else { el.removeAttribute("data-ts"); el.textContent=pre+"keine Daten"; } }
+setInterval(aktTick,1000);
 var AKT_PRE='<span class="akt-lang">Aktualisiert </span><span class="akt-kurz">↻ </span>';
 function relTime(dt){ var s=Math.round((Date.now()-dt.getTime())/1000); if(s<90)return "vor "+s+" s"; var m=Math.round(s/60); if(m<90)return "vor "+m+" min"; var h=Math.round(m/60); if(h<48)return "vor "+h+" h"; return "vor "+Math.round(h/24)+" T"; }
 function niceMax(m){ if(m<=0)return 1; var p=Math.pow(10,Math.floor(Math.log10(m))); var c=[1,1.5,2,2.5,3,4,5,6,8,10]; for(var i=0;i<c.length;i++){ if(c[i]*p>=m) return c[i]*p; } return 10*p; }
@@ -724,7 +735,7 @@ PV.loadTrackers=function(){
   function g(id){ return document.getElementById(id); }
   return holeZeitraum(PV.CH, PV.period, true, "status.json").then(function(d){
     var f=(d&&d.feeds)?d.feeds:[]; var last=f.length?f[f.length-1]:null; var holder=g("tracker-holder"); if(!holder)return;
-    if(last&&last.status){ g("status-time").textContent=relTime(new Date(last.created_at)); var p=parseStatus(last.status);
+    if(last&&last.status){ standZeit(g("status-time"), new Date(last.created_at), "", false); var p=parseStatus(last.status);
       function wr(w){ var U=p["U"+w],I=p["I"+w]; if(!U||!I)return '<tr><td class="wr-head">WR '+w+'</td><td colspan="3" style="text-align:left;color:var(--muted)">keine Daten</td></tr>';
         var rows="",sum=0; for(var t=0;t<3;t++){var pw=U[t]*I[t];sum+=pw; rows+='<tr><td>Tracker '+(t+1)+(t===2?' <span style="color:var(--muted)">(1 String)</span>':'')+'</td><td>'+U[t].toFixed(0)+' V</td><td>'+I[t].toFixed(1)+' A</td><td>'+(pw/1000).toFixed(2)+' kW</td></tr>';}
         return '<tr><td class="wr-head" colspan="4">Wechselrichter '+w+'</td></tr>'+rows+'<tr class="sum"><td>Summe WR '+w+'</td><td></td><td></td><td>'+(sum/1000).toFixed(2)+' kW</td></tr>'; }
@@ -741,7 +752,7 @@ PV.loadTrackers=function(){
       {color:cols[0],dash:true,pts:A[3]},{color:cols[1],dash:true,pts:A[4]},{color:cols[2],dash:true,pts:A[5]}].filter(function(s){return s.pts.length>1;}); }
     if(g("chart-strom")) lineChart(g("chart-strom"),mk(SI),{unit:"A"});
     if(g("chart-spannung")) lineChart(g("chart-spannung"),mk(SU),{unit:"V",zero:false});
-    if(g("spannung-tag")&&last&&last.created_at) g("spannung-tag").textContent="Stand "+relTime(new Date(last.created_at));
+    if(g("spannung-tag")&&last&&last.created_at) standZeit(g("spannung-tag"), new Date(last.created_at));
   });
 };
 
@@ -1016,7 +1027,7 @@ PV.load=function(){
     g("e-month").textContent=fmt(L("field3"),0); g("e-lastmonth").textContent=fmt(L("field6"),0);
     g("e-year").textContent=fmt(L("field4"),0); g("dc-mean").textContent=fmt(L("field8"),0);
     var sd=L("field7"); g("sd-status").innerHTML= sd===1?'<span class="dot ok"></span>SD-Karte OK':(sd===0?'<span class="dot bad"></span>SD-Karte Fehler':'<span class="dot na"></span>SD-Karte');
-    if(last.created_at) g("updated").innerHTML=AKT_PRE+relTime(new Date(last.created_at));
+    if(last.created_at){ AKT_TS=new Date(last.created_at); aktTick(); }
   });
   PV.loadPower(); PV.loadEnergy(); PV.loadCumYear(); PV.loadLF();
   var p4=PV.loadTrackers();
@@ -1291,7 +1302,7 @@ function simpleView(cfg){
   function secStand(ch, ts){ (cfg.sections||[]).forEach(function(s){ if(String(s.channel)!==String(ch))return; var el=g("sec_"+s.key); if(!el)return;
     var t=ts?new Date(ts):null, old=!!s.staleMin && (!t || (Date.now()-t.getTime())>s.staleMin*60000);
     var inSeason=!s.season || s.season.indexOf(new Date().getMonth())>=0, warn=old && inSeason;
-    el.textContent=(warn?"⚠ veraltet – ":(old?"Sommerpause – ":""))+(t?"Stand "+relTime(t):"keine Daten");
+    standZeit(el, t, warn?"⚠ veraltet – ":(old?"Sommerpause – ":""));
     el.className="tag"+(warn?" warn":""); }); }
 
   // KPIs immer aktuell (letzter bekannter Wert), unabhaengig vom Zeitraum
@@ -1310,7 +1321,7 @@ function simpleView(cfg){
         el.textContent = k.map ? (v===null?"–":k.map(v, k.field2?L(k.field2):null)) : fmt(v,k.dec||0);
 if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
         if(k.color) el.style.color = (v===null) ? "" : k.color(v); });
-      if(g("head-meta")&&last.created_at) g("head-meta").innerHTML=AKT_PRE+relTime(new Date(last.created_at));
+      if(g("head-meta")&&last.created_at){ AKT_TS=new Date(last.created_at); aktTick(); }
       secStand(cfg.channel, last.created_at);
       // Ampel-Faerbung: KPI-Wert nach aktueller PV-Leistung gegenueber der Schwelle
       // (rot = keine PV-Leistung, orange bis zur Schwelle, gruen ab Schwelle)
@@ -1335,7 +1346,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
           if(o.k.staleMin){ var card=g2.closest(".kpi"), w=card.querySelector(".stale");
             if(!w){ w=document.createElement("div"); w.className="stale"; card.appendChild(w); }
             var lastT=f.length?new Date(f[f.length-1].created_at):null, old=!lastT||(Date.now()-lastT.getTime())>o.k.staleMin*60000;
-            w.textContent = old ? "⚠ veraltet – "+(lastT?"Stand "+relTime(lastT):"keine Daten") : "";
+            if(old) standZeit(w, lastT, "⚠ veraltet – "); else { w.removeAttribute("data-ts"); w.textContent=""; }
             w.style.display = old ? "" : "none"; } });
         secStand(ch, f.length ? f[f.length-1].created_at : null);
       }).catch(function(){});
@@ -1485,7 +1496,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
           // eigene Beschriftung: auch Hundertstel (0.05) lesbar, ohne Rundung auf eine Stelle
           yTicks=[]; for(var tv=yMin; tv<=yMax+1e-9; tv+=step){ var tr=Math.round(tv*1e6)/1e6; yTicks.push({v:tr, label:String(Math.round(tr*1e3)/1e3)}); }
           series.push({color:"var(--muted)", width:1, noTip:true, pts:[{t:new Date(t0z),v:0},{t:new Date(t1z),v:0}]}); }
-        if(g("ct_"+i)) g("ct_"+i).textContent = lastTs ? "Stand "+relTime(lastTs) : "";
+        if(g("ct_"+i)){ if(lastTs) standZeit(g("ct_"+i), lastTs); else { g("ct_"+i).removeAttribute("data-ts"); g("ct_"+i).textContent=""; } }
         // autoW: Zeichenbreite = Pixelbreite (mind. 1000) - noetig, wenn eine Grafik die volle Breite hat
         lineChart(holder, series, {unit:c.unit, zero:c.zero, padL:c.padL, yMin:yMin, yMax:yMax, yTicks:yTicks, unit2:c.unit2, zero2:c.zero2, yMin2:c.yMin2, yMax2:c.yMax2, y2Fmt:c.y2Fmt, y2Color:c.y2Color, y2Marks:c.y2Marks, padR:c.padR, autoW:true});
       });
@@ -2270,18 +2281,24 @@ PLANNER.load=function(){
 };
 
 var VIEWS={ pv:PV, wallbox:WALLBOX, heizung:HEIZUNG, boiler:BOILER, pumpe:PUMPE, planer:PLANNER };
-var state={timer:null};
+var state={timer:null, view:null, lastLoad:0};
+function laden(){ state.lastLoad=Date.now(); if(state.view) VIEWS[state.view].load(); }   // alle 60 s und beim Zurueckkehren in die App
 function switchView(v){
   if(!VIEWS[v]) v="pv";
   if(state.timer){ clearInterval(state.timer); state.timer=null; }
+  AKT_TS=null; state.view=v;   // Zeitstempel der vorherigen Ansicht nicht mitnehmen
   var tabs=document.querySelectorAll("#tabs a");
   tabs.forEach(function(a){ a.classList.toggle("active", a.getAttribute("data-view")===v); });
   var main=document.getElementById("view");
   VIEWS[v].render(main);
-  VIEWS[v].load();
-  state.timer=setInterval(VIEWS[v].load, 60000);
+  laden();
+  state.timer=setInterval(laden, 60000);
   if(location.hash.slice(1)!==v) location.hash=v;
 }
+// Zurueck in der App (Tab/Bildschirm wieder sichtbar): Daten sofort neu laden, wenn die letzte Aktualisierung laenger her ist als 20 s
+// (im Hintergrund pausiert der Browser den 60-s-Takt).
+document.addEventListener("visibilitychange",function(){ if(document.hidden || Date.now()-state.lastLoad<=20000) return;
+  laden(); if(state.timer){ clearInterval(state.timer); state.timer=setInterval(laden, 60000); } });   // 60-s-Takt ab jetzt neu
 document.getElementById("tabs").addEventListener("click",function(e){ var a=e.target.closest("a[data-view]"); if(!a)return; e.preventDefault(); switchView(a.getAttribute("data-view")); });
 window.addEventListener("hashchange",function(){ switchView(location.hash.slice(1)); });
 switchView(location.hash.slice(1) || "pv");
