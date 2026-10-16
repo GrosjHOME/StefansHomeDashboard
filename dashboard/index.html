@@ -1747,9 +1747,12 @@ function pumpLaufdauerJeStart(ff){ var sec=0, n=0; zaehlerDeltas(ff,"field3","fi
 // Laeufe aus den Minuten-Differenzen: zusammenhaengende Minuten mit Laufzeit (oder Start) bilden EINEN Block.
 // Ein Lauf, der ueber eine Minutengrenze geht, wird sonst in "kurzer Start" + "Rest ohne Start" zerschnitten.
 // Block = {t (erste Meldung), letzt, starts, sec, von, bis (Positionen in dp)}; Abstand zwischen zwei Meldungen max. 1.5 Minuten.
+// Jeder Start (Zaehler Einschaltungen steigt) beginnt einen eigenen Block, auch ohne Leerminute dazwischen.
 function pumpBloecke(dp){ var out=[], cur=null;
   dp.forEach(function(o,i){ var aktiv=o.sec>0 || o.n>0;
-    if(aktiv && cur && o.min<=1.5 && Math.abs(cur.letzt-(o.t-o.min*60000))<1){ cur.starts+=o.n; cur.sec+=o.sec; cur.letzt=o.t; cur.bis=i; }
+    // Ein neuer Start innerhalb eines laufenden Blocks (n > 0 nach einem Start) beginnt einen NEUEN Lauf: Dazwischen stand die
+    // Pumpe kurz. Die Laufsekunden dieser Minute gehoeren zum neuen Lauf (Aufteilung innerhalb der Minute ist nicht bekannt).
+    if(aktiv && cur && o.min<=1.5 && Math.abs(cur.letzt-(o.t-o.min*60000))<1 && !(o.n>0 && cur.starts>0)){ cur.starts+=o.n; cur.sec+=o.sec; cur.letzt=o.t; cur.bis=i; }
     else if(aktiv){ cur={t:o.t, starts:o.n, sec:o.sec, letzt:o.t, von:i, bis:i}; out.push(cur); }   // von/bis: Position in dp
     else cur=null; });
   return out; }
