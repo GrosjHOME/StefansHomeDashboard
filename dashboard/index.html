@@ -1425,8 +1425,8 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
                 bp.push({t:new Date(a-1), v:0}, {t:new Date(a), v:1}, {t:new Date(b.letzt), v:1}, {t:new Date(b.letzt+1), v:0}); });
               return {color:ln.color, width:ln.width, axis:ln.axis, fill:ln.fill, fillFlat:ln.fillFlat, fmt:ln.fmt, step:true, pts:bp};
             }
-            // Punkt am Ende jedes Laufs: Laufsekunden / Starts im Lauf; die Punkte werden direkt verbunden
-            var lp=bloecke.map(function(b){ return {t:new Date(b.letzt), v:b.sec/Math.max(1,b.starts), n:b.starts}; });
+            // Ein Punkt je Lauf (pumpLaeufe), am Ende des Laufs; die Punkte werden direkt verbunden
+            var lp=pumpLaeufe(dl).map(function(l,q){ return {t:new Date(l.ende+q%1000), v:l.sec}; });
             return {color:ln.color, width:ln.width, axis:ln.axis, dec:ln.dec, dots:ln.dots, fmt:ln.fmt, pts:lp};
           }
           if(ln.deltaBar){   // Differenz zweier Zaehler je Meldung: Laufsekunden pro Minute (0-60) + Zahl der Starts
@@ -1747,15 +1747,30 @@ function pumpLaufdauerJeStart(ff){ var sec=0, n=0; zaehlerDeltas(ff,"field3","fi
 // Laeufe aus den Minuten-Differenzen: zusammenhaengende Minuten mit Laufzeit (oder Start) bilden EINEN Block.
 // Ein Lauf, der ueber eine Minutengrenze geht, wird sonst in "kurzer Start" + "Rest ohne Start" zerschnitten.
 // Block = {t (erste Meldung), letzt, starts, sec, von, bis (Positionen in dp)}; Abstand zwischen zwei Meldungen max. 1.5 Minuten.
-// Jeder Start (Zaehler Einschaltungen steigt) beginnt einen eigenen Block, auch ohne Leerminute dazwischen.
+// Block = zusammenhaengende Meldungen mit Laufzeit oder Start (fuer den Pumpenstatus-Streifen und Luecken zwischen Laeufen).
 function pumpBloecke(dp){ var out=[], cur=null;
   dp.forEach(function(o,i){ var aktiv=o.sec>0 || o.n>0;
-    // Ein neuer Start innerhalb eines laufenden Blocks (n > 0 nach einem Start) beginnt einen NEUEN Lauf: Dazwischen stand die
-    // Pumpe kurz. Die Laufsekunden dieser Minute gehoeren zum neuen Lauf (Aufteilung innerhalb der Minute ist nicht bekannt).
-    if(aktiv && cur && o.min<=1.5 && Math.abs(cur.letzt-(o.t-o.min*60000))<1 && !(o.n>0 && cur.starts>0)){ cur.starts+=o.n; cur.sec+=o.sec; cur.letzt=o.t; cur.bis=i; }
+    if(aktiv && cur && o.min<=1.5 && Math.abs(cur.letzt-(o.t-o.min*60000))<1){ cur.starts+=o.n; cur.sec+=o.sec; cur.letzt=o.t; cur.bis=i; }
     else if(aktiv){ cur={t:o.t, starts:o.n, sec:o.sec, letzt:o.t, von:i, bis:i}; out.push(cur); }   // von/bis: Position in dp
     else cur=null; });
   return out; }
+// Einzelne Laeufe aus den Minuten-Differenzen: jeder Start (Zaehler Einschaltungen steigt) beginnt einen neuen Lauf, die Laufsekunden
+// laufen im aktuellen Lauf weiter (ein 20-min-Lauf bleibt ein 20-min-Lauf). Nur in der Minute mit dem Neustart ist unbekannt, wie
+// sich die Sekunden auf das Ende des alten und den Anfang des neuen Laufs verteilen: diese Minute wird GLEICHMAESSIG auf alle
+// beteiligten Laeufe verteilt (der noch laufende alte + die neuen Starts dieser Minute). Mehrere Starts in einer Minute teilen sich
+// die Minute ebenso. Lauf = {t0 (Start), ende, sec, start (false = Lauf ohne gezaehlten Start, z. B. am Anfang des Zeitraums)}.
+function pumpLaeufe(dp){ var runs=[], prevT=null, cr=null;
+  dp.forEach(function(o){ var aktiv=o.sec>0 || o.n>0;
+    if(!aktiv){ cr=null; prevT=null; return; }
+    if(!(prevT!==null && o.min<=1.5 && Math.abs(prevT-(o.t-o.min*60000))<1)) cr=null;   // Luecke = neuer Block
+    if(o.n>0){ var teile=o.n+(cr?1:0), anteil=o.sec/teile;
+      if(cr){ cr.sec+=anteil; cr.ende=o.t; }   // der alte Lauf endet in dieser Minute
+      for(var q=0;q<o.n;q++){ cr={t0:o.t, ende:o.t, sec:anteil, start:true}; runs.push(cr); }
+    } else {
+      if(!cr){ cr={t0:o.t, ende:o.t, sec:0, start:false}; runs.push(cr); }
+      cr.sec+=o.sec; }
+    cr.ende=o.t; prevT=o.t; });
+  return runs; }
 // Kuerzeste Pause (Schaetzung, Sekunden). Der Minutentakt der Meldungen zeigt Pausen nur grob; die Zaehler erlauben aber
 // eine OBERE Grenze, wenn die Pumpe nach einer vollen Laufminute wieder startet oder in einer Minute mehrmals startet:
 //  - Start in einer Minute, die vorherige war voll (>= 59 s Laufzeit): die Pause liegt in dieser Minute -> hoechstens
@@ -1774,8 +1789,8 @@ function pumpKuerzestePause(ff){ var dp=zaehlerDeltas(ff,"field3","field2",1), b
 // Ein Lauf gilt als Kurzlauf, wenn die Pumpe je Start weniger als PUMPE_KURZ_S Sekunden lief.
 var PUMPE_KURZ_S=30;
 // Kurzlaeufe: Anteil der Starts, bei denen die Pumpe insgesamt unter PUMPE_KURZ_S lief (Laufzeit je Start im Block)
-function pumpKurzlaeufe(ff){ var kurz=0, n=0; pumpBloecke(zaehlerDeltas(ff,"field3","field2",1)).forEach(function(b){
-    if(b.starts>0){ n+=b.starts; if(b.sec/b.starts<PUMPE_KURZ_S) kurz+=b.starts; } });
+function pumpKurzlaeufe(ff){ var kurz=0, n=0; pumpLaeufe(zaehlerDeltas(ff,"field3","field2",1)).forEach(function(l){
+    if(l.start){ n++; if(l.sec<PUMPE_KURZ_S) kurz++; } });
   return n>0 ? kurz/n*100 : null; }
 // Tagesuebersicht der Pumpe: je lokalem Kalendertag Starts, Laufzeit, Ø Laufdauer je Start, max. Starts pro Stunde,
 // Anteil Kurzlaeufe (< PUMPE_KURZ_S je Start) und Nachtstarts (0-5 Uhr). Neueste Tage zuerst.
@@ -1786,7 +1801,7 @@ function pumpTage(ff){ var tage={};
   dp.forEach(function(o){ var d=new Date(o.t), T=tagVon(o.t);
     T.starts+=o.n; T.sec+=o.sec; T.min+=o.min; if(d.getHours()<5) T.nacht+=o.n;
     T.std[d.getHours()]=(T.std[d.getHours()]||0)+o.n; });
-  pumpBloecke(dp).forEach(function(b){ if(b.starts>0 && b.sec/b.starts<PUMPE_KURZ_S) tagVon(b.t).kurz+=b.starts; });   // Kurzlauf zaehlt am Tag des Blockbeginns
+  pumpLaeufe(dp).forEach(function(l){ if(l.start && l.sec<PUMPE_KURZ_S) tagVon(l.t0).kurz++; });   // Kurzlauf zaehlt am Tag des Starts
   return Object.keys(tage).sort().reverse().map(function(k){ var T=tage[k], mx=0; Object.keys(T.std).forEach(function(h){ if(T.std[h]>mx) mx=T.std[h]; });
     return {tag:k, starts:T.starts, sec:T.sec, avg:T.starts>0?T.sec/T.starts:null, maxH:mx, kurzPct:T.starts>0?T.kurz/T.starts*100:null, nacht:T.nacht, abd:Math.min(1,T.min/1440)}; }); }
 // kompakte Dauer fuer die Tabelle: 45 s | 57 min | 1:27 h
@@ -1851,17 +1866,17 @@ var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
       note:"Aufsummierte Laufzeit seit Mitternacht (lokale Zeit), jede Nacht wieder bei 0. Jeder Anstieg ist ein Lauf der Pumpe.",
       lines:[{field:"field3",label:"Laufzeit heute (min)",color:"var(--green)",scale:1/60,dec:1,fill:true}]},
     {title:"Laufzeit je Lauf", unit:"s", yMin:0, threshold:PUMPE_KURZ_S,
-      note:"Ein Punkt je Lauf der Pumpe: so lange lief sie am Stück (bei mehreren Starts in einem Lauf: Durchschnitt je Start). Die Punkte sind direkt verbunden; wann die Pumpe lief, zeigt die Grafik darunter. Die rot gestrichelte Linie bei 30 s ist die Grenze für Kurzläufe: Punkte darunter zählen als Kurzlauf.",
+      note:"Ein Punkt je Lauf der Pumpe: so lange lief sie am Stück (Beim Neustart wird nur die Minute, in der er fällt, gleichmässig auf den alten und den neuen Lauf verteilt – der Rest eines Laufs zählt normal weiter.) Die Punkte sind direkt verbunden; wann die Pumpe lief, zeigt die Grafik darunter. Die rot gestrichelte Linie bei 30 s ist die Grenze für Kurzläufe: Punkte darunter zählen als Kurzlauf.",
       lines:[{field:"field3",label:"Laufzeit je Lauf",color:"var(--green)",dec:0,width:1.5,dots:true,
         laufJeLauf:{field:"field3",starts:"field2"},
-        fmt:function(v,p){ return Math.round(v)+" s Laufzeit"+(p&&p.n>1?" ("+p.n+" Starts)":""); }}]},
+        fmt:function(v,p){ return Math.round(v)+" s Laufzeit"+""; }}]},
     {title:"Laufzeit je Lauf mit Pumpenstatus", unit:"", yMin:0, yMax:1, yTicks:[{v:0,label:"Steht"},{v:1,label:"Läuft"}], unit2:"s", yMin2:0, y2Color:"var(--green)", threshold:PUMPE_KURZ_S, thresholdRight:true,
       note:"Wie die Grafik darüber, zusätzlich mit dem Pumpenstatus: Der blasse blaue Streifen zeigt, wann die Pumpe lief (aus den Zählern berechnet, deshalb auch mit kurzen Läufen). Die grüne Linie (rechte Achse, Sekunden) sitzt je Lauf über seinem Streifen; die rot gestrichelte Linie bei 30 s ist die Kurzlauf-Grenze.",
       lines:[{field:"field3",label:"Pumpe läuft",color:"var(--blue)",fill:true,fillFlat:0.3,width:1,
         laeufeBand:{field:"field3",starts:"field2"}, fmt:function(v){ return v>0 ? "Pumpe läuft" : "Pumpe steht"; }},
         {field:"field3",label:"Laufzeit je Lauf (s)",color:"var(--green)",axis:"right",dec:0,width:1.5,dots:true,
         laufJeLauf:{field:"field3",starts:"field2"},
-        fmt:function(v,p){ return Math.round(v)+" s Laufzeit"+(p&&p.n>1?" ("+p.n+" Starts)":""); }}]},
+        fmt:function(v,p){ return Math.round(v)+" s Laufzeit"+""; }}]},
     {title:"Einschaltungen heute", unit:"×", yMin:0,
       note:"Wie oft die Pumpe seit Mitternacht eingeschaltet hat. Sehr viele kurze Einschaltungen belasten Pumpe und Druckbehälter (Verschleiss).",
       lines:[{field:"field2",label:"Einschaltungen heute",color:"var(--amber)",dec:0}]},
