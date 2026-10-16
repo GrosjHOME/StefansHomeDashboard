@@ -370,7 +370,7 @@ function lineChart(holder, series, opts){
   // (dann waere sonst keine Linie sichtbar, z.B. erster Tag der Verlust-Diagnose).
   series.forEach(function(s){ if(s.bandFrac!=null||s.segColor)return; var YS=YF(s);
     var vis=s.pts.filter(function(p){return p.v!=null;});
-    if(opts.dots || vis.length===1){ vis.forEach(function(p){ paths+='<circle cx="'+X(p.t.getTime())+'" cy="'+YS(p.v)+'" r="'+(vis.length===1?5:3)+'" fill="'+s.color+'"/>'; }); } });
+    if(opts.dots || s.dots || vis.length===1){ vis.forEach(function(p){ paths+='<circle cx="'+X(p.t.getTime())+'" cy="'+YS(p.v)+'" r="'+(vis.length===1?5:3)+'" fill="'+s.color+'"/>'; }); } });
   // Flaeche nur fuer Linien mit fill:true (aktive Leistung); bis zur Achsen-
   // Grundlinie gefuellt, Luecken (null) unterbrechen die Flaeche.
   var fill="";
@@ -1418,16 +1418,16 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
             cp.forEach(function(p,i){ var a=cp[i-1], b=cp[i+1]; if(a && b && a.v===p.v && b.v===p.v) return; pts.push(p); });
             return {color:ln.color, dash:ln.dash, width:ln.width, axis:ln.axis, dec:ln.dec, pts:pts};
           }
-          if(ln.laufJeLauf){   // ein Punkt je Lauf (Dauer der Pumpe je Start), dazwischen 0 - Laeufe als Block ueber Minutengrenzen
-            // Lauf = zusammenhaengende Minuten mit Laufzeit; Punkt am Ende des Laufs (Summe Laufsekunden / Starts im Block).
-            // Minuten ohne Lauf = 0; Folgen von Nullen werden auf Anfang und Ende reduziert (Linie bleibt scharf).
-            var dl=zaehlerDeltas(ff, ln.laufJeLauf.field, ln.laufJeLauf.starts, 1), ljp=[], blockAt=[];
-            pumpBloecke(dl).forEach(function(b){ for(var bi=b.von; bi<=b.bis; bi++) blockAt[bi]=b; });   // Position in dl -> Lauf (Meldezeiten haben Sekundenversatz)
-            dl.forEach(function(o,oi){ var b=blockAt[oi]||null;
-              if(!b) ljp.push({t:new Date(o.t), v:0});
-              else if(b.bis===oi) ljp.push({t:new Date(o.t), v:b.sec/Math.max(1,b.starts), n:b.starts}); });
-            var kp=[]; ljp.forEach(function(q,k){ var a=ljp[k-1], c=ljp[k+1]; if(a && c && a.v===0 && q.v===0 && c.v===0) return; kp.push(q); });
-            return {color:ln.color, width:ln.width, axis:ln.axis, dec:ln.dec, fill:ln.fill, fmt:ln.fmt, pts:kp};
+          if(ln.laufJeLauf || ln.laeufeBand){   // Laeufe der Pumpe: zusammenhaengende Minuten mit Laufzeit (oder Start) = ein Lauf
+            var lj=ln.laufJeLauf||ln.laeufeBand, dl=zaehlerDeltas(ff, lj.field, lj.starts, 1), bloecke=pumpBloecke(dl);
+            if(ln.laeufeBand){   // Streifen: 1 waehrend eines Laufs, sonst 0 (Lauf beginnt in der Minute vor der ersten Meldung)
+              var bp=[]; bloecke.forEach(function(b){ var a=b.t-60000;
+                bp.push({t:new Date(a-1), v:0}, {t:new Date(a), v:1}, {t:new Date(b.letzt), v:1}, {t:new Date(b.letzt+1), v:0}); });
+              return {color:ln.color, width:ln.width, axis:ln.axis, fill:ln.fill, fillFlat:ln.fillFlat, fmt:ln.fmt, step:true, pts:bp};
+            }
+            // Punkt am Ende jedes Laufs: Laufsekunden / Starts im Lauf; die Punkte werden direkt verbunden
+            var lp=bloecke.map(function(b){ return {t:new Date(b.letzt), v:b.sec/Math.max(1,b.starts), n:b.starts}; });
+            return {color:ln.color, width:ln.width, axis:ln.axis, dec:ln.dec, dots:ln.dots, fmt:ln.fmt, pts:lp};
           }
           if(ln.deltaBar){   // Differenz zweier Zaehler je Meldung: Laufsekunden pro Minute (0-60) + Zahl der Starts
             // Zaehler sind sekundengenau, daher geht auch ein Lauf zwischen zwei Meldungen nicht verloren.
@@ -1473,7 +1473,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
             series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
             series.push({color:"var(--muted)",dash:true,pts:[{t:t0,v:mx},{t:t1,v:mx}]}); } }
         if(c.threshold!=null && f.length){ var t0=new Date(f[0].created_at), t1=new Date(f[f.length-1].created_at);
-          series.push({color:"var(--red)",dash:true,pts:[{t:t0,v:c.threshold},{t:t1,v:c.threshold}]}); }
+          series.push({color:"var(--red)",dash:true,axis:c.thresholdRight?"right":undefined,pts:[{t:t0,v:c.threshold},{t:t1,v:c.threshold}]}); }
         // zeroLine: Nulllinie + Achse mit runden Schritten, die 0 enthaelt (fuer Steigungen/Abweichungen)
         var yTicks=c.yTicks, yMin=c.yMin, yMax=c.yMax;
         if(c.zeroLine && series.length){ var lo=0, hi=0, t0z=Infinity, t1z=-Infinity;
@@ -1852,10 +1852,17 @@ var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
       note:"Aufsummierte Laufzeit seit Mitternacht (lokale Zeit), jede Nacht wieder bei 0. Jeder Anstieg ist ein Lauf der Pumpe.",
       lines:[{field:"field3",label:"Laufzeit heute (min)",color:"var(--green)",scale:1/60,dec:1,fill:true}]},
     {title:"Laufzeit je Lauf", unit:"s", yMin:0, threshold:PUMPE_KURZ_S,
-      note:"Ein Punkt je Lauf der Pumpe: so lange lief sie am Stück (bei mehreren Starts in einem Lauf: Durchschnitt je Start). Läuft sie nicht, steht die Linie bei 0. Die rot gestrichelte Linie bei 30 s ist die Grenze für Kurzläufe: Punkte darunter zählen als Kurzlauf.",
-      lines:[{field:"field3",label:"Laufzeit je Lauf",color:"var(--green)",dec:0,width:1.5,
+      note:"Ein Punkt je Lauf der Pumpe: so lange lief sie am Stück (bei mehreren Starts in einem Lauf: Durchschnitt je Start). Die Punkte sind direkt verbunden; wann die Pumpe lief, zeigt die Grafik darunter. Die rot gestrichelte Linie bei 30 s ist die Grenze für Kurzläufe: Punkte darunter zählen als Kurzlauf.",
+      lines:[{field:"field3",label:"Laufzeit je Lauf",color:"var(--green)",dec:0,width:1.5,dots:true,
         laufJeLauf:{field:"field3",starts:"field2"},
-        fmt:function(v,p){ return v<=0 ? "Pumpe steht" : Math.round(v)+" s Laufzeit"+(p&&p.n>1?" ("+p.n+" Starts)":""); }}]},
+        fmt:function(v,p){ return Math.round(v)+" s Laufzeit"+(p&&p.n>1?" ("+p.n+" Starts)":""); }}]},
+    {title:"Laufzeit je Lauf mit Pumpenstatus", unit:"", yMin:0, yMax:1, yTicks:[{v:0,label:"Steht"},{v:1,label:"Läuft"}], unit2:"s", yMin2:0, y2Color:"var(--green)", threshold:PUMPE_KURZ_S, thresholdRight:true,
+      note:"Wie die Grafik darüber, zusätzlich mit dem Pumpenstatus: Der blasse blaue Streifen zeigt, wann die Pumpe lief (aus den Zählern berechnet, deshalb auch mit kurzen Läufen). Die grüne Linie (rechte Achse, Sekunden) sitzt je Lauf über seinem Streifen; die rot gestrichelte Linie bei 30 s ist die Kurzlauf-Grenze.",
+      lines:[{field:"field3",label:"Pumpe läuft",color:"var(--blue)",fill:true,fillFlat:0.3,width:1,
+        laeufeBand:{field:"field3",starts:"field2"}, fmt:function(v){ return v>0 ? "Pumpe läuft" : "Pumpe steht"; }},
+        {field:"field3",label:"Laufzeit je Lauf (s)",color:"var(--green)",axis:"right",dec:0,width:1.5,dots:true,
+        laufJeLauf:{field:"field3",starts:"field2"},
+        fmt:function(v,p){ return Math.round(v)+" s Laufzeit"+(p&&p.n>1?" ("+p.n+" Starts)":""); }}]},
     {title:"Einschaltungen heute", unit:"×", yMin:0,
       note:"Wie oft die Pumpe seit Mitternacht eingeschaltet hat. Sehr viele kurze Einschaltungen belasten Pumpe und Druckbehälter (Verschleiss).",
       lines:[{field:"field2",label:"Einschaltungen heute",color:"var(--amber)",dec:0}]},
