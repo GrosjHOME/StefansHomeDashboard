@@ -1742,12 +1742,29 @@ function pumpBloecke(dp){ var out=[], cur=null;
     else if(aktiv){ cur={t:o.t, starts:o.n, sec:o.sec, letzt:o.t}; out.push(cur); }
     else cur=null; });
   return out; }
-// Kurzlaeufe: Anteil der Starts, bei denen die Pumpe insgesamt unter 10 s lief (Laufzeit je Start im Block)
+// Kuerzeste Pause (Schaetzung, Sekunden). Der Minutentakt der Meldungen zeigt Pausen nur grob; die Zaehler erlauben aber
+// eine OBERE Grenze, wenn die Pumpe nach einer vollen Laufminute wieder startet oder in einer Minute mehrmals startet:
+//  - Start in einer Minute, die vorherige war voll (>= 59 s Laufzeit): die Pause liegt in dieser Minute -> hoechstens
+//    60 s minus Laufzeit dieser Minute.
+//  - n Starts in einer Minute: n-1 Pausen, zusammen hoechstens 60 s minus Laufzeit -> die kuerzeste ist hoechstens der Durchschnitt.
+// Gibt es so einen Fall nicht, gilt ersatzweise der kleinste Abstand zwischen zwei Laeufen (volle Leerminuten + 30 s Mitte).
+function pumpKuerzestePause(ff){ var dp=zaehlerDeltas(ff,"field3","field2",1), best=null;
+  function nimm(v){ v=Math.max(1,Math.round(v)); if(best===null||v<best) best=v; }
+  dp.forEach(function(o,i){ var frei=60*o.min-o.sec, vor=i>0?dp[i-1]:null, anschl=vor && Math.abs(vor.t-(o.t-o.min*60000))<1;
+    if(o.n>=2) nimm(frei/(o.n-1));
+    if(o.n>=1 && anschl && vor.sec>=59*vor.min) nimm(frei); });
+  if(best===null){ var luecke=null; pumpBloecke(dp).forEach(function(b,i,a){ if(i===0)return; var gap=(b.t-a[i-1].letzt)/60000-1;   // volle Leerminuten dazwischen
+      if(gap>=1 && (luecke===null||gap<luecke)) luecke=gap; });
+    if(luecke!==null) best=Math.round(luecke*60+30); }
+  return best; }
+// Ein Lauf gilt als Kurzlauf, wenn die Pumpe je Start weniger als PUMPE_KURZ_S Sekunden lief.
+var PUMPE_KURZ_S=30;
+// Kurzlaeufe: Anteil der Starts, bei denen die Pumpe insgesamt unter PUMPE_KURZ_S lief (Laufzeit je Start im Block)
 function pumpKurzlaeufe(ff){ var kurz=0, n=0; pumpBloecke(zaehlerDeltas(ff,"field3","field2",1)).forEach(function(b){
-    if(b.starts>0){ n+=b.starts; if(b.sec/b.starts<10) kurz+=b.starts; } });
+    if(b.starts>0){ n+=b.starts; if(b.sec/b.starts<PUMPE_KURZ_S) kurz+=b.starts; } });
   return n>0 ? kurz/n*100 : null; }
 // Tagesuebersicht der Pumpe: je lokalem Kalendertag Starts, Laufzeit, Ø Laufdauer je Start, max. Starts pro Stunde,
-// Anteil Kurzlaeufe (< 10 s je Start, Naeherung im Minutenraster) und Nachtstarts (0-5 Uhr). Neueste Tage zuerst.
+// Anteil Kurzlaeufe (< PUMPE_KURZ_S je Start) und Nachtstarts (0-5 Uhr). Neueste Tage zuerst.
 // "abd" = Anteil des Tages, fuer den Messmeldungen vorliegen (Logger/Netz aus -> weniger als 100 %).
 function pumpTage(ff){ var tage={};
   var dp=zaehlerDeltas(ff,"field3","field2",1);
@@ -1755,7 +1772,7 @@ function pumpTage(ff){ var tage={};
   dp.forEach(function(o){ var d=new Date(o.t), T=tagVon(o.t);
     T.starts+=o.n; T.sec+=o.sec; T.min+=o.min; if(d.getHours()<5) T.nacht+=o.n;
     T.std[d.getHours()]=(T.std[d.getHours()]||0)+o.n; });
-  pumpBloecke(dp).forEach(function(b){ if(b.starts>0 && b.sec/b.starts<10) tagVon(b.t).kurz+=b.starts; });   // Kurzlauf zaehlt am Tag des Blockbeginns
+  pumpBloecke(dp).forEach(function(b){ if(b.starts>0 && b.sec/b.starts<PUMPE_KURZ_S) tagVon(b.t).kurz+=b.starts; });   // Kurzlauf zaehlt am Tag des Blockbeginns
   return Object.keys(tage).sort().reverse().map(function(k){ var T=tage[k], mx=0; Object.keys(T.std).forEach(function(h){ if(T.std[h]>mx) mx=T.std[h]; });
     return {tag:k, starts:T.starts, sec:T.sec, avg:T.starts>0?T.sec/T.starts:null, maxH:mx, kurzPct:T.starts>0?T.kurz/T.starts*100:null, nacht:T.nacht, abd:Math.min(1,T.min/1440)}; }); }
 // kompakte Dauer fuer die Tabelle: 45 s | 57 min | 1:27 h
@@ -1792,7 +1809,7 @@ var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
     if(st) return {html:pumpeSvg("#d64545"), title:"Störung"};
     return lauft ? {html:pumpeSvg("#2e9e5b"), title:"Pumpe läuft"} : {html:pumpeSvg("#2b83c7"), title:"Pumpe steht"}; },
   tabelle:{ title:"Tagesübersicht", tage:14, rechne:function(ff){ return pumpTageHtml(pumpTage(ff)); },
-    note:"Je Kalendertag aus den sekundengenauen Zählern: <b>Starts</b>, <b>Laufzeit</b>, <b>Ø/Start</b> (Laufzeit je Start), <b>Max/h</b> (die meisten Starts in einer Stunde), <b>Kurz</b> (Anteil der Starts, bei denen die Pumpe insgesamt weniger als 10 s lief; ein Lauf über eine Minutengrenze zählt als ein Lauf) und <b>Nacht</b> (Starts zwischen 0 und 5 Uhr). Orange/rot: Kurz ab 30 % bzw. 50 %, Nacht ab 10 bzw. 20 Starts – ein Hinweis auf zu wenig Vordruck im Membranbehälter bzw. eine kleine Leckage. Ausgegraut: für den Tag fehlen Messwerte. Unabhängig vom gewählten Zeitraum." },
+    note:"Je Kalendertag aus den sekundengenauen Zählern: <b>Starts</b>, <b>Laufzeit</b>, <b>Ø/Start</b> (Laufzeit je Start), <b>Max/h</b> (die meisten Starts in einer Stunde), <b>Kurz</b> (Anteil der Starts, bei denen die Pumpe insgesamt weniger als 30 s lief; ein Lauf über eine Minutengrenze zählt als ein Lauf) und <b>Nacht</b> (Starts zwischen 0 und 5 Uhr). Orange/rot: Kurz ab 30 % bzw. 50 %, Nacht ab 10 bzw. 20 Starts – ein Hinweis auf zu wenig Vordruck im Membranbehälter bzw. eine kleine Leckage. Ausgegraut: für den Tag fehlen Messwerte. Unabhängig vom gewählten Zeitraum. <b>Kürzeste Pause</b> (Kachel oben, folgt dem Zeitraum) ist eine grobe Schätzung: Der Minutentakt zeigt Pausen nur ungenau, deshalb gilt meist eine obere Grenze (die Pause war höchstens so lang), abgeleitet aus Minuten, in denen die Pumpe nach vollem Lauf wieder startete oder mehrmals startete. Sekundengenau kann das nur der Logger am Pumpwerk messen." },
   kpis:[
     {field:"field1",label:"Pumpe",map:function(v){ return v>=0.5 ? "Läuft" : "Steht"; },
       color:function(v){ return v>=0.5 ? "var(--green)" : ""; }},
@@ -1807,7 +1824,8 @@ var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
     // Zeitraum-Kennzahlen (folgen 3 h / Heute / 24 h / 7 Tage): Schalthaeufigkeit der Pumpe
     {label:"Max. Starts pro Stunde",unit:"×/h",dec:0,ausFeeds:pumpStartsProStunde},
     {label:"Ø Laufdauer je Start",unit:"s",dec:0,ausFeeds:pumpLaufdauerJeStart},
-    {label:"Kurzläufe unter 10 s",unit:"%",dec:0,ausFeeds:pumpKurzlaeufe}
+    {label:"Kurzläufe unter "+PUMPE_KURZ_S+" s",unit:"%",dec:0,ausFeeds:pumpKurzlaeufe},
+    {label:"Kürzeste Pause (Schätzung)",unit:"s",dec:0,ausFeeds:pumpKuerzestePause}
   ],
   charts:[
     {title:"Laufsekunden pro Minute", unit:"s", yMin:0, yMax:60, yTicks:[{v:0},{v:15},{v:30},{v:45},{v:60}],
