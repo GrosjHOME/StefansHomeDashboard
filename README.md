@@ -6,7 +6,7 @@ mit Geräte-Empfehlungen. Rein clientseitig, ohne Build: eine HTML-Datei, die di
 Daten direkt aus ThingSpeak und Open-Meteo lädt.
 
 **➜ [Dashboard öffnen](https://grosjhome.github.io/StefansHomeDashboard/)** ·
-aktualisiert sich alle 60 s und sofort beim Zurückkehren in die App (das „Aktualisiert vor x s“ in der Kopfzeile zählt die Zeit seit dem letzten Abruf und springt bei jedem Abruf auf 0, die „Stand vor x s“-Hinweise an Grafiken und Gruppen zählen das Alter der Messung; beide ticken jede Sekunde) · als App installierbar (Android, Windows, iOS)
+aktualisiert sich im Takt des jeweiligen Loggers (die Seite lernt je Gerät aus den letzten Meldungen, wann die nächste Messung kommt, und ruft kurz danach ab – meist alle 60 s, bei der PV-Anlage nachts alle 3 Minuten; die Kopfzeile zählt rückwärts bis dahin, ist der Takt unbekannt oder bleibt die erwartete Messung aus, wird alle 60 s geladen) und sofort beim Zurückkehren in die App (die „Stand vor x s“-Hinweise an Grafiken und Gruppen zählen das Alter der Messung und ticken jede Sekunde) · als App installierbar (Android, Windows, iOS)
 
 **Inhalt:** [Ansichten](#ansichten) · [Datenfluss](#datenfluss) ·
 [Projektstruktur](#projektstruktur) · [ThingSpeak-Kanäle](#thingspeak-kanäle) ·

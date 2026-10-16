@@ -270,11 +270,44 @@ function j(u){ return fetch(u,{cache:"no-store"}).then(function(r){return r.json
 function num(x){ return (x===null||x===undefined||x==="")?null:parseFloat(x); }
 function fmt(v,d){ return v===null?"–":v.toLocaleString("de-CH",{minimumFractionDigits:d,maximumFractionDigits:d}); }
 // "Aktualisiert vor 9 s": bei wenig Platz (nur Icons) nur "↻ vor 9 s" (CSS .akt-lang / .akt-kurz)
-// Zeitpunkt des letzten erfolgreichen Abrufs der aktuellen Ansicht (Kopfzeile: "Aktualisiert vor x s", springt bei jedem Abruf auf 0);
-// aktTick() rechnet das jede Sekunde neu. Das Alter der Messung selbst steht in den "Stand vor x s"-Hinweisen (data-ts).
-var AKT_TS=null;
+// Aktualisierung im Takt des Loggers: Die Logger senden etwa im gleichen Abstand (meist 60 s). Die Seite merkt sich die neueste Messung,
+// schaetzt daraus (Medianabstand der letzten Meldungen) den Zeitpunkt der naechsten und ruft kurz danach (AKT_MARGE) ab, statt
+// blind alle 60 s ab Seitenstart. Die Kopfzeile zaehlt rueckwaerts bis dahin. Kennt die Seite den Takt nicht (zu wenig Meldungen,
+// Takt ausserhalb 30-200 s) oder bleibt die erwartete Messung aus, wird wie frueher alle 60 s geladen; sind trotz erwarteter
+// Messung noch keine neuen Daten da, folgen zuerst schnelle Wiederholungen (nach 10 s, dann 20 s).
+var AKT_NEXT=null, AKT_MARGE=5000;
+function aktPlan(feeds){   // erwarteter Zeitpunkt (ms) der naechsten Messung oder null
+  var ts=(feeds||[]).map(function(x){ return Date.parse(x.created_at); }).filter(function(t){ return !isNaN(t); }).slice(-6);
+  if(ts.length<3) return null;
+  var d=[]; for(var i=1;i<ts.length;i++) d.push((ts[i]-ts[i-1])/1000); d.sort(function(a,b){ return a-b; });
+  var med=d[Math.floor(d.length/2)];
+  return (med>=30 && med<=200) ? ts[ts.length-1]+med*1000 : null; }
+// Nach jedem Abruf mit den Feeds der Hauptquelle der Ansicht aufrufen
+function aktNeu(feeds){ var ts=(feeds||[]).map(function(x){ return Date.parse(x.created_at); }).filter(function(t){ return !isNaN(t); }), neu=ts.length?Math.max.apply(null,ts):0;
+  if(neu===state.lastData){ if(AKT_NEXT && Date.now()>=AKT_NEXT+AKT_MARGE) state.misses++; }   // nur zaehlen, wenn die erwartete Messung faellig war
+  else {
+    // Kam die erwartete Messung erst nach einem Fehlversuch an, ist der Logger langsamer als die Reserve: Reserve vergroessern (max. 40 s)
+    if(state.misses>0 && neu>0) AKT_MARGE=Math.min(40000, Math.max(AKT_MARGE, state.vorLoad-neu+2000));
+    state.misses=0; state.lastData=neu; }
+  AKT_NEXT=aktPlan(feeds); state.geladen=true; aktTick(); }
+function aktNaechster(){   // Zeitpunkt (ms) des naechsten Abrufs
+  var fallback=state.lastLoad+60000;   // Takt unbekannt (oder erwartete Messung bleibt aus): alle 60 s
+  if(AKT_NEXT && state.misses<3){
+    var plan=AKT_NEXT+AKT_MARGE;
+    if(plan<=state.lastLoad) plan=state.lastLoad+(state.misses<=1?10000:20000);   // Messung war faellig, aber noch nicht da: schnell wiederholen
+    return Math.min(plan, state.lastLoad+240000); }   // Takt bekannt: erst zur erwarteten Messung laden (Obergrenze nur zur Sicherheit)
+  return fallback; }
+// Kopfzeile: breit "Nächste Aktualisierung in 42 s", bei wenig Platz (nur Icons) "↻ in 42 s" (CSS .akt-lang / .akt-kurz)
+var AKT_PRE='<span class="akt-lang">Nächste Aktualisierung in </span><span class="akt-kurz">↻ in </span>', AKT_WARTE='<span class="akt-lang">Aktualisiere …</span><span class="akt-kurz">↻ …</span>';
+function aktAnzeigeZiel(){   // Zeitpunkt (ms), bis zu dem die Kopfzeile rueckwaerts zaehlt: erwartete naechste Messung (+ Reserve), sonst naechster Abruf
+  var nx=aktNaechster();
+  if(AKT_NEXT && state.misses<3){ var plan=AKT_NEXT+AKT_MARGE; if(plan>Date.now()) return plan; }
+  return nx; }
 function aktTick(){
-  if(AKT_TS){ var el=document.getElementById("head-meta")||document.getElementById("updated"); if(el) el.innerHTML=AKT_PRE+relTime(AKT_TS); }
+  if(typeof state!=="undefined" && state.view){
+    var nx=aktNaechster(), rest=Math.ceil((aktAnzeigeZiel()-Date.now())/1000);
+    if(state.geladen){ var el=document.getElementById("head-meta")||document.getElementById("updated"); if(el) el.innerHTML = rest>0 ? AKT_PRE+rest+" s" : AKT_WARTE; }
+    if(!document.hidden && Date.now()>=nx) laden(); }
   // alle "Stand vor x s"-Hinweise (Grafiken, Gruppen, Kacheln): Elemente mit data-ts werden mitgezaehlt
   [].forEach.call(document.querySelectorAll("[data-ts]"),function(e){ e.textContent=e.getAttribute("data-pre")+(e.getAttribute("data-stand")==="0"?"":"Stand ")+relTime(new Date(+e.getAttribute("data-ts"))); }); }
 // Setzt einen Zeit-Hinweis ("<pre>Stand vor x s"), der von aktTick() live mitgezaehlt wird; ohne ts: "<pre>keine Daten". mitStand=false: nur "vor x s".
@@ -282,7 +315,6 @@ function standZeit(el, ts, pre, mitStand){ if(!el) return; pre=pre||"";
   if(ts){ el.setAttribute("data-ts",ts.getTime()); el.setAttribute("data-pre",pre); el.setAttribute("data-stand",mitStand===false?"0":"1"); el.textContent=pre+(mitStand===false?"":"Stand ")+relTime(ts); }
   else { el.removeAttribute("data-ts"); el.textContent=pre+"keine Daten"; } }
 setInterval(aktTick,1000);
-var AKT_PRE='<span class="akt-lang">Aktualisiert </span><span class="akt-kurz">↻ </span>';
 function relTime(dt){ var s=Math.round((Date.now()-dt.getTime())/1000); if(s<90)return "vor "+s+" s"; var m=Math.round(s/60); if(m<90)return "vor "+m+" min"; var h=Math.round(m/60); if(h<48)return "vor "+h+" h"; return "vor "+Math.round(h/24)+" T"; }
 function niceMax(m){ if(m<=0)return 1; var p=Math.pow(10,Math.floor(Math.log10(m))); var c=[1,1.5,2,2.5,3,4,5,6,8,10]; for(var i=0;i<c.length;i++){ if(c[i]*p>=m) return c[i]*p; } return 10*p; }
 function ylab(v){ return (Math.abs(v-Math.round(v))<1e-9)?String(Math.round(v)):v.toFixed(1); }
@@ -1028,7 +1060,7 @@ PV.load=function(){
     g("e-month").textContent=fmt(L("field3"),0); g("e-lastmonth").textContent=fmt(L("field6"),0);
     g("e-year").textContent=fmt(L("field4"),0); g("dc-mean").textContent=fmt(L("field8"),0);
     var sd=L("field7"); g("sd-status").innerHTML= sd===1?'<span class="dot ok"></span>SD-Karte OK':(sd===0?'<span class="dot bad"></span>SD-Karte Fehler':'<span class="dot na"></span>SD-Karte');
-    if(last.created_at){ AKT_TS=new Date(); aktTick(); }
+    if(last.created_at) aktNeu(f);
   });
   PV.loadPower(); PV.loadEnergy(); PV.loadCumYear(); PV.loadLF();
   var p4=PV.loadTrackers();
@@ -1322,7 +1354,7 @@ function simpleView(cfg){
         el.textContent = k.map ? (v===null?"–":k.map(v, k.field2?L(k.field2):null)) : fmt(v,k.dec||0);
 if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
         if(k.color) el.style.color = (v===null) ? "" : k.color(v); });
-      if(g("head-meta")&&last.created_at){ AKT_TS=new Date(); aktTick(); }
+      if(g("head-meta")&&last.created_at) aktNeu(f);
       secStand(cfg.channel, last.created_at);
       // Ampel-Faerbung: KPI-Wert nach aktueller PV-Leistung gegenueber der Schwelle
       // (rot = keine PV-Leistung, orange bis zur Schwelle, gruen ab Schwelle)
@@ -2282,24 +2314,21 @@ PLANNER.load=function(){
 };
 
 var VIEWS={ pv:PV, wallbox:WALLBOX, heizung:HEIZUNG, boiler:BOILER, pumpe:PUMPE, planer:PLANNER };
-var state={timer:null, view:null, lastLoad:0};
-function laden(){ state.lastLoad=Date.now(); if(state.view) VIEWS[state.view].load(); }   // alle 60 s und beim Zurueckkehren in die App
+var state={view:null, lastLoad:0, vorLoad:0, lastData:0, misses:0, geladen:false};
+function laden(){ state.vorLoad=state.lastLoad; state.lastLoad=Date.now(); if(state.view) VIEWS[state.view].load(); }   // im Takt des Loggers (aktTick), spaetestens alle 60 s, und beim Zurueckkehren in die App
 function switchView(v){
   if(!VIEWS[v]) v="pv";
-  if(state.timer){ clearInterval(state.timer); state.timer=null; }
-  AKT_TS=null; state.view=v;   // Zeitstempel der vorherigen Ansicht nicht mitnehmen
+  AKT_NEXT=null; AKT_MARGE=5000; state.view=v; state.lastData=0; state.misses=0; state.geladen=false;   // Planung der vorherigen Ansicht nicht mitnehmen
   var tabs=document.querySelectorAll("#tabs a");
   tabs.forEach(function(a){ a.classList.toggle("active", a.getAttribute("data-view")===v); });
   var main=document.getElementById("view");
   VIEWS[v].render(main);
   laden();
-  state.timer=setInterval(laden, 60000);
   if(location.hash.slice(1)!==v) location.hash=v;
 }
 // Zurueck in der App (Tab/Bildschirm wieder sichtbar): Daten sofort neu laden, wenn die letzte Aktualisierung laenger her ist als 20 s
 // (im Hintergrund pausiert der Browser den 60-s-Takt).
-document.addEventListener("visibilitychange",function(){ if(document.hidden || Date.now()-state.lastLoad<=20000) return;
-  laden(); if(state.timer){ clearInterval(state.timer); state.timer=setInterval(laden, 60000); } });   // 60-s-Takt ab jetzt neu
+document.addEventListener("visibilitychange",function(){ if(document.hidden || Date.now()-state.lastLoad<=20000) return; laden(); });
 document.getElementById("tabs").addEventListener("click",function(e){ var a=e.target.closest("a[data-view]"); if(!a)return; e.preventDefault(); switchView(a.getAttribute("data-view")); });
 window.addEventListener("hashchange",function(){ switchView(location.hash.slice(1)); });
 switchView(location.hash.slice(1) || "pv");
