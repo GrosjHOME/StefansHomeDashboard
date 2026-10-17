@@ -71,9 +71,10 @@
   .dot.ok{background:var(--green);} .dot.bad{background:var(--red);} .dot.na{background:#b0b8c0;}
 
   .hero{background:var(--card); border-radius:14px; box-shadow:var(--shadow); padding:18px 20px; margin-bottom:16px;}
-  .hero .lbl{color:var(--muted); font-size:.85rem;}
-  .hero .val{font-size:2.8rem; font-weight:700; line-height:1.1; margin:2px 0 6px;}
-  .hero .val small{font-size:1.1rem; font-weight:600; color:var(--muted);}
+  /* grosse Zahl mit Beschriftung: PV "Aktuelle Leistung" (.hero) und Aschebox "voll" (.as-kopf) teilen die Schrift */
+  .hero .lbl, .as-kopf .lbl{color:var(--muted); font-size:.85rem;}
+  .hero .val, .as-kopf .val{font-size:2.8rem; font-weight:700; line-height:1.1; margin:2px 0 6px;}
+  .hero .val small, .as-kopf .val small{font-size:1.1rem; font-weight:600; color:var(--muted);}
   .bar{position:relative; height:12px; border-radius:6px; background:var(--line); overflow:hidden;}
   .bar > span{position:relative; z-index:1; display:block; height:100%; border-radius:6px; background:var(--muted); transition:width .6s ease;}
   .bar > .band{display:none; position:absolute; z-index:0; top:0; bottom:0; background:var(--green); opacity:.18;}
@@ -193,18 +194,18 @@
   details.as-info[open] > summary{margin-bottom:8px;}
   /* Aschebox (Heizung): Fuellstand gross mit Balken und Prognose, die uebrigen Werte als kompakte Liste daneben/darunter */
   .as-top{display:grid; grid-template-columns:1fr; gap:6px 28px; margin-bottom:12px;}
-  .as-hz1{display:flex; justify-content:space-between; align-items:baseline; gap:10px;}
-  .as-hz1 .lbl{color:var(--muted); font-size:.85rem;}
-  .as-big{font-size:2.2rem; font-weight:700; line-height:1.1; font-variant-numeric:tabular-nums;}
-  .as-big small{font-size:1rem; font-weight:600; color:var(--muted);}
-  .bar.as-hbar{margin-top:6px;}
+  .as-kopf{display:flex; justify-content:space-between; align-items:baseline; gap:10px;}
+  .as-kopf .val{font-size:2.2rem; margin:0; font-variant-numeric:tabular-nums;}   /* Beschriftung daneben statt darueber: etwas kleiner */
+  .bar.as-fuellbar{margin-top:6px;}   /* grosser Fuellstand-Balken oben (#as-fuell) */
   .as-progz{font-size:.95rem; margin-top:8px;}
   .as-progz b{font-weight:700;}
   .as-sub{font-size:.75rem; color:var(--muted); margin-top:3px;}
-  .as-werte{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); column-gap:24px; margin:0; align-content:start;}
-  .as-werte > div{display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:7px 0; border-bottom:1px solid var(--line);}
+  /* schmale Handys: Spalte nie breiter als das Panel (min(...)), und reicht der Platz nicht fuer Beschriftung + Wert,
+     rutscht der Wert rechtsbuendig in die naechste Zeile statt seitlich ueberzustehen */
+  .as-werte{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr)); column-gap:24px; margin:0; align-content:start;}
+  .as-werte > div{display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:2px 10px; padding:7px 0; border-bottom:1px solid var(--line);}
   .as-werte dt{color:var(--muted); font-size:.82rem;}
-  .as-werte dd{margin:0; font-weight:700; white-space:nowrap; font-variant-numeric:tabular-nums;}
+  .as-werte dd{margin:0 0 0 auto; font-weight:700; white-space:nowrap; font-variant-numeric:tabular-nums;}
   .as-werte dd small{font-weight:600; color:var(--muted);}
   @media (min-width:1100px){ .as-top{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);} }
   /* Aschebox - letzte Leerungen: Handy kompakte Liste mit Fuellstand-Balken, ab 1100 px Tabelle */
@@ -214,12 +215,12 @@
   .as-t{font-weight:600;}
   .as-p{font-size:1.15rem; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;}
   .as-it:not(.akt) .as-t{font-weight:500;}
-  .bar.as-bar{height:6px; margin:5px 0 4px;}
+  .bar.as-minibar{height:6px; margin:5px 0 4px;}   /* kleine Balken der letzten Leerungen */
   .as-z2{font-size:.78rem; color:var(--muted);}
   .as-tbl{display:none;}
   .as-tbl tr.akt td{font-weight:700;}
   .as-tbl td small{color:var(--muted); font-weight:400;}
-  .as-tbl .bar.as-bar{margin:3px 0 0;}
+  .as-tbl .bar.as-minibar{margin:3px 0 0;}
   @media (min-width:1100px){ .as-liste{display:none;} .as-tbl{display:table;} }
   /* 1100-1279 px (z. B. 1920x1200 mit 175 % Skalierung): zwei Spalten, aber nur 3 Kacheln je Reihe
      und Gruppe - fuenf nebeneinander waeren zu schmal fuer die Beschriftungen */
@@ -1912,13 +1913,16 @@ ASCHE.rechne=function(tage, leer, temps, teile){
     pct:(kap&&kap>0)?seitBrenn/kap*100:null, prog:prog, mittelTag:mittelTag, rateHGT:rateHGT, nT:nT}; };
 // Tabelle der letzten Leerungen: je Leerung der Zeitpunkt, die Zeit seit der vorherigen (bzw. dem Saisonstart), der Fuellstand beim
 // Leeren, die Brennzeit im Intervall und diese auf 100 % hochgerechnet; ganz oben die laufende Periode seit der letzten Leerung.
+// Farbe und Balkenbreite des Fuellstands - eine Regel fuer den grossen Balken oben und die Balken der letzten Leerungen
+ASCHE.farbe=function(pct){ return pct>=90?"var(--red)":(pct>=70?"var(--amber)":"var(--green)"); };
+ASCHE.breite=function(pct){ return (pct===null?0:Math.max(0,Math.min(100,pct)))+"%"; };
 ASCHE.tabelle=function(e, el){ if(!el) return;
   // Handy: je Leerung eine kompakte Zeile (Zeitpunkt + Fuellstand gross, Balken, Kennzahlen klein darunter);
   // ab 1100 px dieselben Werte als Tabelle (CSS .as-liste / .as-tbl). Farbe wie die Kachel "Aschebox voll".
   var p2=function(n){ return ("0"+n).slice(-2); };
   var kurz=function(ts){ var d=new Date(ts); return d.getDate()+"."+(d.getMonth()+1)+". "+p2(d.getHours())+":"+p2(d.getMinutes()); };
   var kurzTag=function(ymd){ var d=new Date(ymd+"T12:00:00"); return d.getDate()+"."+(d.getMonth()+1)+"."; };
-  var farbe=function(pct){ return pct>=90?"var(--red)":(pct>=70?"var(--amber)":"var(--green)"); };
+  var farbe=ASCHE.farbe;
   var rows=[];
   if(e.saison){ var von=e.letzteTs||new Date(e.saison+"T00:00:00").getTime();
     rows.push({akt:true, titel:"Läuft seit "+(e.letzteTs?kurz(e.letzteTs):"Saisonstart "+kurzTag(e.saison)), zeit:e.letzteTs?kurz(e.letzteTs):"ab "+kurzTag(e.saison),
@@ -1928,7 +1932,7 @@ ASCHE.tabelle=function(e, el){ if(!el) return;
     rows.push({akt:false, titel:"Geleert "+kurz(h.ts), zeit:kurz(h.ts), pct:h.pct, pctTxt:h.pct+" %",
       tage:h.tage, brenn:h.brenn, austr:h.austr, kap:h.kap, sub:h.vonLeerung?null:"ab Saisonstart "+kurzTag(h.von)}); });
   if(!rows.length){ el.innerHTML=""; return; }
-  var balken=function(r){ return r.pct===null ? "" : '<div class="bar as-bar"><span style="width:'+Math.min(100,r.pct)+'%;background:'+farbe(r.pct)+'"></span></div>'; };
+  var balken=function(r){ return r.pct===null ? "" : '<div class="bar as-minibar"><span style="width:'+ASCHE.breite(r.pct)+';background:'+farbe(r.pct)+'"></span></div>'; };
   var liste=rows.map(function(r){
     var z2=[fmt(r.tage,1)+" Tage", fmt(r.brenn/60,1)+" h Brennzeit"]; if(r.kap) z2.push("100 % ≙ "+fmt(r.kap/60,0)+" h"); z2.push("Austr. "+fmt(r.austr/60,1)+" h");
     return '<div class="as-it'+(r.akt?' akt':'')+'"><div class="as-z1"><span class="as-t">'+r.titel+'</span><span class="as-p"'+(r.pct===null?'':' style="color:'+farbe(r.pct)+'"')+'>'+r.pctTxt+'</span></div>'+
@@ -1948,9 +1952,9 @@ ASCHE.panel={
   html:function(){ var heute=ymdLocal(new Date());
     var wert=function(k,id,unit){ return '<div><dt>'+k+'</dt><dd><span id="'+id+'">–</span>'+(unit?' <small>'+unit+'</small>':'')+'</dd></div>'; };
     return '<div class="panel"><h2>🪣 Aschebox</h2>'+
-      '<div class="as-top"><div class="as-hero">'+
-        '<div class="as-hz1"><span class="lbl">Aschebox voll</span><span class="as-big"><span id="as-pct">–</span> <small>%</small></span></div>'+
-        '<div class="bar as-hbar"><span id="as-bar" style="width:0%"></span></div>'+
+      '<div class="as-top"><div>'+
+        '<div class="as-kopf"><span class="lbl">Aschebox voll</span><span class="val"><span id="as-pct">–</span> <small>%</small></span></div>'+
+        '<div class="bar as-fuellbar"><span id="as-fuell" style="width:0%"></span></div>'+
         '<div class="bar-scale"><span>0</span><span class="mid">50 %</span><span>100 %</span></div>'+
         '<div class="as-progz">Voll voraussichtlich <b id="as-prog">–</b></div>'+
         '<div class="as-sub" id="as-tag">wird geladen…</div></div>'+
@@ -1999,12 +2003,15 @@ ASCHE.panel={
       var e=ASCHE.rechne(tage, leer, temps, r.teile); if(e.saison && !saisonCache) lsSet("hz_saison_"+jahr, e.saison);
       if(!g("as-pct")) return;
       var set=function(id,txt,farbe){ var el=g(id); if(!el) return; el.textContent=txt; el.style.color=farbe||""; };
-      if(!e.saison){ set("as-pct","–"); set("as-prog","Saison hat noch nicht begonnen"); if(g("as-tag")) g("as-tag").textContent="kein Feuer seit 1. September"; }
+      var ab=g("as-fuell"), balken=function(pct,farbe){ if(ab){ ab.style.width=ASCHE.breite(pct); ab.style.background=farbe||""; } };
+      // ohne Saison (z. B. ueber den 1. September offen geblieben) auch den Balken leeren, sonst stuende er noch auf dem alten Stand
+      if(!e.saison){ set("as-pct","–"); balken(null); set("as-prog","Saison hat noch nicht begonnen"); if(g("as-tag")) g("as-tag").textContent="kein Feuer seit 1. September"; }
       else {
-        var pf=e.pct===null?"":(e.pct>=90?"var(--red)":(e.pct>=70?"var(--amber)":"var(--green)"));
+        var pf=e.pct===null?"":ASCHE.farbe(e.pct);
         set("as-pct", e.pct===null?"–":fmt(Math.min(999,e.pct),0), pf);
-        var ab=g("as-bar"); if(ab){ ab.style.width=(e.pct===null?0:Math.max(0,Math.min(100,e.pct)))+"%"; ab.style.background=pf; }
-        set("as-prog", !e.prog ? (e.kap?"–":"noch keine Leerung erfasst") : e.prog.tage===0 ? "jetzt (Box voll)" : e.prog.tage===null ? "in mehr als 120 Tagen" : ASCHE.fmtTag(e.prog.ymd)+" · in "+e.prog.tage+" Tag"+(e.prog.tage===1?"":"en"), pf);
+        balken(e.pct, pf);
+        set("as-prog", !e.prog ? (e.kap?"–":"noch keine Leerung erfasst") : e.prog.tage===0 ? "jetzt (Box voll)" : e.prog.tage===null ? "in mehr als 120 Tagen" : ASCHE.fmtTag(e.prog.ymd)+" · in "+e.prog.tage+" Tag"+(e.prog.tage===1?"":"en"),
+          (e.prog && e.prog.tage===0) ? "var(--red)" : "");   // Prognose neutral; die Ampel zeigen Zahl und Balken - nur "Box voll" rot
         if(g("as-tag")) g("as-tag").textContent=(e.letzte?"seit Leerung "+ASCHE.fmtTag(e.letzte):"seit Saisonstart "+ASCHE.fmtTag(e.saison))+(e.nInt?" · Kapazität aus "+e.nInt+" Leerung"+(e.nInt===1?"":"en"):""); }
       set("as-seit", fmt(e.seitBrenn/60,1)); set("as-austr", fmt(e.seitAustr/60,1));
       set("as-letzte", e.letzteTs?ASCHE.fmtZeit(e.letzteTs):(e.saison?"– (Saisonstart "+ASCHE.fmtTag(e.saison)+")":"–"));
