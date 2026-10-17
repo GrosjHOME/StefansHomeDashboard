@@ -190,8 +190,23 @@
   }
   /* Aufklappbare Erklaerung (Aschebox): nur die Ueberschrift, Text auf Klick */
   details.as-info > summary{cursor:pointer; font-weight:600; color:var(--ink); list-style-position:inside; padding:2px 0;}
-  details.as-info[open] > summary{margin-bottom:8px;}  /* Aschebox (Heizung): Kennzahlen ueber die ganze Breite, 4 Kacheln je Reihe, ab 1400 px alle 8 in einer Reihe */
-  @media (min-width:1100px){ #as-kpis{grid-template-columns:repeat(4,minmax(0,1fr));} }
+  details.as-info[open] > summary{margin-bottom:8px;}
+  /* Aschebox (Heizung): Fuellstand gross mit Balken und Prognose, die uebrigen Werte als kompakte Liste daneben/darunter */
+  .as-top{display:grid; grid-template-columns:1fr; gap:6px 28px; margin-bottom:12px;}
+  .as-hz1{display:flex; justify-content:space-between; align-items:baseline; gap:10px;}
+  .as-hz1 .lbl{color:var(--muted); font-size:.85rem;}
+  .as-big{font-size:2.2rem; font-weight:700; line-height:1.1; font-variant-numeric:tabular-nums;}
+  .as-big small{font-size:1rem; font-weight:600; color:var(--muted);}
+  .bar.as-hbar{margin-top:6px;}
+  .as-progz{font-size:.95rem; margin-top:8px;}
+  .as-progz b{font-weight:700;}
+  .as-sub{font-size:.75rem; color:var(--muted); margin-top:3px;}
+  .as-werte{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); column-gap:24px; margin:0; align-content:start;}
+  .as-werte > div{display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:7px 0; border-bottom:1px solid var(--line);}
+  .as-werte dt{color:var(--muted); font-size:.82rem;}
+  .as-werte dd{margin:0; font-weight:700; white-space:nowrap; font-variant-numeric:tabular-nums;}
+  .as-werte dd small{font-weight:600; color:var(--muted);}
+  @media (min-width:1100px){ .as-top{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);} }
   /* Aschebox - letzte Leerungen: Handy kompakte Liste mit Fuellstand-Balken, ab 1100 px Tabelle */
   .as-it{padding:10px 0; border-bottom:1px solid var(--line);}
   .as-it:last-child{border-bottom:0;}
@@ -206,7 +221,6 @@
   .as-tbl td small{color:var(--muted); font-weight:400;}
   .as-tbl .bar.as-bar{margin:3px 0 0;}
   @media (min-width:1100px){ .as-liste{display:none;} .as-tbl{display:table;} }
-  @media (min-width:1400px){ #as-kpis{grid-template-columns:repeat(8,minmax(0,1fr));} }
   /* 1100-1279 px (z. B. 1920x1200 mit 175 % Skalierung): zwei Spalten, aber nur 3 Kacheln je Reihe
      und Gruppe - fuenf nebeneinander waeren zu schmal fuer die Beschriftungen */
   @media (min-width:1100px) and (max-width:1279px){
@@ -1932,11 +1946,18 @@ ASCHE.tabelle=function(e, el){ if(!el) return;
 ASCHE.panel={
   reset:function(){ ASCHE._t=0; },
   html:function(){ var heute=ymdLocal(new Date());
-    return '<div class="panel"><h2>🪣 Aschebox <span class="tag" id="as-tag">wird geladen…</span></h2>'+
-      '<div class="kpis" id="as-kpis">'+
-        kpiCard("Aschebox voll","as-pct","%")+kpiCard("Box voll voraussichtlich","as-prog","","txt")+kpiCard("Brennzeit seit Leerung","as-seit","h")+
-        kpiCard("Austragung seit Leerung","as-austr","h")+kpiCard("Letzte Leerung","as-letzte","","txt")+kpiCard("Box-Kapazität","as-kap","h Brennzeit")+
-        kpiCard("Ø Brennzeit je Tag","as-rate","h")+kpiCard("Brennzeit je Heizgradtag","as-hgt","min")+'</div>'+
+    var wert=function(k,id,unit){ return '<div><dt>'+k+'</dt><dd><span id="'+id+'">–</span>'+(unit?' <small>'+unit+'</small>':'')+'</dd></div>'; };
+    return '<div class="panel"><h2>🪣 Aschebox</h2>'+
+      '<div class="as-top"><div class="as-hero">'+
+        '<div class="as-hz1"><span class="lbl">Aschebox voll</span><span class="as-big"><span id="as-pct">–</span> <small>%</small></span></div>'+
+        '<div class="bar as-hbar"><span id="as-bar" style="width:0%"></span></div>'+
+        '<div class="bar-scale"><span>0</span><span class="mid">50 %</span><span>100 %</span></div>'+
+        '<div class="as-progz">Voll voraussichtlich <b id="as-prog">–</b></div>'+
+        '<div class="as-sub" id="as-tag">wird geladen…</div></div>'+
+      '<dl class="as-werte">'+
+        wert("Brennzeit seit Leerung","as-seit","h")+wert("Box-Kapazität (Brennzeit)","as-kap","h")+
+        wert("Austragung seit Leerung","as-austr","h")+wert("Ø Brennzeit je Tag","as-rate","h")+
+        wert("Letzte Leerung","as-letzte","")+wert("Brennzeit je Heizgradtag","as-hgt","min")+'</dl></div>'+
       '<div class="frei" style="margin:0 0 10px;padding:0;background:transparent;box-shadow:none">'+
         '<label>Geleert am<input type="date" id="as-d" value="'+heute+'" max="'+heute+'"></label>'+
         '<label>Uhrzeit<input type="time" id="as-t" value="'+ASCHE.jetztHm()+'"></label>'+
@@ -1982,7 +2003,8 @@ ASCHE.panel={
       else {
         var pf=e.pct===null?"":(e.pct>=90?"var(--red)":(e.pct>=70?"var(--amber)":"var(--green)"));
         set("as-pct", e.pct===null?"–":fmt(Math.min(999,e.pct),0), pf);
-        set("as-prog", !e.prog ? (e.kap?"–":"noch keine Leerung erfasst") : e.prog.tage===0 ? "jetzt (Box voll)" : e.prog.tage===null ? "in mehr als 120 Tagen" : ASCHE.fmtTag(e.prog.ymd)+" (in "+e.prog.tage+" Tag"+(e.prog.tage===1?"":"en")+")", pf);
+        var ab=g("as-bar"); if(ab){ ab.style.width=(e.pct===null?0:Math.max(0,Math.min(100,e.pct)))+"%"; ab.style.background=pf; }
+        set("as-prog", !e.prog ? (e.kap?"–":"noch keine Leerung erfasst") : e.prog.tage===0 ? "jetzt (Box voll)" : e.prog.tage===null ? "in mehr als 120 Tagen" : ASCHE.fmtTag(e.prog.ymd)+" · in "+e.prog.tage+" Tag"+(e.prog.tage===1?"":"en"), pf);
         if(g("as-tag")) g("as-tag").textContent=(e.letzte?"seit Leerung "+ASCHE.fmtTag(e.letzte):"seit Saisonstart "+ASCHE.fmtTag(e.saison))+(e.nInt?" · Kapazität aus "+e.nInt+" Leerung"+(e.nInt===1?"":"en"):""); }
       set("as-seit", fmt(e.seitBrenn/60,1)); set("as-austr", fmt(e.seitAustr/60,1));
       set("as-letzte", e.letzteTs?ASCHE.fmtZeit(e.letzteTs):(e.saison?"– (Saisonstart "+ASCHE.fmtTag(e.saison)+")":"–"));

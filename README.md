@@ -298,6 +298,9 @@ Tage. Die Werte kommen aus `prognose.ts?liste=60`.
 
 Die Aschebox der Schnitzelheizung wird von Hand geleert. Der Bereich **Aschebox**
 im Tab *Heizung* schätzt, wie voll sie ist und wann sie geleert werden muss.
+Oben steht der Füllstand gross mit farbigem Balken (grün, ab 70 % orange, ab 90 % rot) und darunter der voraussichtliche
+Tag, an dem die Box voll ist. Die übrigen Werte (Brennzeit und Austragung seit der Leerung, letzte Leerung, Kapazität,
+Ø Brennzeit je Tag, Brennzeit je Heizgradtag) folgen als kompakte Liste, ab 1100 Pixeln Breite neben dem Füllstand.
 
 **Rechnung:**
 - **Mass:** Asche entsteht aus den verbrannten Schnitzeln, deren Menge der
@@ -316,7 +319,7 @@ im Tab *Heizung* schätzt, wie voll sie ist und wann sie geleert werden muss.
   7-Tage-Prognose von Open-Meteo, weiter weg deren Mittel. Daraus der Tag, an dem
   die Box voll ist (100 %).
 - **Füllstand beim Leeren:** Auswahlbox 10–100 % in 10-%-Schritten (Standard 90 %, im Browser gemerkt). Sie gilt als Füllstand der Leerung, die man mit **Asche geleert** einträgt. Die Prognose rechnet davon unabhängig immer bis zur vollen Box (100 %).
-- **«Aschebox – letzte Leerungen»:** Je Leerung der Füllstand beim Leeren (gross, mit farbigem Balken wie die Kachel «Aschebox voll»), die Tage seit der vorherigen (bzw. dem Saisonstart), die Brennzeit und die Austragung im Intervall und die Brennzeit auf 100 % hochgerechnet (die letzten 10), oben die laufende Periode. Auf dem Handy als kompakte Liste (je Leerung zwei Zeilen), ab 1100 Pixeln Breite als Tabelle. Die Leerungen stehen im Val-Town-Blob `asche_leerungen` (Zeitpunkte und Füllstand je Leerung); Tage und Brennzeiten werden daraus im Browser gerechnet, die Tageswerte je Tag liegen im `localStorage` (`hz_tag_…`).
+- **«Aschebox – letzte Leerungen»:** Je Leerung der Füllstand beim Leeren (gross, mit farbigem Balken wie der Füllstand oben), die Tage seit der vorherigen (bzw. dem Saisonstart), die Brennzeit und die Austragung im Intervall und die Brennzeit auf 100 % hochgerechnet (die letzten 10), oben die laufende Periode. Auf dem Handy als kompakte Liste (je Leerung zwei Zeilen), ab 1100 Pixeln Breite als Tabelle. Die Leerungen stehen im Val-Town-Blob `asche_leerungen` (Zeitpunkte und Füllstand je Leerung); Tage und Brennzeiten werden daraus im Browser gerechnet, die Tageswerte je Tag liegen im `localStorage` (`hz_tag_…`).
 
 | | |
 |---|---|
