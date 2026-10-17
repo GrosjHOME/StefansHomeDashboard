@@ -1619,7 +1619,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
 
   return {
     render:function(main){
-      tabT=0;
+      tabT=0; if(cfg.extra && cfg.extra.reset) cfg.extra.reset();
       mode = ZEIT.mode;  // Zeitraum bleibt beim Tabwechsel erhalten (passt zum aktiven Button)
       // KPI-Kacheln (Text-Werte kleiner). Mit cfg.sections in beschriftete Gruppen getrennt -
       // je Gruppe eine Quelle mit eigener Aktualitaet ("Stand vor ...", ggf. veraltet).
@@ -1647,10 +1647,12 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
         '</div></div>'+
         freiPanelHtml()+kp+'<div class="ch-grid">'+charts+'</div>'+
         (cfg.tabelle ? '<div class="panel" style="padding-left:10px;padding-right:10px"><h2>'+cfg.tabelle.title+' <span class="tag">letzte '+cfg.tabelle.tage+' Tage</span></h2><div id="tab_body"><div class="chart-empty">wird geladen…</div></div><div class="note">'+cfg.tabelle.note+'</div></div>' : '')+
+        (cfg.extra ? cfg.extra.html() : '')+   // Zusatz-Bereich der Ansicht (z. B. Asche-Prognose der Heizung)
         '<footer>Datenquelle: ThingSpeak Kanal '+cfg.channel+' · Aktualisierung alle 60 s · <span id="err2" style="color:var(--red)"></span></footer></div>';
       zeitraumBinden(function(m){ mode=m; loadCharts(); });
+      if(cfg.extra && cfg.extra.bind) cfg.extra.bind();
     },
-    load:function(){ loadKpis(); loadCharts(); loadTabelle(); }
+    load:function(){ loadKpis(); loadCharts(); loadTabelle(); if(cfg.extra) cfg.extra.load(); }
   };
 }
 
@@ -1755,7 +1757,135 @@ function heizPhasen(ff){
 }
 function heizVoll(ff){ return heizPhasen(ff).filter(function(p){ return p.voll; }); }
 
-var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung",
+/* ================= Asche-Prognose (Heizung) =================
+   Die Aschebox der Schnitzelheizung wird von Hand geleert. Asche entsteht aus den verbrannten Schnitzeln, und
+   deren Menge folgt der Brennzeit (heizPhasen) - die Laufzeit der Schnitzel-Austragung (field6: 0.4/0.7/1 =
+   Austragung laeuft; Fuellmodus hat wenig Einfluss) wird als zweites Mass mitgefuehrt.
+   - Je Tag werden Brennzeit, Austragung und Heizzyklen einmal gerechnet und im Browser gecacht
+     (hz_tag_YYYY-MM-DD; abgeschlossene Tage aendern sich nicht), nur der heutige Tag wird neu geholt.
+   - Saisonstart = erster Tag ab 1. September mit >= 30 min Brennzeit (gecacht als hz_saison_<Jahr>).
+   - Kapazitaet der Box = Brennzeit zwischen zwei Leerungen (Median aller Intervalle; das erste Intervall
+     beginnt am Saisonstart, die Box war dort leer). Der Tag der Leerung zaehlt ganz zum alten Intervall.
+   - Fuellstand = Brennzeit seit der letzten Leerung / Kapazitaet.
+   - Prognose: Brennzeit je Heizgradtag (HGT 20/12 aus der Aussentemperatur in 2 m, Open-Meteo) der letzten
+     14 Tage x HGT der 7-Tage-Prognose; weiter weg das Mittel dieser 7 Tage -> Tag, an dem die Box voll ist.
+   - Leerungen: Val Town asche.ts (ASCHE.URL, scripts/valtown_asche/). Schreiben braucht einen Token, der je
+     Geraet einmal abgefragt und im Browser gemerkt wird. Ohne URL werden Leerungen nur lokal im Browser gefuehrt. */
+var ASCHE={ URL:"https://steffgrosjean--6a065972ca1011f18c2a1607ee4eb77e.web.val.run", CH:172428, MAX_TAGE:150, _t:0, _laden:null };
+ASCHE.folgetag=function(ymd){ var d=new Date(ymd+"T12:00:00"); d.setDate(d.getDate()+1); return ymdLocal(d); };
+ASCHE.fmtTag=function(ymd){ var d=new Date(ymd+"T12:00:00"); return ["So","Mo","Di","Mi","Do","Fr","Sa"][d.getDay()]+" "+d.getDate()+"."+(d.getMonth()+1)+"."; };
+function hgt(t){ return t<12 ? 20-t : 0; }   // Heizgradtage 20/12 (Schweizer Konvention)
+// Tageswerte aus den Minuten-Feeds eines Tages
+ASCHE.tagWerte=function(ff){ var brenn=0, zyk=0; heizPhasen(ff).forEach(function(p){ brenn+=p.min; if(p.voll) zyk++; });
+  var au=0; ff.forEach(function(x){ var v=num(x.field6); if(v!==null && (Math.abs(v-0.4)<0.02||Math.abs(v-0.7)<0.02||Math.abs(v-1)<0.02)) au++; });
+  return {brenn:Math.round(brenn), austr:au, zyk:zyk, n:ff.length}; };
+// Tageswerte von vonYmd bis heute: gecachte Tage aus dem Browser, fehlende in zusammenhaengenden Bereichen holen
+ASCHE.tage=function(vonYmd){ var heute=ymdLocal(new Date()), vorgestern=ymdLocal(new Date(Date.now()-2*864e5)), tage=[], fehlt=[];
+  for(var k=vonYmd; k<=heute; k=ASCHE.folgetag(k)){ var c=k<heute?lsGet("hz_tag_"+k):null, w=null;
+    if(c){ try{ w=JSON.parse(c); }catch(e){ w=null; } }
+    if(!w) fehlt.push(k); tage.push({ymd:k, w:w}); }
+  if(!fehlt.length) return Promise.resolve(tage);
+  var bereiche=[], cur=null; fehlt.forEach(function(k){ if(cur && ASCHE.folgetag(cur.bis)===k) cur.bis=k; else { cur={von:k, bis:k}; bereiche.push(cur); } });
+  return Promise.all(bereiche.map(function(b){ var von=new Date(b.von+"T00:00:00").getTime(), bis=Math.min(new Date(b.bis+"T00:00:00").getTime()+864e5, Date.now());
+      return holeBereich(ASCHE.CH, von, bis, false); }))
+    .then(function(rs){ var proTag={}; rs.forEach(function(r){ ((r&&r.feeds)||[]).forEach(function(x){ var k=ymdLocal(new Date(x.created_at)); (proTag[k]=proTag[k]||[]).push(x); }); });
+      tage.forEach(function(t){ if(t.w) return; t.w=ASCHE.tagWerte(proTag[t.ymd]||[]);
+        if(t.ymd<heute && (t.w.n>0 || t.ymd<vorgestern)) lsSet("hz_tag_"+t.ymd, JSON.stringify(t.w)); });   // leere Tage erst cachen, wenn sicher vorbei
+      return tage; }); };
+// Tagesmittel der Aussentemperatur (2 m): 14 Tage zurueck + 7 Tage Prognose -> {ymd: °C}
+ASCHE.temps=function(){ return j("https://api.open-meteo.com/v1/forecast?latitude="+PLANNER.LAT+"&longitude="+PLANNER.LON+"&daily=temperature_2m_mean&past_days=14&forecast_days=7&timezone=Europe%2FZurich")
+  .then(function(r){ var o={}; ((r&&r.daily&&r.daily.time)||[]).forEach(function(d,i){ var t=r.daily.temperature_2m_mean[i]; if(t!=null) o[d]=t; }); return o; })
+  .catch(function(){ return {}; }); };
+// Leerungen lesen/schreiben (Val Town oder lokal)
+ASCHE.leerungen=function(){ if(!ASCHE.URL){ try{ return Promise.resolve(JSON.parse(localStorage.getItem("asche_leerungen")||"[]")); }catch(e){ return Promise.resolve([]); } }
+  return j(ASCHE.URL).then(function(r){ return (r&&r.leerungen)||[]; }); };
+ASCHE.schreiben=function(method, zeit){
+  if(!ASCHE.URL){ var l=[]; try{ l=JSON.parse(localStorage.getItem("asche_leerungen")||"[]"); }catch(e){}
+    if(method==="POST"){ if(l.indexOf(zeit)<0) l.push(zeit); } else l=l.filter(function(z){ return z!==zeit; });
+    l.sort(); try{ localStorage.setItem("asche_leerungen", JSON.stringify(l)); }catch(e){} return Promise.resolve(l); }
+  var tok=null; try{ tok=localStorage.getItem("asche_token"); }catch(e){}
+  if(!tok){ tok=prompt("Token für das Eintragen der Asche-Leerung (einmalig je Gerät):"); if(!tok) return Promise.reject(new Error("abgebrochen")); try{ localStorage.setItem("asche_token",tok); }catch(e){} }
+  return fetch(ASCHE.URL,{method:method, headers:{"Content-Type":"application/json","X-Asche-Token":tok}, body:JSON.stringify({zeit:zeit})})
+    .then(function(r){ if(r.status===401){ try{ localStorage.removeItem("asche_token"); }catch(e){} throw new Error("Token falsch"); } if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(function(r){ return r.leerungen||[]; }); };
+// Rechnung: tage=[{ymd,w}], leer=[ISO], temps={ymd:°C}
+ASCHE.rechne=function(tage, leer, temps){
+  var heute=ymdLocal(new Date()), saison=null;
+  for(var i=0;i<tage.length;i++){ if(tage[i].w && tage[i].w.brenn>=30){ saison=tage[i].ymd; break; } }
+  function summe(von, bis, feld){ var s=0; tage.forEach(function(t){ if(t.w && t.ymd>=von && t.ymd<=bis) s+=t.w[feld]; }); return s; }
+  var lt=leer.map(function(z){ return ymdLocal(new Date(z)); }).sort().filter(function(d){ return saison && d>=saison; });
+  lt=lt.filter(function(d,i){ return lt.indexOf(d)===i; });   // mehrere Eintraege am selben Tag = eine Leerung
+  var intervalle=[], start=saison;
+  lt.forEach(function(L){ if(start && L>=start){ var b=summe(start, L, "brenn"); if(b>0) intervalle.push(b); } start=ASCHE.folgetag(L); });
+  var kap=null; if(intervalle.length){ var so=intervalle.slice().sort(function(a,b){ return a-b; }); kap=so[Math.floor(so.length/2)]; }
+  var letzte=lt.length?lt[lt.length-1]:null, seitVon=letzte?ASCHE.folgetag(letzte):saison;
+  var seitBrenn=seitVon?summe(seitVon,heute,"brenn"):0, seitAustr=seitVon?summe(seitVon,heute,"austr"):0;
+  // Rate der letzten 14 abgeschlossenen Tage: Brennzeit je Heizgradtag (nur Tage mit Temperatur) und Brennzeit je Tag
+  var bs=0, nT=0, bsH=0, hs=0, nH=0;
+  tage.slice(-15,-1).forEach(function(t){ if(!t.w) return; bs+=t.w.brenn; nT++; var T=temps[t.ymd]; if(T!=null){ bsH+=t.w.brenn; hs+=hgt(T); nH++; } });
+  var mittelTag=nT?bs/nT:0, rateHGT=(nH>=5 && hs>=10) ? bsH/hs : null;
+  function pred(ymd){ var T=temps[ymd]; return (rateHGT!==null && T!=null) ? rateHGT*hgt(T) : mittelTag; }
+  // Prognose: Rest = Kapazitaet - bisher; heute nur der noch erwartete Teil, dann Tag fuer Tag
+  var prog=null;
+  if(kap && kap>0 && seitVon){
+    var rest=kap-seitBrenn;
+    if(rest<=0) prog={tage:0, ymd:heute};
+    else { var hw=null; tage.forEach(function(t){ if(t.ymd===heute) hw=t.w; }); rest-=Math.max(0, pred(heute)-(hw?hw.brenn:0));
+      var zukunft=[], y=heute; for(var q=0;q<7;q++){ y=ASCHE.folgetag(y); if(temps[y]!=null) zukunft.push(pred(y)); }
+      var fern=zukunft.length ? zukunft.reduce(function(a,b){ return a+b; },0)/zukunft.length : mittelTag;
+      y=heute; for(var n=1; n<=120 && rest>0; n++){ y=ASCHE.folgetag(y); rest-=(temps[y]!=null)?pred(y):fern; if(rest<=0){ prog={tage:n, ymd:y}; break; } }
+      if(!prog) prog={tage:null, ymd:null}; } }
+  return {saison:saison, kap:kap, nInt:intervalle.length, letzte:letzte, seitBrenn:seitBrenn, seitAustr:seitAustr,
+    pct:(kap&&kap>0)?seitBrenn/kap*100:null, prog:prog, mittelTag:mittelTag, rateHGT:rateHGT, nT:nT}; };
+// Panel fuer simpleView (cfg.extra)
+ASCHE.panel={
+  reset:function(){ ASCHE._t=0; },
+  html:function(){ var heute=ymdLocal(new Date());
+    return '<div class="panel"><h2>🪣 Aschebox <span class="tag" id="as-tag">wird geladen…</span></h2>'+
+      '<div class="kpis" id="as-kpis">'+
+        kpiCard("Aschebox voll","as-pct","%")+kpiCard("Leeren voraussichtlich","as-prog","","txt")+kpiCard("Brennzeit seit Leerung","as-seit","h")+
+        kpiCard("Austragung seit Leerung","as-austr","h")+kpiCard("Letzte Leerung","as-letzte","","txt")+kpiCard("Box-Kapazität","as-kap","h Brennzeit")+
+        kpiCard("Ø Brennzeit je Tag","as-rate","h")+kpiCard("Brennzeit je Heizgradtag","as-hgt","min")+'</div>'+
+      '<div class="frei" style="margin:0 0 10px;padding:0;background:transparent;box-shadow:none">'+
+        '<label>Geleert am<input type="date" id="as-d" value="'+heute+'" max="'+heute+'"></label>'+
+        '<button class="btn" id="as-ok">Asche geleert</button><button class="btn" id="as-undo">Letzte Leerung löschen</button>'+
+        '<span class="frei-msg" id="as-msg"></span></div>'+
+      '<div class="note">Schätzung aus der <b>Brennzeit</b> (Abgas − Kessel &gt; 30 K, wie die Heizzyklen): Die Aschemenge folgt den verbrannten Schnitzeln, '+
+      'die <b>Austragung</b> (Laufzeit der Schnitzelförderung) läuft als zweites Mass mit. <b>Kapazität</b> = Brennzeit zwischen zwei Leerungen (Median; '+
+      'das erste Intervall beginnt am Saisonstart = erster Tag ab 1. September mit Feuer, Box dort leer). <b>Prognose</b>: Brennzeit je Heizgradtag der letzten '+
+      '14 Tage × Heizgradtage aus der 7-Tage-Temperaturprognose (Aussentemperatur 2 m, Open-Meteo), danach deren Mittel. '+
+      'Rinde, Feuchte und Herkunft der Schnitzel ändern die Asche je Stunde – mit jeder eingetragenen Leerung wird die Kapazität genauer. '+
+      '<b>Asche geleert</b> trägt die Leerung ein (Datum wählbar)'+(ASCHE.URL?'; gespeichert auf Val Town, Schreiben mit Token.':'; ohne Val-Town-Adresse nur in diesem Browser gespeichert.')+'</div></div>'; },
+  bind:function(){ var g=function(id){ return document.getElementById(id); };
+    function sag(t,farbe){ var m=g("as-msg"); if(m){ m.textContent=t; m.style.color=farbe||"var(--red)"; } }
+    function neu(){ ASCHE._t=0; ASCHE.panel.load(); }
+    if(g("as-ok")) g("as-ok").addEventListener("click",function(){ var d=g("as-d").value; if(!d){ sag("Bitte ein Datum wählen."); return; }
+      if(!confirm("Asche-Leerung am "+ASCHE.fmtTag(d)+" eintragen?")) return;
+      var zeit=new Date(d+"T12:00:00").toISOString();   // Mittag Ortszeit: der Tag bleibt in jeder Zeitzone derselbe
+      ASCHE.schreiben("POST", zeit).then(function(){ sag("Leerung eingetragen.","var(--green)"); neu(); }).catch(function(e){ sag("Nicht gespeichert: "+e.message); }); });
+    if(g("as-undo")) g("as-undo").addEventListener("click",function(){ ASCHE.leerungen().then(function(l){ if(!l.length){ sag("Keine Leerung vorhanden."); return; }
+      var z=l[l.length-1]; if(!confirm("Letzte Leerung ("+ASCHE.fmtTag(ymdLocal(new Date(z)))+") löschen?")) return;
+      return ASCHE.schreiben("DELETE", z).then(function(){ sag("Leerung gelöscht.","var(--green)"); neu(); }); }).catch(function(e){ sag("Nicht gelöscht: "+e.message); }); }); },
+  load:function(){ if(Date.now()-ASCHE._t<600000) return; ASCHE._t=Date.now();
+    var g=function(id){ return document.getElementById(id); }, heute=new Date(), jahr=heute.getMonth()>=8?heute.getFullYear():heute.getFullYear()-1;
+    var saisonCache=lsGet("hz_saison_"+jahr), von=saisonCache||(jahr+"-09-01"), minVon=ymdLocal(new Date(Date.now()-ASCHE.MAX_TAGE*864e5)); if(von<minVon) von=minVon;
+    Promise.all([ASCHE.tage(von), ASCHE.leerungen(), ASCHE.temps()]).then(function(r){ var tage=r[0], leer=r[1], temps=r[2];
+      var e=ASCHE.rechne(tage, leer, temps); if(e.saison && !saisonCache) lsSet("hz_saison_"+jahr, e.saison);
+      if(!g("as-pct")) return;
+      var set=function(id,txt,farbe){ var el=g(id); if(!el) return; el.textContent=txt; el.style.color=farbe||""; };
+      if(!e.saison){ set("as-pct","–"); set("as-prog","Saison hat noch nicht begonnen"); if(g("as-tag")) g("as-tag").textContent="kein Feuer seit 1. September"; }
+      else {
+        var pf=e.pct===null?"":(e.pct>=90?"var(--red)":(e.pct>=70?"var(--amber)":"var(--green)"));
+        set("as-pct", e.pct===null?"–":fmt(Math.min(999,e.pct),0), pf);
+        set("as-prog", !e.prog ? (e.kap?"–":"noch keine Leerung erfasst") : e.prog.tage===0 ? "jetzt (Box voll)" : e.prog.tage===null ? "in mehr als 120 Tagen" : ASCHE.fmtTag(e.prog.ymd)+" (in "+e.prog.tage+" Tag"+(e.prog.tage===1?"":"en")+")", pf);
+        if(g("as-tag")) g("as-tag").textContent=(e.letzte?"seit Leerung "+ASCHE.fmtTag(e.letzte):"seit Saisonstart "+ASCHE.fmtTag(e.saison))+(e.nInt?" · Kapazität aus "+e.nInt+" Leerung"+(e.nInt===1?"":"en"):""); }
+      set("as-seit", fmt(e.seitBrenn/60,1)); set("as-austr", fmt(e.seitAustr/60,1));
+      set("as-letzte", e.letzte?ASCHE.fmtTag(e.letzte):(e.saison?"– (Saisonstart "+ASCHE.fmtTag(e.saison)+")":"–"));
+      set("as-kap", e.kap?fmt(e.kap/60,0):"–"); set("as-rate", e.nT?fmt(e.mittelTag/60,1):"–"); set("as-hgt", e.rateHGT!==null?fmt(e.rateHGT,0):"–");
+    }).catch(function(err){ ASCHE._t=0; if(g("as-tag")) g("as-tag").textContent="Daten konnten nicht geladen werden"; console.error(err); }); }
+};
+
+var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung", extra:ASCHE.panel,
   // Links aktuelle Werte des Heizungs-Loggers (Kanal 172428, laeuft nur in der Heizsaison),
   // rechts Werte ueber den gewaehlten Zeitraum - inkl. Ø Auslastung aus dem Wallbox-Kanal 172228.
   sections:[

@@ -20,7 +20,7 @@ aktualisiert sich im Takt des jeweiligen Loggers (die Seite lernt je Gerät aus 
 |---|---|
 | ☀️&nbsp;**PV&#8209;Anlage** | Aktuelle Leistung gegen die Soll-Leistung aus der Prognose (Soll-Strich, Toleranzband ±10 %, Farbverlauf orange → grün) · Energie heute/gestern/Monat/Jahr · Leistungsverlauf (heute mit der Morgenprognose von 06:00, blau gestrichelt) · Energie nach Tagen (mit 3-Tage-Prognose und Min/Max desselben Kalendertags der Vorjahre), Monaten und Jahren (laufende Periode gegen Ø und Min/Max **aller** Jahre ab 2014) · PV-Arbeit je Jahr · Strom und Spannung je MPP-Tracker · Tracker-Strom mittags zur Verlust-Diagnose · **Leistungsfaktor** (Ertrag ÷ Einstrahlung aus dem Open-Meteo-Archiv, wetterbereinigt, in % von 2014–16) |
 | 🚗&nbsp;**Wallbox** | Zwei Gruppen mit eigener Aktualität: **Wallbox** (Ladeleistung, PV-Ladevorgabe, Ladestrom-Begrenzung, Verbindung, geladene Menge) und **Auto** (VW ID.3 via Tibber: Ladezustand, Ziel, Reichweite, Verbindung = Stecker + Ladestatus, Restladezeit) · Verläufe |
-| 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Symbol: 🔥 Flamme = Feuer brennt, glühende Kohle = nur noch Glut; Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **Brennbetrieb im Zeitraum**: Heizzyklen, Gluterhaltung (Glutstösse), Brennzeit, Ø Heizzyklus, **Auslastung** = Brennanteil des Zeitraums, direkt aus den Heizungsdaten gerechnet (in Klammern vorübergehend der Wert des ThingSpeak-Skripts „TS" zum Gegenprüfen) (Zählung wie in HeizungTiba `docs/Heizzyklen-Auswertung-2010-2026.xlsx`: Abgas − Kessel > 30 K bis < 20 K, ab 60 s und 45 K, unter 5 min = Glutstoss; bei heissem Kessel zusätzlich Abgas-Sprung ab 30 K, der binnen 5 min abklingt) · Verläufe, darunter die **Temperatursteigung** (°C pro Minute von Kessel oben und mitte, über 6 min geglättet; Lesefehler der Fühler wie 0.0 oder -127 werden herausgefiltert) und der **Füllstand mit der Schnitzel-Austragung** (Feld 6 des Loggers: hellgrüner Streifen unten = Automatik an, blauer Bereich = Austragung läuft, Höhe = Füllmodus wenig/normal/viel, violett = von Hand, rot = Störung) |
+| 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Symbol: 🔥 Flamme = Feuer brennt, glühende Kohle = nur noch Glut; Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **Brennbetrieb im Zeitraum**: Heizzyklen, Gluterhaltung (Glutstösse), Brennzeit, Ø Heizzyklus, **Auslastung** = Brennanteil des Zeitraums, direkt aus den Heizungsdaten gerechnet (in Klammern vorübergehend der Wert des ThingSpeak-Skripts „TS" zum Gegenprüfen) (Zählung wie in HeizungTiba `docs/Heizzyklen-Auswertung-2010-2026.xlsx`: Abgas − Kessel > 30 K bis < 20 K, ab 60 s und 45 K, unter 5 min = Glutstoss; bei heissem Kessel zusätzlich Abgas-Sprung ab 30 K, der binnen 5 min abklingt) · Verläufe, darunter die **Temperatursteigung** (°C pro Minute von Kessel oben und mitte, über 6 min geglättet; Lesefehler der Fühler wie 0.0 oder -127 werden herausgefiltert) und der **Füllstand mit der Schnitzel-Austragung** (Feld 6 des Loggers: hellgrüner Streifen unten = Automatik an, blauer Bereich = Austragung läuft, Höhe = Füllmodus wenig/normal/viel, violett = von Hand, rot = Störung) · **Aschebox**: geschätzter Füllstand und voraussichtlicher Leerungstag aus der Brennzeit (Kapazität aus den eingetragenen Leerungen, Verbrauch voraus aus der Temperaturprognose), Knopf **Asche geleert** |
 | 💧&nbsp;**Boiler** | Temperaturen Mitte/Unten mit den Schaltschwellen der Steuerung (Laden ein < 45 °C, aus > 58 bzw. 63 °C) · **Temperatursteigung** (°C pro Minute, über 20 min geglättet: Aufheizen, Auskühlen, Warmwasser-Entnahme) · Ladeleistung gegen Einschaltschwelle und PV · geladene Menge |
 | 🚰&nbsp;**Pumpwerk** | Frischwasser-Pumpwerk (Biral HPE Combo, Arduino-Logger im Repo `PumpwerkBiral`): Pumpenzustand in vier Stufen (**Ein** = gerade gestartet, **Läuft**, **Aus** = gerade ausgegangen, **Steht**; aus Signal und Zählern der letzten Minute abgeleitet), das Symbol im Titel folgt dem Zustand (**grün = Ein/Läuft**, **blau = Aus/Steht**, **rot = Störung**, grau = keine aktuellen Daten), Störung, Einschaltungen und Laufzeit heute und gesamt (Verschleiss), Störzeit · Zeitraum-Kennzahlen zur Schalthäufigkeit: **Max. Starts pro Stunde**, **Ø Laufdauer je Start** und **Kurzläufe unter 30 s** (Anteil der Starts, bei denen die Pumpe insgesamt weniger als 30 s lief; ein Lauf über eine Minutengrenze zählt als ein Lauf) · **Tagesübersicht** der letzten 14 Tage (je Tag Starts, Laufzeit, Ø Laufdauer je Start, Max. Starts pro Stunde, Anteil Kurzläufe, Nachtstarts 0–5 Uhr; unabhängig vom gewählten Zeitraum) · Grafiken: **Laufsekunden pro Minute** (aus den sekundengenauen Zählern, mit Markern für Einschaltungen), Laufzeit heute, **Laufzeit je Lauf** (Liniengrafik: ein Punkt je Lauf, direkt verbunden, rot gestrichelte Linie bei 30 s) und dieselbe Grafik **mit Pumpenstatus** (blasser Streifen = Pumpe läuft, aus den Zählern berechnet), Einschaltungen heute, Störung, Gesamt (Laufzeit + Einschaltungen) |
 | 🗓️&nbsp;**Nutzung** | 7-Tage-Solarprognose (Open-Meteo, stündlich an den letzten 14 Tagen kalibriert, heute mit Nowcast) · Tageskarten mit Empfehlungen für Waschmaschine (Programme Normal 1 h 05 / Wolle 2 h / Eco 3 h – pro Tag das längste, das ins Solarfenster passt; Normal und Wolle mit geschätzten Verbrauchswerten), Geschirrspüler, Tumbler, Auto und Boiler · Knopf **Details** je Tag: Überschuss mit Geräteschwellen und Startfenster je Programm im Tagesverlauf (nach Gerät gruppiert, mit Symbolen 🧺 🍽️ 🌀) |
@@ -39,7 +39,7 @@ VW ID.3 ──> Tibber ──> Val Town ──────┘                 �
 Open-Meteo (Einstrahlung, Wetter) ──────────────────────┘
 ```
 
-### Val Town: ein Val, vier Dateien
+### Val Town: ein Val, fünf Dateien
 
 Alles, was auf einem Server laufen muss, steckt im Val **GrosjeansHomeDashboard**
 (val.town, Konto `steffgrosjean`). Jede Datei hat ihren eigenen Trigger. Den
@@ -51,6 +51,7 @@ Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
 | `prognose.ts` | PV-Morgenprognose rechnen und ausliefern | HTTP | `scripts/valtown_pv_prognose/prognose.ts` |
 | `morgens.ts` | Prognose um 06:00 anstossen | Cron `0 4-8 * * *` | `scripts/valtown_pv_prognose/morgens.ts` |
 | `waechter.ts` | E-Mail bei Störungen | Cron alle 30 min | `scripts/valtown_waechter/waechter.ts` |
+| `asche.ts` | Asche-Leerungen der Heizung speichern (Knopf „Asche geleert“ im Dashboard) | HTTP | `scripts/valtown_asche/asche.ts` |
 
 Das Repo ist die Vorlage: Änderungen hier machen und dann in den Val kopieren.
 Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
@@ -70,6 +71,7 @@ Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
 | `scripts/valtown_id3_tibber.ts` | ID.3-Poller für Val Town – **aktiv** |
 | `scripts/valtown_pv_prognose/` | PV-Morgenprognose für Val Town (06:00, 15-min-Raster) |
 | `scripts/valtown_waechter/` | Wächter für Val Town: E-Mail bei Störungen |
+| `scripts/valtown_asche/` | Asche-Leerungen für Val Town (Speicher für den Knopf „Asche geleert“) |
 | `scripts/tibber_token_neu.ps1` | Frischen Tibber-Refresh-Token erzeugen |
 | `scripts/id3_tibber_cloud.py` | Früherer GitHub-Actions-Poller (Reserve) |
 | `scripts/thingspeak_trigger_id3.m` | ThingSpeak-TimeControl-Auslöser (Alternative) |
@@ -235,7 +237,7 @@ jedem Wetter-Update. Fehlt die Morgenprognose, rechnet der Balken wie bisher liv
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-vier-dateien)) |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-fünf-dateien)) |
 | **Dateien** | `prognose.ts` (Trigger **HTTP**: Rechnung + Abruf) und `morgens.ts` (Trigger **Cron** `0 4-8 * * *`) |
 | **Quelltext** | `scripts/valtown_pv_prognose/` – hier ändern, dann in den Val kopieren |
 | **Speicher** | Blob `pv_prognose_YYYY-MM-DD` je Tag (bleibt erhalten, `?datum=…` liefert ältere Tage) |
@@ -284,6 +286,58 @@ sie nicht.
 **blauer Strich** auf der Höhe der Morgenprognose dieses Tages. Der Tooltip zeigt
 Prognose und Abweichung, die Legende die mittlere Abweichung der abgeschlossenen
 Tage. Die Werte kommen aus `prognose.ts?liste=60`.
+
+## Asche-Prognose (Val Town)
+
+Die Aschebox der Schnitzelheizung wird von Hand geleert. Der Bereich **Aschebox**
+im Tab *Heizung* schätzt, wie voll sie ist und wann sie geleert werden muss.
+
+**Rechnung:**
+- **Mass:** Asche entsteht aus den verbrannten Schnitzeln, deren Menge der
+  **Brennzeit** folgt (Abgas − Kessel > 30 K, dieselbe Zählung wie die Heizzyklen).
+  Die **Austragung** (Laufzeit der Schnitzelförderung, Feld 6) läuft als zweites
+  Mass mit. Je Tag werden beide einmal gerechnet und im Browser gespeichert.
+- **Kapazität:** Brennzeit zwischen zwei Leerungen (Median aller Intervalle). Das
+  erste Intervall beginnt am **Saisonstart** (erster Tag ab 1. September mit
+  Feuer), dort ist die Box leer. Der Tag der Leerung zählt ganz zum alten
+  Intervall. Mit jeder Leerung wird die Kapazität genauer – Rinde, Feuchte und
+  Herkunft der Schnitzel ändern die Asche je Brennstunde.
+- **Füllstand:** Brennzeit seit der letzten Leerung ÷ Kapazität.
+- **Prognose:** Brennzeit je **Heizgradtag** (20/12, aus dem Tagesmittel der
+  Aussentemperatur in 2 m) der letzten 14 Tage × Heizgradtage aus der
+  7-Tage-Prognose von Open-Meteo, weiter weg deren Mittel. Daraus der Tag, an dem
+  die Box voll ist.
+
+| | |
+|---|---|
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-fünf-dateien)) |
+| **Datei** | `asche.ts` (Trigger **HTTP**) |
+| **Quelltext** | `scripts/valtown_asche/asche.ts` – hier ändern, dann in den Val kopieren |
+| **Speicher** | Blob `asche_leerungen` (Liste der Leerungen, UTC) |
+| **Umgebungsvariable** | `ASCHE_TOKEN` – frei gewähltes Passwort; nur wer es kennt, kann Leerungen eintragen oder löschen |
+| **Web-Adresse** | im Dashboard `ASCHE.URL` (leer = Leerungen nur im jeweiligen Browser) |
+
+<details>
+<summary><b>Einrichtung Schritt für Schritt</b></summary>
+
+1. Den Val **GrosjeansHomeDashboard** öffnen.
+2. Datei **`asche.ts`** anlegen, den Inhalt von `scripts/valtown_asche/asche.ts`
+   einfügen und als Trigger **HTTP** wählen. Den Vorlagen-Code vorher ganz ersetzen.
+3. Unter *Environment variables* des Vals **`ASCHE_TOKEN`** anlegen, Wert = ein
+   frei gewähltes Passwort (z. B. 16 Zeichen).
+4. Test: die Web-Adresse von `asche.ts` im Browser öffnen, es kommt
+   `{"leerungen":[]}`.
+5. Diese Adresse in `dashboard/index.html` bei `ASCHE.URL` eintragen.
+6. Im Dashboard (Tab *Heizung*, Bereich *Aschebox*) das Datum wählen und
+   **Asche geleert** drücken. Beim ersten Mal fragt das Dashboard nach dem
+   Token und merkt ihn sich im Browser (je Gerät einmal). Mit **Letzte Leerung
+   löschen** lässt sich ein Fehleintrag entfernen.
+
+Lesen ist öffentlich (nur die Liste der Leerungen), Schreiben braucht den Token.
+Solange `ASCHE.URL` leer ist, werden Leerungen nur im jeweiligen Browser
+gespeichert und sind auf anderen Geräten nicht sichtbar.
+
+</details>
 
 ## Wächter (Val Town)
 
