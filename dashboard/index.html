@@ -192,6 +192,20 @@
   details.as-info > summary{cursor:pointer; font-weight:600; color:var(--ink); list-style-position:inside; padding:2px 0;}
   details.as-info[open] > summary{margin-bottom:8px;}  /* Aschebox (Heizung): Kennzahlen ueber die ganze Breite, 4 Kacheln je Reihe, ab 1400 px alle 8 in einer Reihe */
   @media (min-width:1100px){ #as-kpis{grid-template-columns:repeat(4,minmax(0,1fr));} }
+  /* Aschebox - letzte Leerungen: Handy kompakte Liste mit Fuellstand-Balken, ab 1100 px Tabelle */
+  .as-it{padding:10px 0; border-bottom:1px solid var(--line);}
+  .as-it:last-child{border-bottom:0;}
+  .as-z1{display:flex; justify-content:space-between; align-items:baseline; gap:10px;}
+  .as-t{font-weight:600;}
+  .as-p{font-size:1.15rem; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .as-it:not(.akt) .as-t{font-weight:500;}
+  .bar.as-bar{height:6px; margin:5px 0 4px;}
+  .as-z2{font-size:.78rem; color:var(--muted);}
+  .as-tbl{display:none;}
+  .as-tbl tr.akt td{font-weight:700;}
+  .as-tbl td small{color:var(--muted); font-weight:400;}
+  .as-tbl .bar.as-bar{margin:3px 0 0;}
+  @media (min-width:1100px){ .as-liste{display:none;} .as-tbl{display:table;} }
   @media (min-width:1400px){ #as-kpis{grid-template-columns:repeat(8,minmax(0,1fr));} }
   /* 1100-1279 px (z. B. 1920x1200 mit 175 % Skalierung): zwei Spalten, aber nur 3 Kacheln je Reihe
      und Gruppe - fuenf nebeneinander waeren zu schmal fuer die Beschriftungen */
@@ -1885,13 +1899,34 @@ ASCHE.rechne=function(tage, leer, temps, teile){
 // Tabelle der letzten Leerungen: je Leerung der Zeitpunkt, die Zeit seit der vorherigen (bzw. dem Saisonstart), der Fuellstand beim
 // Leeren, die Brennzeit im Intervall und diese auf 100 % hochgerechnet; ganz oben die laufende Periode seit der letzten Leerung.
 ASCHE.tabelle=function(e, el){ if(!el) return;
-  var zeile=function(name,sub,tage,pct,brenn,kap100,aktuell){ return '<tr'+(aktuell?' style="font-weight:600"':'')+'><td style="text-align:left">'+name+(sub?'<br><small style="color:var(--muted);font-weight:400">'+sub+'</small>':'')+'</td><td>'+tage+'</td><td>'+pct+'</td><td>'+fmt(brenn/60,1)+'</td><td>'+(kap100?fmt(kap100/60,1):"–")+'</td></tr>'; };
-  var rows=[], seitTs=e.letzteTs, startTxt=function(ts, ymdSaison){ return ts ? "seit "+ASCHE.fmtZeit(ts) : "seit Saisonstart "+ASCHE.fmtTag(ymdSaison); };
-  if(e.saison){ var von=seitTs||new Date(e.saison+"T00:00:00").getTime(), tg=Math.max(0,(Date.now()-von)/864e5);
-    rows.push(zeile("läuft aktuell",startTxt(seitTs,e.saison)+" · Austragung "+fmt(e.seitAustr/60,1)+" h",fmt(tg,1),e.pct===null?"–":"~"+fmt(Math.min(999,e.pct),0)+" %",e.seitBrenn,null,true)); }
-  e.hist.slice().reverse().slice(0,10).forEach(function(h){ rows.push(zeile(ASCHE.fmtZeit(h.ts),startTxt(h.vonLeerung?h.vonTs:null,h.von)+" · Austragung "+fmt(h.austr/60,1)+" h",fmt(h.tage,1),h.pct+" %",h.brenn,h.kap,false)); });
-  el.innerHTML = rows.length ? '<table><thead><tr><th style="text-align:left">Leerung</th><th>Tage</th><th>Füllstand</th><th>Brennzeit [h]</th><th>auf 100 % [h]</th></tr></thead><tbody>'+rows.join("")+'</tbody></table>'
-    + (e.hist.length ? '' : '<div class="note">Noch keine Leerung eingetragen – die Tabelle füllt sich mit jedem Eintrag.</div>') : "";
+  // Handy: je Leerung eine kompakte Zeile (Zeitpunkt + Fuellstand gross, Balken, Kennzahlen klein darunter);
+  // ab 1100 px dieselben Werte als Tabelle (CSS .as-liste / .as-tbl). Farbe wie die Kachel "Aschebox voll".
+  var p2=function(n){ return ("0"+n).slice(-2); };
+  var kurz=function(ts){ var d=new Date(ts); return d.getDate()+"."+(d.getMonth()+1)+". "+p2(d.getHours())+":"+p2(d.getMinutes()); };
+  var kurzTag=function(ymd){ var d=new Date(ymd+"T12:00:00"); return d.getDate()+"."+(d.getMonth()+1)+"."; };
+  var farbe=function(pct){ return pct>=90?"var(--red)":(pct>=70?"var(--amber)":"var(--green)"); };
+  var rows=[];
+  if(e.saison){ var von=e.letzteTs||new Date(e.saison+"T00:00:00").getTime();
+    rows.push({akt:true, titel:"Läuft seit "+(e.letzteTs?kurz(e.letzteTs):"Saisonstart "+kurzTag(e.saison)), zeit:e.letzteTs?kurz(e.letzteTs):"ab "+kurzTag(e.saison),
+      pct:e.pct===null?null:Math.min(999,e.pct), pctTxt:e.pct===null?"–":"~"+fmt(Math.min(999,e.pct),0)+" %",
+      tage:Math.max(0,(Date.now()-von)/864e5), brenn:e.seitBrenn, austr:e.seitAustr, kap:null, sub:null}); }
+  e.hist.slice().reverse().slice(0,10).forEach(function(h){
+    rows.push({akt:false, titel:"Geleert "+kurz(h.ts), zeit:kurz(h.ts), pct:h.pct, pctTxt:h.pct+" %",
+      tage:h.tage, brenn:h.brenn, austr:h.austr, kap:h.kap, sub:h.vonLeerung?null:"ab Saisonstart "+kurzTag(h.von)}); });
+  if(!rows.length){ el.innerHTML=""; return; }
+  var balken=function(r){ return r.pct===null ? "" : '<div class="bar as-bar"><span style="width:'+Math.min(100,r.pct)+'%;background:'+farbe(r.pct)+'"></span></div>'; };
+  var liste=rows.map(function(r){
+    var z2=[fmt(r.tage,1)+" Tage", fmt(r.brenn/60,1)+" h Brennzeit"]; if(r.kap) z2.push("100 % ≙ "+fmt(r.kap/60,0)+" h"); z2.push("Austr. "+fmt(r.austr/60,1)+" h");
+    return '<div class="as-it'+(r.akt?' akt':'')+'"><div class="as-z1"><span class="as-t">'+r.titel+'</span><span class="as-p"'+(r.pct===null?'':' style="color:'+farbe(r.pct)+'"')+'>'+r.pctTxt+'</span></div>'+
+      balken(r)+'<div class="as-z2">'+z2.join(" · ")+'</div>'+(r.sub?'<div class="as-z2">'+r.sub+'</div>':'')+'</div>'; }).join("");
+  var tab=rows.map(function(r){
+    return '<tr'+(r.akt?' class="akt"':'')+'><td>'+(r.akt?'Läuft seit '+r.zeit:r.zeit)+(r.sub?'<br><small>'+r.sub+'</small>':'')+'</td>'+
+      '<td><span'+(r.pct===null?'':' style="color:'+farbe(r.pct)+'"')+'>'+r.pctTxt+'</span>'+balken(r)+'</td>'+
+      '<td>'+fmt(r.tage,1)+'</td><td>'+fmt(r.brenn/60,1)+' h</td><td>'+fmt(r.austr/60,1)+' h</td><td>'+(r.kap?fmt(r.kap/60,0)+' h':'–')+'</td></tr>'; }).join("");
+  el.innerHTML='<div class="as-liste">'+liste+'</div>'+
+    '<table class="tbl as-tbl"><colgroup><col style="width:27%"><col style="width:17%"><col style="width:11%"><col style="width:15%"><col style="width:15%"><col style="width:15%"></colgroup>'+
+    '<thead><tr><th>Leerung</th><th>Füllstand</th><th>Tage</th><th>Brennzeit</th><th>Austragung</th><th>auf 100 %</th></tr></thead><tbody>'+tab+'</tbody></table>'+
+    (e.hist.length ? '' : '<div class="note">Noch keine Leerung eingetragen – die Liste füllt sich mit jedem Eintrag.</div>');
 };
 // Panel fuer simpleView (cfg.extra)
 ASCHE.panel={
