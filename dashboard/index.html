@@ -623,6 +623,9 @@ function zeitraumMs(mode){ var bis=Date.now();
   if(mode==="24h") return {von:bis-864e5, bis:bis};
   if(mode==="7tage") return {von:bis-7*864e5, bis:bis};
   return {von:new Date().setHours(0,0,0,0), bis:bis}; }
+// Kennung des gewaehlten Zeitraums fuer "Antwort noch aktuell?": beim freien Zeitraum mit Start und Ende,
+// sonst wuerde eine langsame Antwort fuer einen frueheren freien Zeitraum den neueren ueberschreiben
+function zeitSchluessel(mode){ return mode==="frei" ? "frei|"+FREI.von+"|"+FREI.bis : mode; }
 // Messwerte (datei "feeds.json" oder "status.json") fuer den gewaehlten Zeitraum. Die festen Zeitraeume
 // kommen mit einer Abfrage; ein freier Zeitraum in 3-Tage-Fenstern (ThingSpeak liefert je Abfrage hoechstens
 // ~8000 Eintraege, bei minuetlichen Daten ~5.5 Tage) und ohne doppelte Eintraege an den Fenstergrenzen.
@@ -691,6 +694,13 @@ function zeitraumBinden(setMode){
 function integKwh(feeds, field, toKw){ toKw=(toKw==null?0.001:toKw); var e=0, prev=null; (feeds||[]).forEach(function(x){ var raw=num(x[field]); if(raw===null)return; var p=Math.max(0,raw*toKw); var t=new Date(x.created_at); if(prev){ var dt=(t-prev.t)/3600000; if(dt>0&&dt<2) e+=(prev.p+p)/2*dt; } prev={t:t,p:p}; }); return e; }
 function tsStamp(ms){ return new Date(ms).toISOString().slice(0,19).replace("T"," "); }  // ThingSpeak start/end (UTC)
 function ymdLocal(d){ return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }  // Datum in Ortszeit
+// Datum, Stunde und Minute jetzt in Zuercher Zeit - passend zu ThingSpeak-Abfragen mit timezone=Europe/Zurich,
+// auch wenn das Geraet in einer anderen Zeitzone steht. Ohne Intl-Zeitzonen: Ortszeit des Geraets.
+function zurichJetzt(){ var d=new Date();
+  try{ var o={}; new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Zurich",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"})
+      .formatToParts(d).forEach(function(p){ o[p.type]=p.value; });
+    return {ymd:o.year+"-"+o.month+"-"+o.day, h:parseInt(o.hour,10)%24, min:parseInt(o.minute,10)}; }
+  catch(e){ return {ymd:ymdLocal(d), h:d.getHours(), min:d.getMinutes()}; } }
 function hhmm(ms){ return new Date(ms).toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"}); }
 // Open-Meteo-Strahlung ist das Mittel der VORANGEHENDEN Stunde (Stempel 13:00 = 12-13 Uhr).
 // Umgestellt auf "Stempel = Stundenbeginn" (Wert bei 12:00 = 12-13 Uhr) - so wie die ThingSpeak-
@@ -747,15 +757,19 @@ PV.render=function(main){
     '</div><footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
   // Jahresvergleich an die Hoehe von Strom + Spannung anpassen, sobald diese geladen sind oder
   // sich die Fensterbreite aendert (nur zweispaltig wirksam, siehe PV.fitJahr)
-  if(PV._ro) PV._ro.disconnect();
+  // (den Beobachter einer frueheren PV-Ansicht trennt switchView vor jedem Render)
   if(window.ResizeObserver){ PV._ro=new ResizeObserver(function(){ requestAnimationFrame(PV.fitJahr); });
     [".a-strom",".a-spann"].forEach(function(s){ var e=main.querySelector(s); if(e) PV._ro.observe(e); }); }
   var slf=document.getElementById("seg-lf"); if(slf) slf.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.lfMode=b.getAttribute("data-m"); segActive(slf,b); PV.loadLF(); });
-  // Zeitraum-Wechsel: Fehler je Grafik anzeigen (sonst bliebe "wird geladen…" stehen und die Zurueckweisung unbehandelt)
-  function chartFehler(ids){ return function(){ ids.forEach(function(id){ var e=document.getElementById(id); if(e) e.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; }); }; }
+  // Zeitraum-Wechsel: Fehler je Grafik anzeigen (sonst bliebe "wird geladen…" stehen und die Zurueckweisung unbehandelt) -
+  // nur wenn noch derselbe Zeitraum gilt, sonst ersetzte der Fehler einer alten Abfrage die schon geladenen neuen Daten
+  function chartFehler(ids){ var zs=zeitSchluessel(PV.period); return function(){ if(zeitSchluessel(PV.period)!==zs) return; ids.forEach(function(id){ var e=document.getElementById(id); if(e) e.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; }); }; }
   zeitraumBinden(function(m){ PV.period=m; PV.loadPower();
     PV.loadTrackers().catch(chartFehler(["chart-strom","chart-spannung","tracker-holder"]));
-    PV.loadPeakSun().catch(function(){}); });
+    // Peak/Sonnenstunden: schlaegt die Abfrage fehl, "–" statt der Werte des vorherigen Zeitraums
+    var zsPeak=zeitSchluessel(m);
+    PV.loadPeakSun().catch(function(){ if(zeitSchluessel(PV.period)!==zsPeak) return;
+      ["e-peak","e-sun"].forEach(function(id){ var e=document.getElementById(id); if(e) e.textContent="–"; }); }); });
   function parseEnergyYear(v){ return v?parseInt(v,10):null; }
   var se=document.getElementById("seg-energy"); if(se) se.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.energyMode=b.getAttribute("data-m"); segActive(se,b);
     var sy=document.getElementById("energy-year"); if(sy){ if(PV.energyMode==="monate"){ sy.style.display=""; PV.energyYear=parseEnergyYear(sy.value); } else { sy.style.display="none"; PV.energyYear=null; } }
@@ -772,9 +786,9 @@ function panel(title,tag,id){ return '<div class="panel"><h2>'+title+' '+tag+'</
 // Tracker-Status (Tabelle aktueller Wert + Strom/Spannung-Historie) fuer den globalen Zeitraum
 PV.loadTrackers=function(){
   function g(id){ return document.getElementById(id); }
-  var periodStart=PV.period;
+  var periodStart=zeitSchluessel(PV.period);
   return holeZeitraum(PV.CH, PV.period, true, "status.json").then(function(d){
-    if(PV.period!==periodStart) return;   // Zeitraum inzwischen gewechselt
+    if(zeitSchluessel(PV.period)!==periodStart) return;   // Zeitraum inzwischen gewechselt
     var f=(d&&d.feeds)?d.feeds:[]; var last=f.length?f[f.length-1]:null; var holder=g("tracker-holder"); if(!holder)return;
     if(last&&last.created_at) ["strom-tag","spannung-tag","status-time"].forEach(function(id){ standZeit(g(id), new Date(last.created_at)); });   // Strom, Spannung, DC: "Stand vor x s"
     if(last&&last.status){ var p=parseStatus(last.status);
@@ -800,9 +814,9 @@ PV.loadTrackers=function(){
 // Peak-Leistung + Sonnenstunden fuer den globalen Zeitraum
 PV.loadPeakSun=function(){
   function g(id){ return document.getElementById(id); }
-  var periodStart=PV.period;
+  var periodStart=zeitSchluessel(PV.period);
   return holeZeitraum(PV.CH, PV.period, true).then(function(d){
-    if(PV.period!==periodStart) return;   // Zeitraum inzwischen gewechselt
+    if(zeitSchluessel(PV.period)!==periodStart) return;   // Zeitraum inzwischen gewechselt
     var f=(d&&d.feeds)?d.feeds:[], pts=[], peak=0;
     f.forEach(function(x){ var v=num(x.field1); if(v===null)return; if(v>peak)peak=v; pts.push({t:new Date(x.created_at).getTime(),v:v}); });
     pts.sort(function(a,b){return a.t-b.t;});
@@ -1096,9 +1110,9 @@ PV.load=function(){
 
 PV.loadPower=function(){
   var holder=document.getElementById("chart-power"); if(!holder)return;
-  var mpr = (PV.period==="heute" || KURZ[PV.period]) ? PV.morgenPrognose() : Promise.resolve(null), periodStart=PV.period;
+  var mpr = (PV.period==="heute" || KURZ[PV.period]) ? PV.morgenPrognose() : Promise.resolve(null), periodStart=zeitSchluessel(PV.period);
   Promise.all([ holeZeitraum(PV.CH, PV.period, true), mpr ]).then(function(r){
-    if(PV.period!==periodStart) return;   // Zeitraum inzwischen gewechselt: aeltere Antwort verwerfen
+    if(zeitSchluessel(PV.period)!==periodStart) return;   // Zeitraum inzwischen gewechselt: aeltere Antwort verwerfen
     var d=r[0], mp=r[1];
     var f=(d&&d.feeds)?d.feeds:[],pts=[]; f.forEach(function(x){ var v=num(x.field1); if(v!==null)pts.push({t:new Date(x.created_at),v:v/1000}); });
     if(pts.length) standZeit(document.getElementById("power-tag"), pts[pts.length-1].t);   // "Stand vor x s" neben dem Titel, tickt live
@@ -1114,7 +1128,7 @@ PV.loadPower=function(){
       if(pp.length>1) series.push({color:"var(--blue)",dash:true,width:2,pts:pp.slice(a,b+1)});
       leg=[{color:"var(--green)",label:"Ist"},{color:"var(--blue)",dash:true,label:"Prognose von "+hhmm(Date.parse(mp.erstellt))+" Uhr (~"+mp.tagesKwh+" kWh)"}]; }
     lineChart(holder,series,{unit:"kW",legend:series.length>1?leg:null});
-  }).catch(function(){ if(holder && PV.period===periodStart) holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
+  }).catch(function(){ if(holder && zeitSchluessel(PV.period)===periodStart) holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
 };
 /* ---- Energie-Historie: schnelle Endpunkt-Abfragen + localStorage-Cache ----
    Abgeschlossene Monate aendern sich nie -> einmal holen, dann cachen; nur der
@@ -1188,14 +1202,20 @@ function pvRefLegend(span){ return [{color:"var(--amber)",label:"Ist"},{color:"v
 // 00:00-00:59 tragen noch den Vortag. Datum des Tages = erster Eintrag nach dem Reset. Der Eintrag, in dem der Reset
 // liegt, ist bei Mittelwert-Feeds (average=15) ein Mischwert aus alt und neu und zaehlt deshalb nicht als Tagesmaximum.
 // Liefert [{v, dt}] zeitlich sortiert; der erste (angeschnittene) Tag des Fensters kann den Vortag enthalten.
-function pvTageMax(f){ var mx={}, seg=null, prev=null;
-  f.forEach(function(x){ var v=num(x.field2); if(v===null||v<0||v>PV.DAY_MAX_KWH)return; var dt=new Date(x.created_at), day=ymdStr(dt);
+function pvTageMax(f){ var mx=pvTagesSegmente(f, function(x){ return ymdStr(new Date(x.created_at)); });
+  return Object.keys(mx).sort().map(function(k){ return {v:mx[k].v, dt:new Date(mx[k].x.created_at)}; }); }
+// Gemeinsame Tagestrennung fuer pvTageMax (Balken) und pvDayTotals (Vergleichsband der Vorjahre), damit beide die
+// Tage gleich schneiden: neuer Produktionstag, wenn der Zaehler faellt (Reset) - oder beim Datumswechsel nach einem
+// Tag ohne Ertrag (< 1 kWh, z. B. Schnee), dort ist kein Reset sichtbar. Der Reset-Eintrag selbst (Mischwert) zaehlt
+// nicht. tagVon(x) = Datum "YYYY-MM-DD" eines Eintrags. Liefert {datum: {v: Tagesmaximum, x: erster Eintrag des Tages}}.
+function pvTagesSegmente(f, tagVon){ var mx={}, seg=null, prev=null;
+  (f||[]).forEach(function(x){ var v=num(x.field2); if(v===null||v<0||v>PV.DAY_MAX_KWH)return; var day=tagVon(x);
     var reset = prev!==null && v<prev-1;
-    if(seg===null || reset || (day!==seg.k && prev!==null && prev<1)){ seg={k:day, dt:dt, max:reset?0:v}; }
-    if(!reset && v>seg.max) seg.max=v;   // der Reset-Eintrag selbst (Mischwert) zaehlt nicht
-    if(!mx[seg.k] || seg.max>mx[seg.k].v) mx[seg.k]={v:seg.max, dt:mx[seg.k]?mx[seg.k].dt:seg.dt};
+    if(seg===null || reset || (day!==seg.k && prev!==null && prev<1)){ seg={k:day, x:x, max:reset?0:v}; }
+    if(!reset && v>seg.max) seg.max=v;
+    if(!mx[seg.k] || seg.max>mx[seg.k].v) mx[seg.k]={v:seg.max, x:mx[seg.k]?mx[seg.k].x:seg.x};
     prev=v; });
-  return Object.keys(mx).sort().map(function(k){ return mx[k]; }); }
+  return mx; }
 // Tagesertraege vergangener Jahre fuer das Vergleichsband im Tage-Modus. Feld 2 = Tages-
 // energie (kumuliert). ACHTUNG: der Zaehler wird nicht genau um Mitternacht zurueckgesetzt,
 // sondern erst zwischen 00:00 und 01:00 - der 00:00-Wert ist noch der Vortag. Darum wird
@@ -1215,17 +1235,9 @@ function pvDayTotals(year, cal){
   var first=new Date(miss[0]); first.setDate(first.getDate()-1);   // Vortag mitladen (Nacht-Uebertrag)
   var path="/fields/2.json?start="+encodeURIComponent(ymdStr(first)+" 00:00:00")+"&end="+encodeURIComponent(ymdStr(miss[miss.length-1])+" 23:59:59")+
            "&timescale=60&timezone=Europe%2FZurich";
-  return j(api(PV.CH,path,true)).then(function(d){ var mx={}, seg=null, prev=null;
-    ((d&&d.feeds)||[]).forEach(function(x){ var v=num(x.field2); if(v===null||v<0||v>PV.DAY_MAX_KWH)return;
-      var day=x.created_at.slice(0,10);
-      // neuer Produktionstag: Zaehler faellt (Reset) - oder Datumswechsel nach einem Tag
-      // ohne Ertrag (< 1 kWh, z. B. Schnee), dort ist kein Reset sichtbar
-      if(seg===null || (prev!==null && v<prev-1) || (day!==seg.k && prev!==null && prev<1)){ seg={k:day, max:v};
-        if(mx[seg.k]==null) mx[seg.k]=v; }
-      if(v>seg.max) seg.max=v;
-      if(seg.max>mx[seg.k]) mx[seg.k]=seg.max;
-      prev=v; });
-    miss.forEach(function(dt){ var k=ymdStr(dt); if(mx[k]!=null){ out[k.slice(5)]=mx[k]; lsSet("pv_d_"+k,mx[k]); } });   // nur Vorhandenes cachen
+  return j(api(PV.CH,path,true)).then(function(d){
+    var mx=pvTagesSegmente(d&&d.feeds, function(x){ return x.created_at.slice(0,10); });   // Zeitstempel in Zuercher Zeit (timezone)
+    miss.forEach(function(dt){ var k=ymdStr(dt); if(mx[k]){ out[k.slice(5)]=mx[k].v; lsSet("pv_d_"+k,mx[k].v); } });   // nur Vorhandenes cachen
     return out; });
 }
 // Liefert eine Funktion range(t): Min/Max der Tagesertraege aller Vorjahre fuer "heute + t Tage"
@@ -1359,7 +1371,9 @@ PV.loadEnergy=function(){
 function simpleView(cfg){
   var mode = "heute";  // "10m" | "1h" | "3h" | "6h" | "12h" | "heute" (ab Mitternacht) | "24h" | "7tage" | "frei" (steuert alle Charts der Ansicht)
   function g(id){ return document.getElementById(id); }
-
+  // Die generischen Ansichten teilen sich die Element-IDs (kpi_i, chart_i, ct_i, err2): Eine langsame Antwort
+  // der vorherigen Ansicht darf nach einem Tabwechsel nicht in die neue zeichnen.
+  function weg(nr){ return state.ansichtNr!==nr; }
 
   // Gruppen-Kopf (cfg.sections): "Stand vor ..." des Kanals; mit staleMin der Gruppe
   // rot "veraltet", wenn der Kanal so lange nichts Neues geliefert hat (z. B. Poller aus).
@@ -1372,8 +1386,8 @@ function simpleView(cfg){
     el.className="tag"+(warn?" warn":""); }); }
 
   // KPIs immer aktuell (letzter bekannter Wert), unabhaengig vom Zeitraum
-  function loadKpis(){
-    j(api(cfg.channel, "/feeds.json?results=10", false)).then(function(d){
+  function loadKpis(){ var nr=state.ansichtNr;
+    j(api(cfg.channel, "/feeds.json?results=10", false)).then(function(d){ if(weg(nr)) return;
       var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
       var last=f[f.length-1];
       // Heizung: Symbol der Gruppe = Flamme (Feuer) oder gluehende Kohle (Glut); grau, wenn > 60 min nichts kam
@@ -1392,7 +1406,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
       // Ampel-Faerbung: KPI-Wert nach aktueller PV-Leistung gegenueber der Schwelle
       // (rot = keine PV-Leistung, orange bis zur Schwelle, gruen ab Schwelle)
       if(cfg.kpis.some(function(k){return k.colorPv;})){
-        j(api(172430,"/feeds.json?results=5",true)).then(function(pd){
+        j(api(172430,"/feeds.json?results=5",true)).then(function(pd){ if(weg(nr)) return;
           var pf=(pd&&pd.feeds)?pd.feeds:[], pv=null; for(var i=pf.length-1;i>=0;i--){ var vv=num(pf[i].field1); if(vv!==null){pv=vv;break;} }
           cfg.kpis.forEach(function(k,ix){ if(!k.colorPv)return; var thr=L(k.field), el=g("kpi_"+ix); if(!el||thr===null||!thr||pv===null)return;
             el.style.color=thresholdColor(pv,thr); });
@@ -1403,7 +1417,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
     var extra={};
     cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel&&!k.ausFeeds&&!k.integrate){ (extra[k.channel]=extra[k.channel]||[]).push({k:k,i:i}); } });
     Object.keys(extra).forEach(function(ch){
-      j(api(ch, "/feeds.json?results=300", false)).then(function(d){
+      j(api(ch, "/feeds.json?results=300", false)).then(function(d){ if(weg(nr)) return;
         var f=(d&&d.feeds)?d.feeds:[];
         function L2(fd){ for(var i=f.length-1;i>=0;i--){ var v=num(f[i][fd]); if(v!==null)return v; } return null; }
         extra[ch].forEach(function(o){ var g2=g("kpi_"+o.i); if(!g2)return; var v=L2(o.k.field); if(v!==null&&o.k.scale)v=v*o.k.scale;
@@ -1428,11 +1442,11 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
     // ... und von Zeitraum-KPIs aus anderen Kanaelen (z. B. Ø Auslastung im Tab Heizung)
     cfg.kpis.forEach(function(k){ if((k.ausFeeds||k.integrate) && k.channel) chans[String(k.channel)]=k.channel;
       if(k.pruef) chans[String(k.pruef.channel)]=k.pruef.channel; });
-    var keys=Object.keys(chans), modeStart=mode;   // Zeitraum zu Beginn: eine langsame aeltere Antwort darf einen neueren Zeitraum nicht ueberschreiben
+    var keys=Object.keys(chans), modeStart=zeitSchluessel(mode), nr=state.ansichtNr;   // Zeitraum zu Beginn: eine langsame aeltere Antwort darf einen neueren Zeitraum nicht ueberschreiben
     Promise.all(keys.map(function(k){ var ch=chans[k];
       return holeZeitraum(ch, mode, String(ch)==="172430").then(function(d){ return {k:k, feeds:(d&&d.feeds)?d.feeds:[]}; }); }))
     .then(function(results){
-      if(mode!==modeStart) return;   // inzwischen umgeschaltet
+      if(zeitSchluessel(mode)!==modeStart || weg(nr)) return;   // inzwischen umgeschaltet (Zeitraum oder Tab)
       var byChan={}; results.forEach(function(r){ byChan[r.k]=r.feeds; });
       var f=byChan[String(cfg.channel)]||[];
       // Wert eines Feldes (beliebiger Kanal) zum Zeitpunkt t: letzter Eintrag <= t (Stufe halten).
@@ -1458,13 +1472,13 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
       cfg.kpis.forEach(function(k,ki){ if(!k.integrate && !k.ausFeeds)return; var el=g("kpi_"+ki); if(!el)return;
         var ch=k.channel||cfg.channel, dec=(k.dec!=null?k.dec:1), toKw=k.intScale;
         var wert=function(ff){ return k.ausFeeds ? k.ausFeeds(ff,ctx) : integKwh(ff,k.field,toKw); };
-        var wk=mode;
+        var wk=zeitSchluessel(mode);
         // Hauptwert: aus den Feeds des Kanals dieser Kennzahl
-        (mode==="7tage" ? siebenTage(ch) : Promise.resolve(byChan[String(ch)]||[])).then(function(ff){ if(mode!==wk)return;  // Zeitraum inzwischen gewechselt
+        (mode==="7tage" ? siebenTage(ch) : Promise.resolve(byChan[String(ch)]||[])).then(function(ff){ if(zeitSchluessel(mode)!==wk || weg(nr))return;  // Zeitraum oder Tab inzwischen gewechselt
           el.textContent = fmt(wert(ff), dec); }).catch(function(){});
         // Pruefwert in Klammern (k.pruef): zweite Rechnung aus einem anderen Kanal, nur zum Gegenpruefen
         if(k.pruef){ var ce=g("kpi_"+ki+"_chk");
-          (mode==="7tage" ? siebenTage(k.pruef.channel) : Promise.resolve(byChan[String(k.pruef.channel)]||[])).then(function(ff){ if(mode!==wk||!ce)return;
+          (mode==="7tage" ? siebenTage(k.pruef.channel) : Promise.resolve(byChan[String(k.pruef.channel)]||[])).then(function(ff){ if(zeitSchluessel(mode)!==wk||weg(nr)||!ce)return;
             var pv=k.pruef.rechne(ff); ce.textContent = pv===null ? "" : "("+k.pruef.label+" "+fmt(pv,dec)+" "+(k.unit||"")+")"; }).catch(function(){}); }
       });
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
@@ -1572,7 +1586,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
         lineChart(holder, series, {unit:c.unit, zero:c.zero, padL:c.padL, yMin:yMin, yMax:yMax, yTicks:yTicks, unit2:c.unit2, zero2:c.zero2, yMin2:c.yMin2, yMax2:c.yMax2, y2Fmt:c.y2Fmt, y2Color:c.y2Color, y2Marks:c.y2Marks, padR:c.padR, autoW:true});
       });
       if(g("err2"))g("err2").textContent="";
-    }).catch(function(){ if(mode===modeStart && g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
+    }).catch(function(){ if(zeitSchluessel(mode)===modeStart && !weg(nr) && g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
   }
 
   // Tabelle unter den Grafiken (cfg.tabelle): letzte Tage in 3-Tage-Fenstern holen, hoechstens alle 10 min neu
@@ -2329,7 +2343,7 @@ PLANNER.load=function(){
   ]).then(function(r){
     var f=(r[0]&&r[0].feeds)?r[0].feeds:[]; var v=f.length?num(f[f.length-1].field1):null;
     PLANNER._pNow=(v===null?null:v/1000);
-    var td=ymdLocal(new Date()), th={};
+    var zj=zurichJetzt(), td=zj.ymd, th={};   // Feeds in Zuercher Zeit (timezone=Europe/Zurich)
     ((r[1]&&r[1].feeds)?r[1].feeds:[]).forEach(function(x){ if(x.created_at.slice(0,10)!==td)return; var a=num(x.field1); if(a===null)return; th[parseInt(x.created_at.slice(11,13),10)]=a/1000; });
     PLANNER._todayActual=th;
     // aktuelle Boiler-Ladeleistung (kW, field3 in W) – Vorrang, wird abgezogen
@@ -2340,29 +2354,31 @@ PLANNER.load=function(){
     // heute bereits geladene Boiler-Energie (kWh) aus Stundenmittel field3 integriert
     // Stundenmittel x 1 h = kWh; die laufende Stunde zaehlt nur mit ihrem abgelaufenen Anteil (ihr Mittel gilt erst fuer
     // die vergangenen Minuten - sonst stuende um 10:05 schon die ganze Stunde da)
-    var bt=0, bany=false, bNow=new Date(), bH=bNow.getHours(), bFrac=bNow.getMinutes()/60;
+    var bt=0, bany=false, bH=zj.h, bFrac=zj.min/60;
     ((r[4]&&r[4].feeds)?r[4].feeds:[]).forEach(function(x){ if(x.created_at.slice(0,10)!==td)return; var p=num(x.field3); if(p===null)return;
       var h=parseInt(x.created_at.slice(11,13),10), w=(h===bH)?bFrac:1; bt+=Math.max(0,p)/1000*w; bany=true; });
     PLANNER._boilerTodayKwh = bany ? bt : null;
     // aktuelle Auto-Ladeleistung (kW, field4 in µW) – nur wenn Wallbox laedt (Status 67)
     // Stuendlich schreibt der Kanal einen Eintrag nur mit field1 (HSH-Auslastung): dort fehlen Status und Leistung,
     // deshalb den letzten Eintrag mit Status (field8) nehmen - sonst gilt ein ladendes Auto als Last 0.
-    var wfs=(r[3]&&r[3].feeds)?r[3].feeds:[], wf=null;
-    for(var wk=wfs.length-1;wk>=0;wk--){ if(num(wfs[wk].field8)!==null){ wf=wfs[wk]; break; } }
+    // Hoechstens 10 min alt (Logger meldet jede Minute): Faellt der Wallbox-Logger aus, waehrend die stuendlichen
+    // HSH-Eintraege weiterlaufen, bliebe sonst ein altes "Laedt" stehen und zaehlte als Last, die es nicht gibt.
+    var wfs=(r[3]&&r[3].feeds)?r[3].feeds:[], wf=null, wfAlt=function(x){ return Date.now()-Date.parse(x.created_at)>600000; };
+    for(var wk=wfs.length-1;wk>=0;wk--){ if(num(wfs[wk].field8)!==null){ if(!wfAlt(wfs[wk])) wf=wfs[wk]; break; } }
     PLANNER._carNow = wf ? (Math.round(num(wf.field8))===67 ? Math.max(0,(num(wf.field4)||0)*1e-6) : 0) : null;
-    // geglaettete Lade-Vorgabe der Wallbox (kW, field7 in W) – letzter vorhandener Wert
+    // geglaettete Lade-Vorgabe der Wallbox (kW, field7 in W) – letzter vorhandener Wert, ebenfalls hoechstens 10 min alt
     PLANNER._carVorgabe=null;
-    for(var wi=wfs.length-1;wi>=0;wi--){ var vg=num(wfs[wi].field7); if(vg!==null){ PLANNER._carVorgabe=Math.max(0,vg/1000); break; } }
+    for(var wi=wfs.length-1;wi>=0;wi--){ var vg=num(wfs[wi].field7); if(vg!==null){ if(!wfAlt(wfs[wi])) PLANNER._carVorgabe=Math.max(0,vg/1000); break; } }
     afterPnow();
   }).catch(function(){ afterPnow(); });
 };
 
 var VIEWS={ pv:PV, wallbox:WALLBOX, heizung:HEIZUNG, boiler:BOILER, pumpe:PUMPE, planer:PLANNER };
-var state={view:null, lastLoad:0, vorLoad:0, lastData:0, misses:0, geladen:false};
+var state={view:null, lastLoad:0, vorLoad:0, lastData:0, misses:0, geladen:false, ansichtNr:0};   // ansichtNr: zaehlt jeden Tabwechsel (Antworten der vorherigen Ansicht verwerfen)
 function laden(){ state.vorLoad=state.lastLoad; state.lastLoad=Date.now(); if(state.view) VIEWS[state.view].load(); }   // im Takt des Loggers (aktTick), spaetestens alle 60 s, und beim Zurueckkehren in die App
 function switchView(v){
   if(!VIEWS[v]) v="pv";
-  AKT_NEXT=null; AKT_MARGE=5000; state.view=v; state.lastData=0; state.misses=0; state.geladen=false;   // Planung der vorherigen Ansicht nicht mitnehmen
+  AKT_NEXT=null; AKT_MARGE=5000; state.view=v; state.ansichtNr++; state.lastData=0; state.misses=0; state.geladen=false;   // Planung der vorherigen Ansicht nicht mitnehmen
   var tabs=document.querySelectorAll("#tabs a");
   tabs.forEach(function(a){ a.classList.toggle("active", a.getAttribute("data-view")===v); });
   var main=document.getElementById("view");
