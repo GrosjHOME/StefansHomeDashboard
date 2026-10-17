@@ -314,8 +314,8 @@ im Tab *Heizung* schätzt, wie voll sie ist und wann sie geleert werden muss.
 - **Prognose:** Brennzeit je **Heizgradtag** (20/12, aus dem Tagesmittel der
   Aussentemperatur in 2 m) der letzten 14 Tage × Heizgradtage aus der
   7-Tage-Prognose von Open-Meteo, weiter weg deren Mittel. Daraus der Tag, an dem
-  der gewählte Füllstand (Standard 90 %) erreicht ist.
-- **Füllstand beim Leeren:** Auswahlbox 10–100 % in 10-%-Schritten (Standard 90 %, im Browser gemerkt). Sie gilt als Füllstand der Leerung, die man mit **Asche geleert** einträgt, und als Ziel der Prognose.
+  die Box voll ist (100 %).
+- **Füllstand beim Leeren:** Auswahlbox 10–100 % in 10-%-Schritten (Standard 90 %, im Browser gemerkt). Sie gilt als Füllstand der Leerung, die man mit **Asche geleert** einträgt. Die Prognose rechnet davon unabhängig immer bis zur vollen Box (100 %).
 - **Tabelle «Letzte Leerungen»:** Je Leerung die Tage seit der vorherigen (bzw. dem Saisonstart), der Füllstand beim Leeren, die Brennzeit im Intervall und diese auf 100 % hochgerechnet (die letzten 10), oben die laufende Periode. Die Leerungen stehen im Val-Town-Blob `asche_leerungen` (Zeitpunkte und Füllstand je Leerung); Tage und Brennzeiten werden daraus im Browser gerechnet, die Tageswerte je Tag liegen im `localStorage` (`hz_tag_…`).
 
 | | |
