@@ -136,7 +136,7 @@
   table{width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums;}
   th,td{padding:8px 10px; text-align:right; border-bottom:1px solid var(--line);}
   th:first-child,td:first-child{text-align:left;}
-  thead th{font-size:.78rem; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em;}
+  thead th{font-size:.8rem; color:var(--muted); font-weight:600;}   /* Spaltenkoepfe in normaler Schreibweise (keine Grossschreibung) */
   tbody tr:last-child td{border-bottom:none;}
   tr.sum td{font-weight:700; border-top:2px solid var(--line);}
   .wr-head{font-weight:700; color:var(--blue);}
@@ -188,6 +188,11 @@
     .ch-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:16px; align-items:stretch;}
     .ch-grid > .panel:last-child:nth-child(odd){grid-column:1 / -1;}   /* ungerade Anzahl: letzte Grafik volle Breite */
   }
+  /* Aufklappbare Erklaerung (Aschebox): nur die Ueberschrift, Text auf Klick */
+  details.as-info > summary{cursor:pointer; font-weight:600; color:var(--ink); list-style-position:inside; padding:2px 0;}
+  details.as-info[open] > summary{margin-bottom:8px;}  /* Aschebox (Heizung): Kennzahlen ueber die ganze Breite, 4 Kacheln je Reihe, ab 1400 px alle 8 in einer Reihe */
+  @media (min-width:1100px){ #as-kpis{grid-template-columns:repeat(4,minmax(0,1fr));} }
+  @media (min-width:1400px){ #as-kpis{grid-template-columns:repeat(8,minmax(0,1fr));} }
   /* 1100-1279 px (z. B. 1920x1200 mit 175 % Skalierung): zwei Spalten, aber nur 3 Kacheln je Reihe
      und Gruppe - fuenf nebeneinander waeren zu schmal fuer die Beschriftungen */
   @media (min-width:1100px) and (max-width:1279px){
@@ -1645,9 +1650,9 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
           zeitraumLeisteHtml()+
           '<div class="meta" id="head-meta">wird geladen…</div>'+
         '</div></div>'+
-        freiPanelHtml()+kp+'<div class="ch-grid">'+charts+'</div>'+
+        freiPanelHtml()+kp+(cfg.extra ? cfg.extra.html() : '')+   // Zusatz-Bereich der Ansicht (z. B. Aschebox der Heizung), ueber die ganze Breite
+        '<div class="ch-grid">'+charts+(cfg.extra && cfg.extra.htmlTab ? cfg.extra.htmlTab() : '')+'</div>'+
         (cfg.tabelle ? '<div class="panel" style="padding-left:10px;padding-right:10px"><h2>'+cfg.tabelle.title+' <span class="tag">letzte '+cfg.tabelle.tage+' Tage</span></h2><div id="tab_body"><div class="chart-empty">wird geladen…</div></div><div class="note">'+cfg.tabelle.note+'</div></div>' : '')+
-        (cfg.extra ? cfg.extra.html() : '')+   // Zusatz-Bereich der Ansicht (z. B. Asche-Prognose der Heizung)
         '<footer>Datenquelle: ThingSpeak Kanal '+cfg.channel+' · Aktualisierung alle 60 s · <span id="err2" style="color:var(--red)"></span></footer></div>';
       zeitraumBinden(function(m){ mode=m; loadCharts(); });
       if(cfg.extra && cfg.extra.bind) cfg.extra.bind();
@@ -1853,7 +1858,7 @@ ASCHE.tabelle=function(e, el){ if(!el) return;
   if(e.saison && seitVon){ var heute=ymdLocal(new Date()), tg=Math.max(1,Math.round((new Date(heute+"T12:00:00")-new Date(seitVon+"T12:00:00"))/864e5)+1);
     rows.push(zeile("läuft aktuell","seit "+ASCHE.fmtTag(seitVon)+" · Austragung "+fmt(e.seitAustr/60,1)+" h",tg,e.pct===null?"–":"~"+fmt(Math.min(999,e.pct),0)+" %",e.seitBrenn,null,true)); }
   e.hist.slice().reverse().slice(0,10).forEach(function(h){ rows.push(zeile(ASCHE.fmtTag(h.ymd),"seit "+ASCHE.fmtTag(h.von)+" · Austragung "+fmt(h.austr/60,1)+" h",h.tage,h.pct+" %",h.brenn,h.kap,false)); });
-  el.innerHTML = rows.length ? '<h3 style="font-size:.95rem;margin:4px 0 6px">Letzte Leerungen</h3><table><thead><tr><th style="text-align:left">Leerung</th><th>Tage</th><th>Füllstand</th><th>Brennzeit [h]</th><th>auf 100 % [h]</th></tr></thead><tbody>'+rows.join("")+'</tbody></table>'
+  el.innerHTML = rows.length ? '<table><thead><tr><th style="text-align:left">Leerung</th><th>Tage</th><th>Füllstand</th><th>Brennzeit [h]</th><th>auf 100 % [h]</th></tr></thead><tbody>'+rows.join("")+'</tbody></table>'
     + (e.hist.length ? '' : '<div class="note">Noch keine Leerung eingetragen – die Tabelle füllt sich mit jedem Eintrag.</div>') : "";
 };
 // Panel fuer simpleView (cfg.extra)
@@ -1870,13 +1875,16 @@ ASCHE.panel={
         '<label>Füllstand beim Leeren<select id="as-pctsel">'+[10,20,30,40,50,60,70,80,90,100].map(function(p){ return '<option value="'+p+'"'+(p===ASCHE.anteil()?' selected':'')+'>'+p+' %</option>'; }).join("")+'</select></label>'+
         '<button class="btn" id="as-ok">Asche geleert</button><button class="btn" id="as-undo">Letzte Leerung löschen</button>'+
         '<span class="frei-msg" id="as-msg"></span></div>'+
-      '<div id="as-tab" class="tbl-wrap"></div>'+
-      '<div class="note">Schätzung aus der <b>Brennzeit</b> (Abgas − Kessel &gt; 30 K, wie die Heizzyklen): Die Aschemenge folgt den verbrannten Schnitzeln, '+
+      '</div>'; },
+  // Tabelle + Erklaerung: steht als letztes Feld in der Grafik-Reihe, neben dem Fuellstand-Diagramm
+  htmlTab:function(){
+    return '<div class="panel"><h2>Letzte Leerungen</h2><div id="as-tab" class="tbl-wrap"></div>'+
+      '<details class="note as-info"><summary>Schätzung aus der Brennzeit – so wird gerechnet</summary>Schätzung aus der <b>Brennzeit</b> (Abgas − Kessel &gt; 30 K, wie die Heizzyklen): Die Aschemenge folgt den verbrannten Schnitzeln, '+
       'die <b>Austragung</b> (Laufzeit der Schnitzelförderung) läuft als zweites Mass mit. <b>Kapazität</b> (= 100 %) = Brennzeit zwischen zwei Leerungen, hochgerechnet auf 100 % aus dem <b>Füllstand beim Leeren</b> (Median; '+
       'leerst du bei 50 %, zählt die Brennzeit doppelt; das erste Intervall beginnt am Saisonstart = erster Tag ab 1. September mit Feuer, Box dort leer). <b>Prognose</b> bis die Box voll ist (100 %): Brennzeit je Heizgradtag der letzten '+
       '14 Tage × Heizgradtage aus der 7-Tage-Temperaturprognose (Aussentemperatur 2 m, Open-Meteo), danach deren Mittel. '+
       'Rinde, Feuchte und Herkunft der Schnitzel ändern die Asche je Stunde – mit jeder eingetragenen Leerung wird die Kapazität genauer. '+
-      '<b>Asche geleert</b> trägt die Leerung mit dem gewählten Füllstand ein (Datum wählbar; die Auswahl bleibt im Browser gemerkt)'+(ASCHE.URL?'; gespeichert auf Val Town, Schreiben mit Token.':'; ohne Val-Town-Adresse nur in diesem Browser gespeichert.')+'</div></div>'; },
+      '<b>Asche geleert</b> trägt die Leerung mit dem gewählten Füllstand ein (Datum wählbar; die Auswahl bleibt im Browser gemerkt)'+(ASCHE.URL?'; gespeichert auf Val Town, Schreiben mit Token.':'; ohne Val-Town-Adresse nur in diesem Browser gespeichert.')+'</details></div>'; },
   bind:function(){ var g=function(id){ return document.getElementById(id); };
     function sag(t,farbe){ var m=g("as-msg"); if(m){ m.textContent=t; m.style.color=farbe||"var(--red)"; } }
     function neu(){ ASCHE._t=0; ASCHE.panel.load(); }
