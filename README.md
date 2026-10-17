@@ -307,8 +307,8 @@ im Tab *Heizung* schätzt, wie voll sie ist und wann sie geleert werden muss.
 - **Kapazität (= 100 %):** Brennzeit zwischen zwei Leerungen, hochgerechnet auf
   100 % aus dem **Füllstand beim Leeren** (Median aller Intervalle): Wer bei 50 %
   leert, dessen Brennzeit zählt doppelt. Das erste Intervall beginnt am **Saisonstart** (erster Tag ab 1. September mit
-  Feuer), dort ist die Box leer. Der Tag der Leerung zählt ganz zum alten
-  Intervall. Mit jeder Leerung wird die Kapazität genauer – Rinde, Feuchte und
+  Feuer), dort ist die Box leer. Die **Uhrzeit der Leerung** teilt den Leerungstag: Brennzeit und Austragung davor zählen zum alten, danach zum neuen Intervall (der Tag wird dazu einmal minutengenau geholt und im Browser gemerkt, `hz_split_…`). Das Datum und die Uhrzeit trägt man beim Eintragen ein (Standard: jetzt); ältere Einträge ohne Uhrzeit gelten als 12:00.
+  Mit jeder Leerung wird die Kapazität genauer – Rinde, Feuchte und
   Herkunft der Schnitzel ändern die Asche je Brennstunde.
 - **Füllstand:** Brennzeit seit der letzten Leerung ÷ Kapazität.
 - **Prognose:** Brennzeit je **Heizgradtag** (20/12, aus dem Tagesmittel der
