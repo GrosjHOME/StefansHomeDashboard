@@ -30,14 +30,21 @@ aktualisiert sich im Takt des jeweiligen Loggers (die Seite lernt je Gerät aus 
 ## Datenfluss
 
 ```text
-Arduino-Steuerungen ──────────────────┐
-(PV, Wallbox, Heizung, Boiler)        │
-                                      ├──> ThingSpeak ──┐
-VW ID.3 ──> Tibber ──> Val Town ──────┘                 │
-            (Data API) (alle 15 min)                    ├──> Dashboard (GitHub Pages)
-                                                        │
-Open-Meteo (Einstrahlung, Wetter) ──────────────────────┘
+Arduino-Steuerungen ──────────────────────────┐
+(PV, Wallbox, Heizung, Boiler, Pumpwerk)      │
+                                              ├──> ThingSpeak ──┐
+VW ID.3 ──> Tibber ──> Val Town ──────────────┘                 │
+            (Data API) (alle 15 min)                            │
+                                                                ├──> Dashboard (GitHub Pages)
+Open-Meteo (Einstrahlung, Wetter) ──────────────────────────────┤
+                                                                │
+Val Town Blob-Speicher <────────────────────────────────────────┘
+(Morgenprognose, Asche-Leerungen)
 ```
+
+Der Pfeil zum **Blob-Speicher** gilt in beide Richtungen: Das Dashboard liest von dort
+die PV-Morgenprognose und die Asche-Leerungen und schreibt neue Leerungen zurück
+(mit Token). Der Wächter im Val liest ThingSpeak und schickt bei Störungen eine E-Mail.
 
 ### Val Town: ein Val, fünf Dateien
 
@@ -297,8 +304,9 @@ im Tab *Heizung* schätzt, wie voll sie ist und wann sie geleert werden muss.
   **Brennzeit** folgt (Abgas − Kessel > 30 K, dieselbe Zählung wie die Heizzyklen).
   Die **Austragung** (Laufzeit der Schnitzelförderung, Feld 6) läuft als zweites
   Mass mit. Je Tag werden beide einmal gerechnet und im Browser gespeichert.
-- **Kapazität:** Brennzeit zwischen zwei Leerungen (Median aller Intervalle). Das
-  erste Intervall beginnt am **Saisonstart** (erster Tag ab 1. September mit
+- **Kapazität (= 100 %):** Brennzeit zwischen zwei Leerungen, hochgerechnet auf
+  100 % aus dem **Füllstand beim Leeren** (Median aller Intervalle): Wer bei 50 %
+  leert, dessen Brennzeit zählt doppelt. Das erste Intervall beginnt am **Saisonstart** (erster Tag ab 1. September mit
   Feuer), dort ist die Box leer. Der Tag der Leerung zählt ganz zum alten
   Intervall. Mit jeder Leerung wird die Kapazität genauer – Rinde, Feuchte und
   Herkunft der Schnitzel ändern die Asche je Brennstunde.
@@ -306,14 +314,16 @@ im Tab *Heizung* schätzt, wie voll sie ist und wann sie geleert werden muss.
 - **Prognose:** Brennzeit je **Heizgradtag** (20/12, aus dem Tagesmittel der
   Aussentemperatur in 2 m) der letzten 14 Tage × Heizgradtage aus der
   7-Tage-Prognose von Open-Meteo, weiter weg deren Mittel. Daraus der Tag, an dem
-  die Box voll ist.
+  der gewählte Füllstand (Standard 90 %) erreicht ist.
+- **Füllstand beim Leeren:** Auswahlbox 10–100 % in 10-%-Schritten (Standard 90 %, im Browser gemerkt). Sie gilt als Füllstand der Leerung, die man mit **Asche geleert** einträgt, und als Ziel der Prognose.
+- **Tabelle «Letzte Leerungen»:** Je Leerung die Tage seit der vorherigen (bzw. dem Saisonstart), der Füllstand beim Leeren, die Brennzeit im Intervall und diese auf 100 % hochgerechnet (die letzten 10), oben die laufende Periode. Die Leerungen stehen im Val-Town-Blob `asche_leerungen` (Zeitpunkte und Füllstand je Leerung); Tage und Brennzeiten werden daraus im Browser gerechnet, die Tageswerte je Tag liegen im `localStorage` (`hz_tag_…`).
 
 | | |
 |---|---|
 | **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-fünf-dateien)) |
 | **Datei** | `asche.ts` (Trigger **HTTP**) |
 | **Quelltext** | `scripts/valtown_asche/asche.ts` – hier ändern, dann in den Val kopieren |
-| **Speicher** | Blob `asche_leerungen` (Liste der Leerungen, UTC) |
+| **Speicher** | Blob `asche_leerungen`: `leerungen` (Zeitpunkte, UTC) und `anteile` (Füllstand beim Leeren in %, fehlt = 100 %) |
 | **Umgebungsvariable** | `ASCHE_TOKEN` – frei gewähltes Passwort; nur wer es kennt, kann Leerungen eintragen oder löschen |
 | **Web-Adresse** | im Dashboard `ASCHE.URL` (leer = Leerungen nur im jeweiligen Browser) |
 
