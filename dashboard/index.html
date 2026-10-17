@@ -626,6 +626,10 @@ function zeitraumMs(mode){ var bis=Date.now();
 // Kennung des gewaehlten Zeitraums fuer "Antwort noch aktuell?": beim freien Zeitraum mit Start und Ende,
 // sonst wuerde eine langsame Antwort fuer einen frueheren freien Zeitraum den neueren ueberschreiben
 function zeitSchluessel(mode){ return mode==="frei" ? "frei|"+FREI.von+"|"+FREI.bis : mode; }
+// Eine Pruefung "ist diese Antwort noch aktuell?" fuer alle Ansichten: Kennung aus Tabwechsel-Zaehler (state.ansichtNr)
+// und, falls angegeben, dem Zeitraum. Vor der Abfrage merken, in der Antwort vergleichen: tok===ladeToken(mode).
+// Ohne mode nur der Tab (fuer Werte, die nicht vom Zeitraum abhaengen).
+function ladeToken(mode){ return state.ansichtNr+(mode==null?"":"|"+zeitSchluessel(mode)); }
 // Messwerte (datei "feeds.json" oder "status.json") fuer den gewaehlten Zeitraum. Die festen Zeitraeume
 // kommen mit einer Abfrage; ein freier Zeitraum in 3-Tage-Fenstern (ThingSpeak liefert je Abfrage hoechstens
 // ~8000 Eintraege, bei minuetlichen Daten ~5.5 Tage) und ohne doppelte Eintraege an den Fenstergrenzen.
@@ -634,13 +638,18 @@ function zeitSchluessel(mode){ return mode==="frei" ? "frei|"+FREI.von+"|"+FREI.
 function holeBereich(ch, von, bis, withKey, datei){ datei=datei||"feeds.json";
   var fenster=[]; for(var s=von; s<bis; s+=FREI_FENSTER_MS) fenster.push([s, Math.min(s+FREI_FENSTER_MS, bis)]);
   return Promise.all(fenster.map(function(w){ return j(api(ch, "/"+datei+"?start="+encodeURIComponent(tsStamp(w[0]))+"&end="+encodeURIComponent(tsStamp(w[1])), withKey)); }))
-    .then(function(rs){ var seen={}, feeds=[]; rs.forEach(function(r){ ((r&&r.feeds)||[]).forEach(function(x){ if(!seen[x.entry_id]){ seen[x.entry_id]=1; feeds.push(x); } }); }); return {feeds:feeds}; }); }
+    .then(function(rs){ var seen={}, feeds=[], luecke=false; rs.forEach(function(r){ if(!r||!r.feeds) luecke=true;   // Fenster ohne feeds = Fehlerantwort
+      ((r&&r.feeds)||[]).forEach(function(x){ if(!seen[x.entry_id]){ seen[x.entry_id]=1; feeds.push(x); } }); }); return {feeds:feeds, luecke:luecke}; }); }
 function holeZeitraum(ch, mode, withKey, datei){ datei=datei||"feeds.json";
   if(mode!=="frei") return j(api(ch, periodQuery(mode).replace("feeds.json",datei), withKey));
   var z=zeitraumMs("frei"), key=ch+"|"+datei+"|"+z.von+"|"+z.bis, fertig=z.bis<Date.now()-300000;
   if(fertig && _freiCache[key]) return _freiCache[key];
   var p=holeBereich(ch, z.von, z.bis, withKey, datei);
-  if(fertig){ if(Object.keys(_freiCache).length>12) _freiCache={}; _freiCache[key]=p; }
+  if(fertig){ if(Object.keys(_freiCache).length>12) _freiCache={}; _freiCache[key]=p;
+    // Fehlgeschlagene oder lueckenhafte Abfrage (ein Fenster mit Fehlerantwort) nicht im Speicher behalten, sonst kaeme
+    // bei jedem Laden wieder dasselbe Ergebnis, ohne neuen Versuch
+    var weg=function(){ if(_freiCache[key]===p) delete _freiCache[key]; };
+    p.then(function(r){ if(r.luecke) weg(); }, weg); }
   return p; }
 function freiText(){ var a=new Date(FREI.von), b=new Date(Math.min(FREI.bis,Date.now())), p2=function(n){ return ("0"+n).slice(-2); };
   var hm=function(d){ return p2(d.getHours())+":"+p2(d.getMinutes()); };
@@ -694,11 +703,13 @@ function zeitraumBinden(setMode){
 function integKwh(feeds, field, toKw){ toKw=(toKw==null?0.001:toKw); var e=0, prev=null; (feeds||[]).forEach(function(x){ var raw=num(x[field]); if(raw===null)return; var p=Math.max(0,raw*toKw); var t=new Date(x.created_at); if(prev){ var dt=(t-prev.t)/3600000; if(dt>0&&dt<2) e+=(prev.p+p)/2*dt; } prev={t:t,p:p}; }); return e; }
 function tsStamp(ms){ return new Date(ms).toISOString().slice(0,19).replace("T"," "); }  // ThingSpeak start/end (UTC)
 function ymdLocal(d){ return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }  // Datum in Ortszeit
-// Datum, Stunde und Minute jetzt in Zuercher Zeit - passend zu ThingSpeak-Abfragen mit timezone=Europe/Zurich,
-// auch wenn das Geraet in einer anderen Zeitzone steht. Ohne Intl-Zeitzonen: Ortszeit des Geraets.
-function zurichJetzt(){ var d=new Date();
-  try{ var o={}; new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Zurich",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"})
-      .formatToParts(d).forEach(function(p){ o[p.type]=p.value; });
+// Datum, Stunde und Minute in Zuercher Zeit (ms; ohne Angabe: jetzt) - passend zu ThingSpeak-Abfragen mit
+// timezone=Europe/Zurich und zu den Open-Meteo-Stunden (timezone=Europe/Zurich), auch wenn das Geraet in einer anderen
+// Zeitzone steht. Ohne Intl-Zeitzonen: Ortszeit des Geraets.
+var _zhFmt;
+function zurichZeit(ms){ var d=new Date(ms==null?Date.now():ms);
+  try{ if(!_zhFmt) _zhFmt=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Zurich",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"});
+    var o={}; _zhFmt.formatToParts(d).forEach(function(p){ o[p.type]=p.value; });
     return {ymd:o.year+"-"+o.month+"-"+o.day, h:parseInt(o.hour,10)%24, min:parseInt(o.minute,10)}; }
   catch(e){ return {ymd:ymdLocal(d), h:d.getHours(), min:d.getMinutes()}; } }
 function hhmm(ms){ return new Date(ms).toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"}); }
@@ -761,15 +772,11 @@ PV.render=function(main){
   if(window.ResizeObserver){ PV._ro=new ResizeObserver(function(){ requestAnimationFrame(PV.fitJahr); });
     [".a-strom",".a-spann"].forEach(function(s){ var e=main.querySelector(s); if(e) PV._ro.observe(e); }); }
   var slf=document.getElementById("seg-lf"); if(slf) slf.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.lfMode=b.getAttribute("data-m"); segActive(slf,b); PV.loadLF(); });
-  // Zeitraum-Wechsel: Fehler je Grafik anzeigen (sonst bliebe "wird geladen…" stehen und die Zurueckweisung unbehandelt) -
-  // nur wenn noch derselbe Zeitraum gilt, sonst ersetzte der Fehler einer alten Abfrage die schon geladenen neuen Daten
-  function chartFehler(ids){ var zs=zeitSchluessel(PV.period); return function(){ if(zeitSchluessel(PV.period)!==zs) return; ids.forEach(function(id){ var e=document.getElementById(id); if(e) e.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; }); }; }
+  // Zeitraum-Wechsel: Fehler zeigen loadTrackers/loadPeakSun selbst an (wie beim regulaeren Laden in PV.load);
+  // hier nur die Zurueckweisung abfangen
   zeitraumBinden(function(m){ PV.period=m; PV.loadPower();
-    PV.loadTrackers().catch(chartFehler(["chart-strom","chart-spannung","tracker-holder"]));
-    // Peak/Sonnenstunden: schlaegt die Abfrage fehl, "–" statt der Werte des vorherigen Zeitraums
-    var zsPeak=zeitSchluessel(m);
-    PV.loadPeakSun().catch(function(){ if(zeitSchluessel(PV.period)!==zsPeak) return;
-      ["e-peak","e-sun"].forEach(function(id){ var e=document.getElementById(id); if(e) e.textContent="–"; }); }); });
+    PV.loadTrackers().catch(function(){});
+    PV.loadPeakSun().catch(function(){}); });
   function parseEnergyYear(v){ return v?parseInt(v,10):null; }
   var se=document.getElementById("seg-energy"); if(se) se.addEventListener("click",function(e){ var b=e.target.closest("button[data-m]"); if(!b)return; PV.energyMode=b.getAttribute("data-m"); segActive(se,b);
     var sy=document.getElementById("energy-year"); if(sy){ if(PV.energyMode==="monate"){ sy.style.display=""; PV.energyYear=parseEnergyYear(sy.value); } else { sy.style.display="none"; PV.energyYear=null; } }
@@ -783,12 +790,19 @@ PV.render=function(main){
 function kpiCard(k,id,unit,cls,extra){ return '<div class="kpi"><div class="k">'+k+'</div><div class="v'+(cls?' '+cls:'')+'"><span id="'+id+'">–</span> <small>'+unit+'</small>'+(extra||'')+'</div></div>'; }
 function panel(title,tag,id){ return '<div class="panel"><h2>'+title+' '+tag+'</h2><div id="'+id+'"><div class="chart-empty">wird geladen…</div></div></div>'; }
 
+// Fehler einer Abfrage fuer den Zeitraum anzeigen, gleich ob beim Zeitraum-Wechsel oder beim regulaeren Laden (PV.load):
+// - nur wenn Tab und Zeitraum noch dieselben sind (sonst ersetzte der Fehler einer alten Abfrage die neuen Daten),
+// - und nur wenn die Anzeige nicht schon Daten genau dieses Tabs und Zeitraums zeigt (PV._stand[was], beim Zeichnen
+//   gesetzt): Ein einzelner Aussetzer beim 60-s-Laden laesst gueltige Werte stehen, Werte eines anderen Zeitraums nicht.
+// Danach weiterwerfen, damit PV.load den Fehler unten in der Fusszeile meldet.
+PV._stand={};
+function pvFehler(was, tok, zeige){ return function(e){ if(ladeToken(PV.period)===tok && PV._stand[was]!==tok) zeige(); throw e; }; }
 // Tracker-Status (Tabelle aktueller Wert + Strom/Spannung-Historie) fuer den globalen Zeitraum
 PV.loadTrackers=function(){
   function g(id){ return document.getElementById(id); }
-  var periodStart=zeitSchluessel(PV.period);
+  var tok=ladeToken(PV.period);
   return holeZeitraum(PV.CH, PV.period, true, "status.json").then(function(d){
-    if(zeitSchluessel(PV.period)!==periodStart) return;   // Zeitraum inzwischen gewechselt
+    if(ladeToken(PV.period)!==tok) return;   // Zeitraum oder Tab inzwischen gewechselt
     var f=(d&&d.feeds)?d.feeds:[]; var last=f.length?f[f.length-1]:null; var holder=g("tracker-holder"); if(!holder)return;
     if(last&&last.created_at) ["strom-tag","spannung-tag","status-time"].forEach(function(id){ standZeit(g(id), new Date(last.created_at)); });   // Strom, Spannung, DC: "Stand vor x s"
     if(last&&last.status){ var p=parseStatus(last.status);
@@ -808,22 +822,26 @@ PV.loadTrackers=function(){
       {color:cols[0],dash:true,pts:A[3]},{color:cols[1],dash:true,pts:A[4]},{color:cols[2],dash:true,pts:A[5]}].filter(function(s){return s.pts.length>1;}); }
     if(g("chart-strom")) lineChart(g("chart-strom"),mk(SI),{unit:"A"});
     if(g("chart-spannung")) lineChart(g("chart-spannung"),mk(SU),{unit:"V",zero:false});
-  });
+    PV._stand.tracker=tok;
+  }).catch(pvFehler("tracker", tok, function(){   // sonst bliebe "wird geladen…" bzw. der alte Zeitraum stehen
+    ["chart-strom","chart-spannung","tracker-holder"].forEach(function(id){ var e=g(id); if(e) e.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; }); }));
 };
 
 // Peak-Leistung + Sonnenstunden fuer den globalen Zeitraum
 PV.loadPeakSun=function(){
   function g(id){ return document.getElementById(id); }
-  var periodStart=zeitSchluessel(PV.period);
+  var tok=ladeToken(PV.period);
   return holeZeitraum(PV.CH, PV.period, true).then(function(d){
-    if(zeitSchluessel(PV.period)!==periodStart) return;   // Zeitraum inzwischen gewechselt
+    if(ladeToken(PV.period)!==tok) return;   // Zeitraum oder Tab inzwischen gewechselt
     var f=(d&&d.feeds)?d.feeds:[], pts=[], peak=0;
     f.forEach(function(x){ var v=num(x.field1); if(v===null)return; if(v>peak)peak=v; pts.push({t:new Date(x.created_at).getTime(),v:v}); });
     pts.sort(function(a,b){return a.t-b.t;});
     var sunMs=0; for(var i=0;i<pts.length-1;i++){ if(pts[i].v>500){ var dt=pts[i+1].t-pts[i].t; if(dt>0&&dt<1800000) sunMs+=dt; } }
     if(g("e-peak")) g("e-peak").textContent=fmt(peak/1000,1);
     if(g("e-sun")) g("e-sun").textContent=fmt(sunMs/3600000,1);
-  });
+    PV._stand.peak=tok;
+  }).catch(pvFehler("peak", tok, function(){   // "–" statt der Werte eines frueheren Zeitraums
+    ["e-peak","e-sun"].forEach(function(id){ var e=g(id); if(e) e.textContent="–"; }); }));
 };
 
 // PV-Arbeit je Jahr (Jahresvergleich), drei Ansichten aus denselben Monatssummen:
@@ -1074,7 +1092,8 @@ PV.updateSoll=function(pKW){
 PV.load=function(){
   var errEl=function(){return document.getElementById("err");};
   function g(id){return document.getElementById(id);}
-  var p1=j(api(PV.CH,"/feeds.json?results=20",true)).then(function(d){
+  var tok=ladeToken();   // Antworten einer frueheren PV-Ansicht (Tab weg und zurueck) verwerfen
+  var p1=j(api(PV.CH,"/feeds.json?results=20",true)).then(function(d){ if(ladeToken()!==tok) return;
     var f=(d&&d.feeds)?d.feeds:[]; if(!f.length||!g("power"))return; var last=f[f.length-1];
     var pW=num(last.field1),pKW=pW===null?null:pW/1000;
     g("power").textContent=fmt(pKW,2); g("power-bar").style.width=(pKW===null?0:Math.max(0,Math.min(100,pKW/30*100)))+"%";
@@ -1092,7 +1111,7 @@ PV.load=function(){
   // Verlust-Diagnose aus dem dedizierten Log-Kanal (2. Account): pro Tag ein
   // fertiger Mittags-Mittelwert je Tracker (von der Firmware berechnet).
   var CH2=3510388, KEY2="0Q2JFTJU0B4NNYQU";
-  var p6=j("https://api.thingspeak.com/channels/"+CH2+"/feeds.json?api_key="+KEY2+"&results=1000").then(function(d){
+  var p6=j("https://api.thingspeak.com/channels/"+CH2+"/feeds.json?api_key="+KEY2+"&results=1000").then(function(d){ if(ladeToken()!==tok) return;
     var f=(d&&d.feeds)?d.feeds:[]; var holder=g("chart-verlust"); if(!holder)return;
     var cols=["var(--green)","var(--blue)","var(--amber)"], S=[[],[],[],[],[],[]], Spac=[];
     var flds=["field1","field2","field3","field4","field5","field6"];
@@ -1110,9 +1129,9 @@ PV.load=function(){
 
 PV.loadPower=function(){
   var holder=document.getElementById("chart-power"); if(!holder)return;
-  var mpr = (PV.period==="heute" || KURZ[PV.period]) ? PV.morgenPrognose() : Promise.resolve(null), periodStart=zeitSchluessel(PV.period);
+  var mpr = (PV.period==="heute" || KURZ[PV.period]) ? PV.morgenPrognose() : Promise.resolve(null), tok=ladeToken(PV.period);
   Promise.all([ holeZeitraum(PV.CH, PV.period, true), mpr ]).then(function(r){
-    if(zeitSchluessel(PV.period)!==periodStart) return;   // Zeitraum inzwischen gewechselt: aeltere Antwort verwerfen
+    if(ladeToken(PV.period)!==tok) return;   // Zeitraum oder Tab inzwischen gewechselt: aeltere Antwort verwerfen
     var d=r[0], mp=r[1];
     var f=(d&&d.feeds)?d.feeds:[],pts=[]; f.forEach(function(x){ var v=num(x.field1); if(v!==null)pts.push({t:new Date(x.created_at),v:v/1000}); });
     if(pts.length) standZeit(document.getElementById("power-tag"), pts[pts.length-1].t);   // "Stand vor x s" neben dem Titel, tickt live
@@ -1128,7 +1147,7 @@ PV.loadPower=function(){
       if(pp.length>1) series.push({color:"var(--blue)",dash:true,width:2,pts:pp.slice(a,b+1)});
       leg=[{color:"var(--green)",label:"Ist"},{color:"var(--blue)",dash:true,label:"Prognose von "+hhmm(Date.parse(mp.erstellt))+" Uhr (~"+mp.tagesKwh+" kWh)"}]; }
     lineChart(holder,series,{unit:"kW",legend:series.length>1?leg:null});
-  }).catch(function(){ if(holder && zeitSchluessel(PV.period)===periodStart) holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
+  }).catch(function(){ if(holder && ladeToken(PV.period)===tok) holder.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; });
 };
 /* ---- Energie-Historie: schnelle Endpunkt-Abfragen + localStorage-Cache ----
    Abgeschlossene Monate aendern sich nie -> einmal holen, dann cachen; nur der
@@ -1202,18 +1221,22 @@ function pvRefLegend(span){ return [{color:"var(--amber)",label:"Ist"},{color:"v
 // 00:00-00:59 tragen noch den Vortag. Datum des Tages = erster Eintrag nach dem Reset. Der Eintrag, in dem der Reset
 // liegt, ist bei Mittelwert-Feeds (average=15) ein Mischwert aus alt und neu und zaehlt deshalb nicht als Tagesmaximum.
 // Liefert [{v, dt}] zeitlich sortiert; der erste (angeschnittene) Tag des Fensters kann den Vortag enthalten.
-function pvTageMax(f){ var mx=pvTagesSegmente(f, function(x){ return ymdStr(new Date(x.created_at)); });
-  return Object.keys(mx).sort().map(function(k){ return {v:mx[k].v, dt:new Date(mx[k].x.created_at)}; }); }
+// Tage nach Zuercher Datum wie pvDayTotals (dort per timezone=Europe/Zurich), die Prognose-Tage und die Morgenprognose -
+// sonst schnitten Balken und Band auf einem Geraet in einer anderen Zeitzone die Tage verschieden.
+// dt = Mittag des Tages als Ortszeit-Datum mit dem Zuercher Jahr/Monat/Tag (fuer Beschriftung und ymdOf).
+function pvTageMax(f){ var mx=pvTagesSegmente(f, function(x){ return zurichZeit(Date.parse(x.created_at)).ymd; });
+  return Object.keys(mx).sort().map(function(k){ return {v:mx[k].v, dt:new Date(k+"T12:00:00")}; }); }
 // Gemeinsame Tagestrennung fuer pvTageMax (Balken) und pvDayTotals (Vergleichsband der Vorjahre), damit beide die
 // Tage gleich schneiden: neuer Produktionstag, wenn der Zaehler faellt (Reset) - oder beim Datumswechsel nach einem
 // Tag ohne Ertrag (< 1 kWh, z. B. Schnee), dort ist kein Reset sichtbar. Der Reset-Eintrag selbst (Mischwert) zaehlt
-// nicht. tagVon(x) = Datum "YYYY-MM-DD" eines Eintrags. Liefert {datum: {v: Tagesmaximum, x: erster Eintrag des Tages}}.
+// nicht: Ein Tag, von dem nur dieser Eintrag da ist (Datenluecke), bekommt keinen Wert - sonst stuende er mit 0 kWh da
+// (und pvDayTotals speicherte die 0 fuer immer). tagVon(x) = Datum "YYYY-MM-DD" eines Eintrags. Liefert {datum: {v: Tagesmaximum}}.
 function pvTagesSegmente(f, tagVon){ var mx={}, seg=null, prev=null;
   (f||[]).forEach(function(x){ var v=num(x.field2); if(v===null||v<0||v>PV.DAY_MAX_KWH)return; var day=tagVon(x);
     var reset = prev!==null && v<prev-1;
-    if(seg===null || reset || (day!==seg.k && prev!==null && prev<1)){ seg={k:day, x:x, max:reset?0:v}; }
-    if(!reset && v>seg.max) seg.max=v;
-    if(!mx[seg.k] || seg.max>mx[seg.k].v) mx[seg.k]={v:seg.max, x:mx[seg.k]?mx[seg.k].x:seg.x};
+    if(seg===null || reset || (day!==seg.k && prev!==null && prev<1)){ seg={k:day, max:0, echt:false}; }
+    if(!reset){ seg.echt=true; if(v>seg.max) seg.max=v; }   // echt: mindestens ein Eintrag ausser dem Reset-Eintrag
+    if(seg.echt && (!mx[seg.k] || seg.max>mx[seg.k].v)) mx[seg.k]={v:seg.max};
     prev=v; });
   return mx; }
 // Tagesertraege vergangener Jahre fuer das Vergleichsband im Tage-Modus. Feld 2 = Tages-
@@ -1245,7 +1268,7 @@ function pvDayTotals(year, cal){
 // PV.DAY_REF_WIN > 0 im Fenster +-N Tage (dann kann derselbe Rekordtag bei mehreren Balken
 // das Maximum sein, weil sich die Fenster ueberlappen).
 function pvDayHistory(){
-  var now=new Date(), cy=now.getFullYear(), W=PV.DAY_REF_WIN, cal=[], yOffOf={};
+  var now=new Date(zurichZeit().ymd+"T12:00:00"), cy=now.getFullYear(), W=PV.DAY_REF_WIN, cal=[], yOffOf={};   // heute = Zuercher Datum (wie die Balken)
   function at(off){ return new Date(cy, now.getMonth(), now.getDate()+off); }
   for(var off=-W; off<=2+W; off++){ var dt=at(off); cal.push({yOff:dt.getFullYear()-cy, m0:dt.getMonth(), d:dt.getDate()});
     yOffOf[ymdStr(dt).slice(5)]=dt.getFullYear()-cy; }
@@ -1321,7 +1344,7 @@ PV.loadEnergy=function(){
       function ymdOf(dt){ return dt.getFullYear()+"-"+("0"+(dt.getMonth()+1)).slice(-2)+"-"+("0"+dt.getDate()).slice(-2); }
       if(fc && fc.fc && fc.fc.hourly){
         var F=fc.factor, ht=fc.fc.hourly.time, hg=fc.fc.hourly.global_tilted_irradiance;
-        var perDay={}, order=[], nowH=now.getHours(), frac=now.getMinutes()/60, todayYmd=ymdOf(now), remToday=0, pastToday=0;
+        var zjE=zurichZeit(), perDay={}, order=[], nowH=zjE.h, frac=zjE.min/60, todayYmd=zjE.ymd, remToday=0, pastToday=0;   // Zuercher Zeit wie die Prognose-Stunden
         for(var i=0;i<ht.length;i++){ var dt=new Date(ht[i].replace(" ","T")); var kw=(hg[i]||0)/1000*(F[dt.getHours()]||0); var ymd=ht[i].slice(0,10);
           if(!(ymd in perDay)){ perDay[ymd]=0; order.push(ymd); } perDay[ymd]+=kw;
           // Heute: Prognose bis jetzt und Rest ab jetzt. Die laufende Stunde nur anteilig -
@@ -1353,7 +1376,7 @@ PV.loadEnergy=function(){
       // Morgenprognose je Tag (prognose.ts ?liste) als blauer Strich; abgeschlossene Tage mit Abweichung
       // Ist gegen Prognose, in der Legende die mittlere Abweichung (Betrag) dieser Tage
       var devs=[], anyMark=false;
-      if(ml){ var tY=ymdOf(now);
+      if(ml){ var tY=zurichZeit().ymd;
         bars.forEach(function(b){ if(!b.dt) return; var ymd=ymdOf(b.dt), mp=ml[ymd]; if(!mp) return;
           b.mark=mp.kwh; anyMark=true; var txt="Prognose "+hhmm(Date.parse(mp.erstellt))+" Uhr: "+mp.kwh+" kWh";
           if(ymd<tY && mp.kwh>0){ var dv=Math.round((b.v/mp.kwh-1)*100); devs.push(Math.abs(dv)); txt+=" · Ist "+(dv>0?"+":"")+dv+" %"; }
@@ -1372,8 +1395,7 @@ function simpleView(cfg){
   var mode = "heute";  // "10m" | "1h" | "3h" | "6h" | "12h" | "heute" (ab Mitternacht) | "24h" | "7tage" | "frei" (steuert alle Charts der Ansicht)
   function g(id){ return document.getElementById(id); }
   // Die generischen Ansichten teilen sich die Element-IDs (kpi_i, chart_i, ct_i, err2): Eine langsame Antwort
-  // der vorherigen Ansicht darf nach einem Tabwechsel nicht in die neue zeichnen.
-  function weg(nr){ return state.ansichtNr!==nr; }
+  // der vorherigen Ansicht darf nach einem Tabwechsel nicht in die neue zeichnen (ladeToken).
 
   // Gruppen-Kopf (cfg.sections): "Stand vor ..." des Kanals; mit staleMin der Gruppe
   // rot "veraltet", wenn der Kanal so lange nichts Neues geliefert hat (z. B. Poller aus).
@@ -1386,8 +1408,8 @@ function simpleView(cfg){
     el.className="tag"+(warn?" warn":""); }); }
 
   // KPIs immer aktuell (letzter bekannter Wert), unabhaengig vom Zeitraum
-  function loadKpis(){ var nr=state.ansichtNr;
-    j(api(cfg.channel, "/feeds.json?results=10", false)).then(function(d){ if(weg(nr)) return;
+  function loadKpis(){ var tok=ladeToken();   // nur der Tab: die Kennzahlen haengen nicht vom Zeitraum ab
+    j(api(cfg.channel, "/feeds.json?results=10", false)).then(function(d){ if(ladeToken()!==tok) return;
       var f=(d&&d.feeds)?d.feeds:[]; if(!f.length){ if(g("head-meta"))g("head-meta").textContent="keine Daten"; return; }
       var last=f[f.length-1];
       // Heizung: Symbol der Gruppe = Flamme (Feuer) oder gluehende Kohle (Glut); grau, wenn > 60 min nichts kam
@@ -1406,7 +1428,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
       // Ampel-Faerbung: KPI-Wert nach aktueller PV-Leistung gegenueber der Schwelle
       // (rot = keine PV-Leistung, orange bis zur Schwelle, gruen ab Schwelle)
       if(cfg.kpis.some(function(k){return k.colorPv;})){
-        j(api(172430,"/feeds.json?results=5",true)).then(function(pd){ if(weg(nr)) return;
+        j(api(172430,"/feeds.json?results=5",true)).then(function(pd){ if(ladeToken()!==tok) return;
           var pf=(pd&&pd.feeds)?pd.feeds:[], pv=null; for(var i=pf.length-1;i>=0;i--){ var vv=num(pf[i].field1); if(vv!==null){pv=vv;break;} }
           cfg.kpis.forEach(function(k,ix){ if(!k.colorPv)return; var thr=L(k.field), el=g("kpi_"+ix); if(!el||thr===null||!thr||pv===null)return;
             el.style.color=thresholdColor(pv,thr); });
@@ -1417,7 +1439,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
     var extra={};
     cfg.kpis.forEach(function(k,i){ if(k.channel&&k.channel!==cfg.channel&&!k.ausFeeds&&!k.integrate){ (extra[k.channel]=extra[k.channel]||[]).push({k:k,i:i}); } });
     Object.keys(extra).forEach(function(ch){
-      j(api(ch, "/feeds.json?results=300", false)).then(function(d){ if(weg(nr)) return;
+      j(api(ch, "/feeds.json?results=300", false)).then(function(d){ if(ladeToken()!==tok) return;
         var f=(d&&d.feeds)?d.feeds:[];
         function L2(fd){ for(var i=f.length-1;i>=0;i--){ var v=num(f[i][fd]); if(v!==null)return v; } return null; }
         extra[ch].forEach(function(o){ var g2=g("kpi_"+o.i); if(!g2)return; var v=L2(o.k.field); if(v!==null&&o.k.scale)v=v*o.k.scale;
@@ -1442,11 +1464,11 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
     // ... und von Zeitraum-KPIs aus anderen Kanaelen (z. B. Ø Auslastung im Tab Heizung)
     cfg.kpis.forEach(function(k){ if((k.ausFeeds||k.integrate) && k.channel) chans[String(k.channel)]=k.channel;
       if(k.pruef) chans[String(k.pruef.channel)]=k.pruef.channel; });
-    var keys=Object.keys(chans), modeStart=zeitSchluessel(mode), nr=state.ansichtNr;   // Zeitraum zu Beginn: eine langsame aeltere Antwort darf einen neueren Zeitraum nicht ueberschreiben
+    var keys=Object.keys(chans), tok=ladeToken(mode);   // Tab und Zeitraum zu Beginn: eine langsame aeltere Antwort darf nichts Neueres ueberschreiben
     Promise.all(keys.map(function(k){ var ch=chans[k];
       return holeZeitraum(ch, mode, String(ch)==="172430").then(function(d){ return {k:k, feeds:(d&&d.feeds)?d.feeds:[]}; }); }))
     .then(function(results){
-      if(zeitSchluessel(mode)!==modeStart || weg(nr)) return;   // inzwischen umgeschaltet (Zeitraum oder Tab)
+      if(ladeToken(mode)!==tok) return;   // inzwischen umgeschaltet (Zeitraum oder Tab)
       var byChan={}; results.forEach(function(r){ byChan[r.k]=r.feeds; });
       var f=byChan[String(cfg.channel)]||[];
       // Wert eines Feldes (beliebiger Kanal) zum Zeitpunkt t: letzter Eintrag <= t (Stufe halten).
@@ -1472,13 +1494,12 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
       cfg.kpis.forEach(function(k,ki){ if(!k.integrate && !k.ausFeeds)return; var el=g("kpi_"+ki); if(!el)return;
         var ch=k.channel||cfg.channel, dec=(k.dec!=null?k.dec:1), toKw=k.intScale;
         var wert=function(ff){ return k.ausFeeds ? k.ausFeeds(ff,ctx) : integKwh(ff,k.field,toKw); };
-        var wk=zeitSchluessel(mode);
         // Hauptwert: aus den Feeds des Kanals dieser Kennzahl
-        (mode==="7tage" ? siebenTage(ch) : Promise.resolve(byChan[String(ch)]||[])).then(function(ff){ if(zeitSchluessel(mode)!==wk || weg(nr))return;  // Zeitraum oder Tab inzwischen gewechselt
+        (mode==="7tage" ? siebenTage(ch) : Promise.resolve(byChan[String(ch)]||[])).then(function(ff){ if(ladeToken(mode)!==tok)return;  // Zeitraum oder Tab inzwischen gewechselt
           el.textContent = fmt(wert(ff), dec); }).catch(function(){});
         // Pruefwert in Klammern (k.pruef): zweite Rechnung aus einem anderen Kanal, nur zum Gegenpruefen
         if(k.pruef){ var ce=g("kpi_"+ki+"_chk");
-          (mode==="7tage" ? siebenTage(k.pruef.channel) : Promise.resolve(byChan[String(k.pruef.channel)]||[])).then(function(ff){ if(zeitSchluessel(mode)!==wk||weg(nr)||!ce)return;
+          (mode==="7tage" ? siebenTage(k.pruef.channel) : Promise.resolve(byChan[String(k.pruef.channel)]||[])).then(function(ff){ if(ladeToken(mode)!==tok||!ce)return;
             var pv=k.pruef.rechne(ff); ce.textContent = pv===null ? "" : "("+k.pruef.label+" "+fmt(pv,dec)+" "+(k.unit||"")+")"; }).catch(function(){}); }
       });
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
@@ -1586,7 +1607,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
         lineChart(holder, series, {unit:c.unit, zero:c.zero, padL:c.padL, yMin:yMin, yMax:yMax, yTicks:yTicks, unit2:c.unit2, zero2:c.zero2, yMin2:c.yMin2, yMax2:c.yMax2, y2Fmt:c.y2Fmt, y2Color:c.y2Color, y2Marks:c.y2Marks, padR:c.padR, autoW:true});
       });
       if(g("err2"))g("err2").textContent="";
-    }).catch(function(){ if(zeitSchluessel(mode)===modeStart && !weg(nr) && g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
+    }).catch(function(){ if(ladeToken(mode)===tok && g("err2"))g("err2").textContent="Daten konnten nicht geladen werden."; });
   }
 
   // Tabelle unter den Grafiken (cfg.tabelle): letzte Tage in 3-Tage-Fenstern holen, hoechstens alle 10 min neu
@@ -2041,7 +2062,7 @@ PLANNER.zeigeDetail=function(){
   document.querySelectorAll("#pl-days .plday").forEach(function(c){ c.classList.toggle("sel", c.getAttribute("data-d")===d); });
   document.querySelectorAll("#pl-days .pd-btn").forEach(function(b){ b.textContent=(b.getAttribute("data-d")===d)?"Details ▴":"Details ▾"; });
   if(!D){ el.hidden=true; el.innerHTML=""; return; }
-  var y=D.date.getFullYear(), m=D.date.getMonth(), dd=D.date.getDate(), STEP=0.25, now=new Date(), nowT=D.isToday ? now.getHours()+now.getMinutes()/60 : -1;
+  var y=D.date.getFullYear(), m=D.date.getMonth(), dd=D.date.getDate(), STEP=0.25, zjD=zurichZeit(), nowT=D.isToday ? zjD.h+zjD.min/60 : -1;   // Zuercher Zeit wie die Stundenwerte
   var at=function(h){ return new Date(y,m,dd,0,0,0).getTime()+h*36e5; };
   var hv=function(h,k){ h=Math.max(0,Math.min(23,h)); return D.hourly[h]?D.hourly[h][k]:0; };
   // Stundenwerte gelten fuer die ganze Stunde -> zwischen den Stundenmitten linear verbinden
@@ -2133,8 +2154,8 @@ PLANNER._calcHourFactors=function(){
     var gj=res[0], feeds=[]; res.slice(1).forEach(function(t){ feeds=feeds.concat((t&&t.feeds)||[]); });
     var gt=gj.hourly.time, gg=omStart(gj.hourly.global_tilted_irradiance), gmap={};
     for(var i=0;i<gt.length;i++) gmap[gt[i].slice(0,13)]=gg[i];  // key YYYY-MM-DDTHH (lokal, Stundenbeginn)
-    var bh={}; feeds.forEach(function(x){ var d=new Date(x.created_at), h=d.getHours();   // created_at in UTC
-      var g=gmap[ymdLocal(d)+"T"+("0"+h).slice(-2)]; if(g==null||g<40)return; var a=num(x.field1); if(a===null)return; (bh[h]=bh[h]||[]).push((a/1000)/(g/1000)); });
+    var bh={}; feeds.forEach(function(x){ var z=zurichZeit(Date.parse(x.created_at)), h=z.h;   // created_at in UTC -> Zuercher Zeit wie gmap
+      var g=gmap[z.ymd+"T"+("0"+h).slice(-2)]; if(g==null||g<40)return; var a=num(x.field1); if(a===null)return; (bh[h]=bh[h]||[]).push((a/1000)/(g/1000)); });
     function med(a){ a.sort(function(x,y){return x-y;}); return a.length?a[Math.floor(a.length/2)]:0; }
     var F=[], any=false; for(var h=0;h<24;h++){ F[h]=bh[h]?med(bh[h]):0; if(F[h]>0)any=true; }
     if(!any){ for(var h2=8;h2<=17;h2++) F[h2]=25; }  // Fallback ohne Ist-Daten
@@ -2179,8 +2200,10 @@ PLANNER.load=function(){
       return {t:nd, label:plWd[nd.getDay()]+" "+nd.getDate()+"."+(nd.getMonth()+1)+"."}; });
     if(g("pl-chart")) lineChart(g("pl-chart"), plSeries, {unit:"kW", dec:1, unit2:"°C", zero2:false, legend:plLegend, xTicks:plTicks, autoW:true});
     // Tageskarten
-    var wd=["So","Mo","Di","Mi","Do","Fr","Sa"], today=ymdLocal(new Date());   // Ortszeit (UTC waere 00-02 Uhr noch der Vortag)
-    var nowH=new Date().getHours();
+    // Heute und laufende Stunde in Zuercher Zeit: die Prognose-Stunden (Open-Meteo) und die Ist-Werte (_todayActual,
+    // Boiler) sind Zuercher Zeit - mit der Geraete-Uhr waeren sie in einer anderen Zeitzone verschoben
+    var wd=["So","Mo","Di","Mi","Do","Fr","Sa"], zjDraw=zurichZeit(), today=zjDraw.ymd;
+    var nowH=zjDraw.h;
     var col={green:"var(--green)",orange:"var(--amber)",red:"var(--red)"};
     var det={};   // Daten je Tag fuer die Detail-Grafiken (Knopf "Details")
     var cards=order.map(function(d,idx){ var o=days[d];
@@ -2242,7 +2265,7 @@ PLANNER.load=function(){
       // Stundenmitten, 15-min-Raster). So ist die Karte nie gruener als "Details".
       var hSur=[]; o.win.forEach(function(w){ hSur[w.h]=effSur(w); });
       function SH(t){ var x=t-0.5, h0=Math.floor(x), w=x-h0, g=function(h){ h=Math.max(0,Math.min(23,h)); return hSur[h]||0; }; return g(h0)+(g(h0+1)-g(h0))*w; }
-      function progAmpel(p){ var nd=new Date(), s0=isToday ? Math.ceil((nd.getHours()+nd.getMinutes()/60)*4-1e-9)/4 : 0;
+      function progAmpel(p){ var s0=isToday ? Math.ceil((zjDraw.h+zjDraw.min/60)*4-1e-9)/4 : 0;   // Zuercher Zeit wie die Stundenwerte
         for(; s0+p.h<=24+1e-9; s0+=0.25){ var ok=true;
           for(var u=s0; u<s0+p.h; u+=0.25){ if(SH(u)<p.peakKw-1e-9){ ok=false; break; } }
           if(ok && SH(s0+p.h)>=p.peakKw-1e-9) return "ok"; }
@@ -2343,7 +2366,7 @@ PLANNER.load=function(){
   ]).then(function(r){
     var f=(r[0]&&r[0].feeds)?r[0].feeds:[]; var v=f.length?num(f[f.length-1].field1):null;
     PLANNER._pNow=(v===null?null:v/1000);
-    var zj=zurichJetzt(), td=zj.ymd, th={};   // Feeds in Zuercher Zeit (timezone=Europe/Zurich)
+    var zj=zurichZeit(), td=zj.ymd, th={};   // Feeds in Zuercher Zeit (timezone=Europe/Zurich)
     ((r[1]&&r[1].feeds)?r[1].feeds:[]).forEach(function(x){ if(x.created_at.slice(0,10)!==td)return; var a=num(x.field1); if(a===null)return; th[parseInt(x.created_at.slice(11,13),10)]=a/1000; });
     PLANNER._todayActual=th;
     // aktuelle Boiler-Ladeleistung (kW, field3 in W) – Vorrang, wird abgezogen
