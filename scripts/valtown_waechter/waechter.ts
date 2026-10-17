@@ -77,7 +77,7 @@ async function pruefen(): Promise<Record<string, string>> {
       const r = await fetch(PROGNOSE_URL);
       const pr = await r.json();
       if (!r.ok || pr.datum !== heute.datum) p.prognose = `PV-Morgenprognose: keine Prognose für heute (${pr.fehler ?? "HTTP " + r.status})`;
-      else if (lokal(Date.parse(pr.erstellt)).h !== 6 && pr.datum !== "2026-10-13") {   // Ausnahme 13.10.2026: Umstellung von 05:00 auf 06:00 (danach entfernen)
+      else if (lokal(Date.parse(pr.erstellt)).h !== 6) {
         p.prognose = `PV-Morgenprognose: erst um ${zeit(Date.parse(pr.erstellt))} erstellt statt 06:00 (Cron morgens.ts prüfen)`;
       }
     } catch (e) {
