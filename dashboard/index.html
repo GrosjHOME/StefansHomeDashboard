@@ -144,6 +144,8 @@
   tbody tr:last-child td{border-bottom:none;}
   tr.sum td{font-weight:700; border-top:2px solid var(--line);}
   .wr-head{font-weight:700; color:var(--blue);}
+  .pv-grid.hoehe-natuerlich .a-dc, .pv-grid.hoehe-natuerlich .a-verl{align-self:start !important;}   /* nur zum Messen (PV.zeichneVerlust) */
+  #tracker-holder th, #tracker-holder td{padding:4px 10px;}   /* DC-Tabelle: engere Zeilen, damit die Kachel nicht hoeher wird als die daneben */
   .note{font-size:.8rem; color:var(--muted); margin-top:10px;}
   .tbl-wrap{overflow-x:auto;}
   .tbl{width:100%; table-layout:fixed; border-collapse:collapse; font-size:.74rem; font-variant-numeric:tabular-nums;}
@@ -180,6 +182,9 @@
     .pv-grid .a-leist{grid-area:leist;} .pv-grid .a-energ{grid-area:energ;}
     .pv-grid .a-jahr{grid-area:jahr; align-self:stretch;} .pv-grid .a-strom{grid-area:strom;} .pv-grid .a-spann{grid-area:spann;}
     .pv-grid .a-dc{grid-area:dc;} .pv-grid .a-verl{grid-area:verl;}
+    /* DC je MPP-Tracker und Tracker-Strom mittags: gleich hohe Kacheln, die Erklaerung steht jeweils unten */
+    .pv-grid .a-dc, .pv-grid .a-verl{align-self:stretch; display:flex; flex-direction:column;}
+    .pv-grid .a-dc .note, .pv-grid .a-verl .note{margin-top:auto; padding-top:10px;}
     /* Wallbox/Heizung/Boiler: Kennzahl-Gruppen nebeneinander, Grafiken paarweise */
     .kp-grid{display:grid; grid-template-columns:var(--cols); column-gap:16px; align-items:start;}
     .kp-grid .kp-sec .kpis{grid-template-columns:repeat(var(--n),minmax(0,1fr));}
@@ -838,6 +843,21 @@ function panel(title,tag,id){ return '<div class="panel"><h2>'+title+' '+tag+'</
 PV._stand={};
 function pvFehler(was, tok, zeige){ return function(e){ if(ladeToken(PV.period)===tok && PV._stand[was]!==tok) zeige(); throw e; }; }
 // Tracker-Status (Tabelle aktueller Wert + Strom/Spannung-Historie) fuer den globalen Zeitraum
+// Tracker-Strom mittags zeichnen. Stehen die Kacheln "DC je MPP-Tracker" und "Tracker-Strom mittags" nebeneinander
+// (ab 1100 px), fuellt das Diagramm die Hoehe der linken Kachel; einspaltig bleibt es bei der Normalhoehe (300).
+// Das Diagramm skaliert mit der Breite (viewBox), daher wird die Zusatzhoehe in Bildschirmpixeln gemessen und umgerechnet.
+PV.zeichneVerlust=function(){
+  var holder=document.getElementById("chart-verlust"), v=PV._verlust; if(!holder || !v) return;
+  var o={}; for(var k in v.opts) o[k]=v.opts[k]; o.height=300;
+  lineChart(holder, v.series, o);   // Normalhoehe
+  var a=document.querySelector(".a-dc"), b=holder.closest(".a-verl"), svg=holder.querySelector("svg.chart");
+  if(!a || !b || !svg || !window.matchMedia("(min-width:1100px)").matches) return;
+  var grid=b.parentNode; grid.classList.add("hoehe-natuerlich");   // beide Kacheln kurz in natuerlicher Hoehe messen
+  var links=a.offsetHeight, rechts=b.offsetHeight, sv=svg.getBoundingClientRect(); grid.classList.remove("hoehe-natuerlich");
+  if(links>rechts && sv.width>0){ o.height=Math.round((sv.height+(links-rechts))*svg.viewBox.baseVal.width/sv.width); lineChart(holder, v.series, o); }
+};
+if(!PV._resizeVerlust){ PV._resizeVerlust=true; var _tmVerlust;   // bei Groessenaenderung neu anpassen
+  window.addEventListener("resize", function(){ clearTimeout(_tmVerlust); _tmVerlust=setTimeout(function(){ PV.zeichneVerlust(); }, 200); }); }
 PV.loadTrackers=function(){
   function g(id){ return document.getElementById(id); }
   var tok=ladeToken(PV.period);
@@ -851,6 +871,7 @@ PV.loadTrackers=function(){
         return '<tr><td class="wr-head" colspan="4">Wechselrichter '+w+'</td></tr>'+rows+'<tr class="sum"><td>Summe WR '+w+'</td><td></td><td></td><td>'+(sum/1000).toFixed(2)+' kW</td></tr>'; }
       holder.innerHTML='<table><thead><tr><th>Tracker</th><th>Spannung</th><th>Strom</th><th>Leistung</th></tr></thead><tbody>'+wr(5)+wr(6)+'</tbody></table>';
     } else holder.innerHTML='<div class="chart-empty">kein Status verfügbar</div>';
+    PV.zeichneVerlust();   // Hoehe des Tracker-Strom-Diagramms an die (neue) DC-Kachel anpassen
     var ds=downsample(f,200), cols=["var(--green)","var(--blue)","var(--amber)"];
     var SI=[[],[],[],[],[],[]], SU=[[],[],[],[],[],[]];
     ds.forEach(function(e){ if(!e.status)return; var pp=parseStatus(e.status),tt=new Date(e.created_at);
@@ -1162,7 +1183,8 @@ PV.load=function(){
       {color:cols[0],dash:true,pts:S[3]},{color:cols[1],dash:true,pts:S[4]},{color:cols[2],dash:true,pts:S[5]},
       {color:"var(--red)",axis:"right",dec:1,pts:Spac}].filter(function(s){return s.pts.length>=1;});
     if(!series.length){ holder.innerHTML='<div class="chart-empty">Sammelt Daten – ein Punkt pro Tag (nach 13:00).</div>'; return; }
-    lineChart(holder, series, {unit:"A", zero:false, unit2:"kW", zero2:false, dots:true});
+    PV._verlust={series:series, opts:{unit:"A", zero:false, unit2:"kW", zero2:false, dots:true}};
+    PV.zeichneVerlust();
   });
   Promise.all([p1,p4,p5,p6]).then(function(){ if(errEl())errEl().textContent=""; }).catch(function(){ if(errEl())errEl().textContent="Daten konnten nicht geladen werden – nächster Versuch in 60 s."; });
 };
