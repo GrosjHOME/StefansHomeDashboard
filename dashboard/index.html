@@ -55,6 +55,32 @@
   .dlg{overflow-x:hidden;}
   .dlg-list a{color:var(--green); font-weight:600;}
   .dlg-btns{display:flex; align-items:center; gap:10px; padding:12px 18px 18px; flex-wrap:wrap;}
+  /* Anleitung (README.md, im Info-Fenster): breites Fenster, der Text scrollt innen */
+  .dlg.doku{width:min(900px, calc(100vw - 24px)); max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px); display:flex; flex-direction:column;}
+  .dlg.doku[open]{display:flex;}
+  .dlg.doku .dlg-in{display:flex; flex-direction:column; min-height:0;}
+  .doku-body{overflow:auto; padding:4px 18px 18px; font-size:.9rem; line-height:1.5; overflow-wrap:anywhere; -webkit-overflow-scrolling:touch;}
+  .doku-body h1{font-size:1.25rem; margin:8px 0 10px;}
+  .doku-body h2{font-size:1.1rem; margin:22px 0 8px; padding-top:10px; border-top:1px solid var(--line);}
+  .doku-body h3{font-size:.98rem; margin:16px 0 6px;}
+  .doku-body h4{font-size:.9rem; margin:12px 0 4px;}
+  .doku-body p{margin:6px 0 10px;}
+  .doku-body ul, .doku-body ol{margin:6px 0 10px; padding-left:22px;}
+  .doku-body li{margin:3px 0;}
+  .doku-body a{color:var(--green); font-weight:600;}
+  .doku-body code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.84em; background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:1px 4px;}
+  .doku-body pre{background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; overflow:auto; font-size:.8rem; line-height:1.4; margin:8px 0 12px;}
+  .doku-body pre code{background:none; border:none; padding:0; font-size:inherit;}
+  .doku-body table{width:auto; min-width:100%; border-collapse:collapse; font-size:.84rem; margin:6px 0 12px;}
+  .doku-body th, .doku-body td{text-align:left; vertical-align:top; padding:6px 8px; border-bottom:1px solid var(--line); overflow-wrap:normal;}   /* Zellen nur an Leerzeichen umbrechen */
+  .doku-body td:first-child, .doku-body th:first-child{white-space:nowrap;}   /* erste Spalte (Tab, Kanal, Pfad) am Stueck; breite Tabellen scrollen seitlich (.tbl-wrap) */
+  .doku-body th{color:var(--muted); font-weight:600; font-size:.8rem;}
+  .doku-body .md-note{border-left:4px solid var(--blue); background:var(--bg); border-radius:0 8px 8px 0; padding:8px 12px; margin:8px 0 12px;}
+  .doku-body .md-note.important{border-left-color:var(--amber);} .doku-body .md-note.warning{border-left-color:var(--red);}
+  .doku-body .md-note b.md-art{display:block; margin-bottom:2px;}
+  .doku-body details{border:1px solid var(--line); border-radius:8px; padding:6px 12px; margin:8px 0 12px;}
+  .doku-body summary{cursor:pointer; font-weight:600; padding:2px 0;}
+  .doku-body .doku-msg{color:var(--muted); padding:30px 0; text-align:center;}
   .btn{cursor:pointer; border:1px solid var(--line); background:var(--bg); color:var(--ink); border-radius:8px; padding:7px 12px; font-size:.85rem; font-weight:600;}
   .btn:hover{border-color:var(--green);}
   #info-msg{font-size:.82rem; color:var(--muted);}
@@ -293,7 +319,15 @@
         <dt>Android-Widget</dt><dd><a href="https://github.com/GrosjHOME/StefansHomeDashboard/releases/download/widget-latest/Zuhause-Widget.apk">Zuhause-Widget.apk herunterladen</a></dd>
         <dt>Quelltext</dt><dd><a href="https://github.com/GrosjHOME/StefansHomeDashboard" target="_blank" rel="noopener">GitHub · GrosjHOME/StefansHomeDashboard</a></dd>
       </dl>
-      <div class="dlg-btns"><button id="info-check" class="btn">Nach Updates suchen</button><span id="info-msg"></span></div>
+      <div class="dlg-btns"><button id="info-check" class="btn">Nach Updates suchen</button><button id="info-doku" class="btn">📖 Anleitung</button><span id="info-msg"></span></div>
+    </div>
+  </dialog>
+
+  <!-- Anleitung: die README.md des Repos, beim Oeffnen von GitHub Pages geladen und hier als HTML gezeigt -->
+  <dialog id="doku-dlg" class="dlg doku" aria-labelledby="doku-titel">
+    <div class="dlg-in">
+      <div class="dlg-head"><h2 id="doku-titel">📖 Anleitung</h2><button class="dlg-x" aria-label="Schliessen">✕</button></div>
+      <div class="doku-body" id="doku-body"><div class="doku-msg">wird geladen…</div></div>
     </div>
   </dialog>
 
@@ -2754,6 +2788,73 @@ var APP_UPD={ WOCHE:7*864e5, KEY:"shoUpdCheck" };
   function faellig(){ if(http && !document.hidden && Date.now()-APP_UPD.letzte()>=APP_UPD.WOCHE) APP_UPD.pruefen(); }
   document.addEventListener("visibilitychange", faellig);
   setInterval(faellig, 3600000);
+})();
+
+/* ================= Anleitung: README.md als HTML (Knopf im Info-Fenster) =================
+   Kleiner Markdown-Umsetzer fuer das, was die README braucht: Ueberschriften (mit Ankern wie auf GitHub),
+   Absaetze, Tabellen, Listen (eine Ebene verschachtelt, Codeblock im Listenpunkt), Codeblocks, Code, fett/kursiv,
+   Links und Autolinks, Hinweiskaesten "> [!NOTE]" und die HTML-Zeilen <details>/<summary>, die durchgereicht werden.
+   Die README ist eine eigene Datei dieser Seite (gleicher Server), ihr HTML darf deshalb unveraendert hinein. */
+var MD={};
+MD.esc=function(t){ return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+MD.slug=function(t){ return t.toLowerCase().replace(/[^\p{L}\p{N} -]/gu,"").trim().replace(/ /g,"-"); };   // wie GitHub: Satzzeichen weg, Leerzeichen -> Bindestrich
+MD.inline=function(t){
+  var codes=[]; t=t.replace(/`([^`]+)`/g,function(m,c){ codes.push("<code>"+MD.esc(c)+"</code>"); return "\u0000"+(codes.length-1)+"\u0000"; });
+  t=t.replace(/<(https?:\/\/[^>\s]+)>/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');            // <https://…>
+  t=t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,function(m,txt,url){ return url.charAt(0)==="#" ? '<a href="'+url+'">'+txt+'</a>' : '<a href="'+url+'" target="_blank" rel="noopener">'+txt+'</a>'; });
+  t=t.replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>").replace(/(^|[^*\w])\*([^*\s][^*]*)\*(?!\w)/g,"$1<i>$2</i>");
+  return t.replace(/\u0000(\d+)\u0000/g,function(m,i){ return codes[+i]; }); };
+MD.render=function(md){
+  var L=md.replace(/\r/g,"").split("\n"), out=[], i=0, para=[], listen=[], punkt=[];   // listen: offene Listen [{tag, indent}]; punkt: Text des offenen Listenpunkts
+  var para_zu=function(){ if(para.length){ out.push("<p>"+MD.inline(para.join(" "))+"</p>"); para=[]; } };
+  var punkt_zu=function(){ if(punkt.length){ out.push(MD.inline(punkt.join(" "))); punkt=[]; } };   // erst am Ende des Punkts umsetzen (fett ueber Zeilen hinweg)
+  var listen_zu=function(bis){ punkt_zu(); while(listen.length>(bis||0)){ var l=listen.pop(); out.push("</li></"+l.tag+">"); } };
+  var code=function(){ var ein=(L[i].match(/^\s*/)||[""])[0].length, buf=[]; i++;   // Einrueckung des Zauns (im Listenpunkt) aus den Zeilen entfernen
+    while(i<L.length && !/^\s*```/.test(L[i])){ buf.push(L[i].replace(new RegExp("^\\s{0,"+ein+"}"),"")); i++; } i++;   // bis zum schliessenden ```
+    return "<pre><code>"+MD.esc(buf.join("\n"))+"</code></pre>"; };
+  var tabelle=function(rows){
+    var zelle=function(r){ return r.replace(/^\||\|$/g,"").split("|").map(function(c){ return MD.inline(c.trim()); }); };
+    var kopf=zelle(rows[0]), body=rows.slice(/^\|\s*:?-+/.test(rows[1]||"")?2:1);
+    return '<div class="tbl-wrap"><table><thead><tr>'+kopf.map(function(c){ return "<th>"+c+"</th>"; }).join("")+"</tr></thead><tbody>"+
+      body.map(function(r){ return "<tr>"+zelle(r).map(function(c){ return "<td>"+c+"</td>"; }).join("")+"</tr>"; }).join("")+"</tbody></table></div>"; };
+  while(i<L.length){ var z=L[i], m;
+    if(/^\s*```/.test(z)){ para_zu(); if(listen.length){ punkt_zu(); out.push(code()); } else { listen_zu(); out.push(code()); } continue; }
+    if((m=z.match(/^(\s*)([-*]|\d+\.)\s+(.*)$/))){ para_zu(); punkt_zu(); var ind=m[1].length, tag=/\d/.test(m[2])?"ol":"ul";
+      while(listen.length && listen[listen.length-1].indent>ind) listen_zu(listen.length-1);          // Ebene verlassen
+      if(listen.length && listen[listen.length-1].indent===ind){ out.push("</li><li>"); }           // naechster Punkt
+      else { listen.push({tag:tag, indent:ind}); out.push("<"+tag+"><li>"); }                       // neue (Unter-)Liste
+      punkt.push(m[3]); i++; continue; }
+    if(listen.length && /^\s+\|/.test(z)){ punkt_zu(); var tr=[]; while(i<L.length && /^\s+\|/.test(L[i])){ tr.push(L[i].trim()); i++; } out.push(tabelle(tr)); continue; }   // Tabelle im Listenpunkt
+    if(listen.length && /^\s{2,}\S/.test(z)){ punkt.push(z.trim()); i++; continue; }              // eingerueckte Fortsetzung eines Punkts
+    if(listen.length && z.trim()===""){ var n=L[i+1]||""; if(/^\s+(?:[-*]|\d+\.|```|\|)\s*/.test(n) || /^\d+\.\s/.test(n) || /^[-*]\s/.test(n)){ i++; continue; } }   // Leerzeile innerhalb der Liste
+    if(z.trim()===""){ para_zu(); listen_zu(); i++; continue; }
+    listen_zu();
+    if((m=z.match(/^(#{1,4})\s+(.*)$/))){ para_zu(); var h=m[1].length, txt=m[2].trim(); out.push("<h"+h+' id="dk-'+MD.slug(txt)+'">'+MD.inline(txt)+"</h"+h+">"); i++; continue; }
+    if(/^\|/.test(z)){ para_zu(); var rows=[]; while(i<L.length && /^\|/.test(L[i])){ rows.push(L[i]); i++; } out.push(tabelle(rows)); continue; }
+    if(/^>/.test(z)){ para_zu(); var q=[]; while(i<L.length && /^>/.test(L[i])){ q.push(L[i].replace(/^>\s?/,"")); i++; }
+      var art=(q[0]||"").match(/^\[!(NOTE|IMPORTANT|WARNING)\]/), cls="", titel="";
+      if(art){ cls=art[1].toLowerCase(); titel={note:"Hinweis", important:"Wichtig", warning:"Achtung"}[cls]; q.shift(); }
+      out.push('<div class="md-note '+cls+'">'+(titel?'<b class="md-art">'+titel+'</b>':'')+MD.inline(q.join(" "))+"</div>"); continue; }
+    if(/^<\/?(details|summary)/.test(z)){ para_zu(); out.push(MD.inline(z)); i++; continue; }      // HTML-Zeilen der README durchreichen
+    if(/^<!--/.test(z)){ i++; continue; }
+    para.push(z.trim()); i++; }
+  para_zu(); listen_zu();
+  return out.join("\n"); };
+var DOKU={ URL:"../README.md", _html:null, _t:0 };
+(function(){
+  var dlg=document.getElementById("doku-dlg"), body=document.getElementById("doku-body"), btn=document.getElementById("info-doku"), info=document.getElementById("info-dlg"); if(!dlg||!body||!btn) return;
+  function zeigen(){ if(info && info.open) info.close(); if(dlg.showModal) dlg.showModal(); else dlg.setAttribute("open",""); }
+  btn.addEventListener("click",function(){ zeigen();
+    if(DOKU._html && Date.now()-DOKU._t<600000){ body.innerHTML=DOKU._html; body.scrollTop=0; return; }   // 10 min im Speicher
+    body.innerHTML='<div class="doku-msg">wird geladen…</div>';
+    fetch(DOKU.URL,{cache:"no-store"}).then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
+      .then(function(md){ DOKU._html=MD.render(md); DOKU._t=Date.now(); body.innerHTML=DOKU._html; body.scrollTop=0; })
+      .catch(function(){ body.innerHTML='<div class="doku-msg">Die Anleitung konnte nicht geladen werden – sie braucht eine Verbindung zum Internet.</div>'; }); });
+  dlg.querySelector(".dlg-x").addEventListener("click",function(){ dlg.close(); });
+  dlg.addEventListener("click",function(e){ if(e.target===dlg){ dlg.close(); return; }
+    // Anker-Links (Inhaltsverzeichnis) innerhalb der Anleitung: zum Abschnitt scrollen, ohne die Adresse (#Tab) zu aendern
+    var a=e.target.closest("a[href^='#']"); if(!a) return; e.preventDefault();
+    var ziel=document.getElementById("dk-"+decodeURIComponent(a.getAttribute("href").slice(1))); if(ziel) ziel.scrollIntoView({block:"start"}); });
 })();
 
 /* ================= Info (ℹ️ oben rechts) ================= */

@@ -166,7 +166,11 @@ F5. Nach einem Merge dauert es durch Pages-Build und Browser-Cache bis zu ~15 mi
 
 **Info-Fenster (ℹ️ oben rechts):** zeigt die App-Version, den Autor (Stefan
 Grosjean), ob das Dashboard als App oder im Browser läuft, die letzte Update-Prüfung,
-die Datenquellen und Links zum Android-Widget und zu GitHub. Die Version ist das
+die Datenquellen und Links zum Android-Widget und zu GitHub. Der Knopf **📖 Anleitung**
+zeigt diese README in der App: Sie wird beim Öffnen von GitHub Pages geladen (nach einem
+Merge also sofort aktuell, ohne Verbindung nicht verfügbar) und von einem kleinen
+eingebauten Markdown-Umsetzer dargestellt; das Inhaltsverzeichnis springt zu den
+Abschnitten. Die Version ist das
 Veröffentlichungsdatum der Seite, z. B. `2026.10.08`. Sie kommt automatisch aus
 GitHub Pages (Last-Modified), von Hand ist nichts hochzuzählen.
 App-Name und Icon aktualisieren Android/Windows selbst (kann bis zu einem Tag
