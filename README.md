@@ -170,7 +170,8 @@ die Datenquellen und Links zum Android-Widget und zu GitHub. Der Knopf **📖 An
 zeigt diese README in der App: Sie wird beim Öffnen von GitHub Pages geladen (nach einem
 Merge also sofort aktuell, ohne Verbindung nicht verfügbar) und von einem kleinen
 eingebauten Markdown-Umsetzer dargestellt; das Inhaltsverzeichnis springt zu den
-Abschnitten. Die Version ist das
+Abschnitten. Schliessen mit ✕, dem Knopf am Ende, Esc oder der Zurück-Taste des
+Handys. Die Version ist das
 Veröffentlichungsdatum der Seite, z. B. `2026.10.08`. Sie kommt automatisch aus
 GitHub Pages (Last-Modified), von Hand ist nichts hochzuzählen.
 App-Name und Icon aktualisieren Android/Windows selbst (kann bis zu einem Tag

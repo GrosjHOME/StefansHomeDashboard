@@ -56,10 +56,11 @@
   .dlg-list a{color:var(--green); font-weight:600;}
   .dlg-btns{display:flex; align-items:center; gap:10px; padding:12px 18px 18px; flex-wrap:wrap;}
   /* Anleitung (README.md, im Info-Fenster): breites Fenster, der Text scrollt innen */
-  .dlg.doku{width:min(900px, calc(100vw - 24px)); max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px); display:flex; flex-direction:column;}
-  .dlg.doku[open]{display:flex;}
+  .dlg.doku{width:min(900px, calc(100vw - 24px)); max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px); flex-direction:column;}
+  .dlg.doku[open]{display:flex;}   /* nur offen: ohne [open] bliebe das geschlossene Fenster sichtbar (display:none des Browsers ueberschrieben) */
   .dlg.doku .dlg-in{display:flex; flex-direction:column; min-height:0;}
-  .doku-body{overflow:auto; padding:4px 18px 18px; font-size:.9rem; line-height:1.5; overflow-wrap:anywhere; -webkit-overflow-scrolling:touch;}
+  .doku-body{flex:1 1 auto; min-height:0; overflow:auto; padding:4px 18px 18px; font-size:.9rem; line-height:1.5; overflow-wrap:anywhere; -webkit-overflow-scrolling:touch;}
+  .doku-body .doku-ende{margin-top:18px; padding-top:12px; border-top:1px solid var(--line);}
   .doku-body h1{font-size:1.25rem; margin:8px 0 10px;}
   .doku-body h2{font-size:1.1rem; margin:22px 0 8px; padding-top:10px; border-top:1px solid var(--line);}
   .doku-body h3{font-size:.98rem; margin:16px 0 6px;}
@@ -2843,15 +2844,23 @@ MD.render=function(md){
 var DOKU={ URL:"../README.md", _html:null, _t:0 };
 (function(){
   var dlg=document.getElementById("doku-dlg"), body=document.getElementById("doku-body"), btn=document.getElementById("info-doku"), info=document.getElementById("info-dlg"); if(!dlg||!body||!btn) return;
-  function zeigen(){ if(info && info.open) info.close(); if(dlg.showModal) dlg.showModal(); else dlg.setAttribute("open",""); }
+  // Zurueck-Taste (Android) schliesst die Anleitung: beim Oeffnen einen Verlaufseintrag anlegen, bei popstate schliessen;
+  // schliesst man per Knopf, wird dieser Eintrag wieder entfernt (history.back), damit die Zurueck-Taste danach die App verlaesst wie gewohnt
+  var verlauf=false;
+  function zeigen(){ if(info && info.open) info.close(); if(dlg.showModal) dlg.showModal(); else dlg.setAttribute("open","");
+    try{ history.pushState({doku:1},""); verlauf=true; }catch(e){ verlauf=false; } }
+  function zu(){ if(!dlg.open) return; if(verlauf){ verlauf=false; history.back(); } else dlg.close(); }
+  window.addEventListener("popstate",function(){ if(dlg.open){ verlauf=false; dlg.close(); } });
+  dlg.addEventListener("cancel",function(e){ e.preventDefault(); zu(); });   // Esc bzw. Zurueck-Geste: wie der Knopf
+  var ende='<div class="doku-ende"><button class="btn doku-zu">Schliessen</button></div>';
   btn.addEventListener("click",function(){ zeigen();
-    if(DOKU._html && Date.now()-DOKU._t<600000){ body.innerHTML=DOKU._html; body.scrollTop=0; return; }   // 10 min im Speicher
+    if(DOKU._html && Date.now()-DOKU._t<600000){ body.innerHTML=DOKU._html+ende; body.scrollTop=0; return; }   // 10 min im Speicher
     body.innerHTML='<div class="doku-msg">wird geladen…</div>';
     fetch(DOKU.URL,{cache:"no-store"}).then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
-      .then(function(md){ DOKU._html=MD.render(md); DOKU._t=Date.now(); body.innerHTML=DOKU._html; body.scrollTop=0; })
+      .then(function(md){ DOKU._html=MD.render(md); DOKU._t=Date.now(); body.innerHTML=DOKU._html+ende; body.scrollTop=0; })
       .catch(function(){ body.innerHTML='<div class="doku-msg">Die Anleitung konnte nicht geladen werden – sie braucht eine Verbindung zum Internet.</div>'; }); });
-  dlg.querySelector(".dlg-x").addEventListener("click",function(){ dlg.close(); });
-  dlg.addEventListener("click",function(e){ if(e.target===dlg){ dlg.close(); return; }
+  dlg.querySelector(".dlg-x").addEventListener("click",zu);
+  dlg.addEventListener("click",function(e){ if(e.target===dlg || e.target.closest(".doku-zu")){ zu(); return; }
     // Anker-Links (Inhaltsverzeichnis) innerhalb der Anleitung: zum Abschnitt scrollen, ohne die Adresse (#Tab) zu aendern
     var a=e.target.closest("a[href^='#']"); if(!a) return; e.preventDefault();
     var ziel=document.getElementById("dk-"+decodeURIComponent(a.getAttribute("href").slice(1))); if(ziel) ziel.scrollIntoView({block:"start"}); });
