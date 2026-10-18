@@ -46,7 +46,7 @@ Der Pfeil zum **Blob-Speicher** gilt in beide Richtungen: Das Dashboard liest vo
 die PV-Morgenprognose und die Asche-Leerungen und schreibt neue Leerungen zurück
 (mit Token). Der Wächter im Val liest ThingSpeak und schickt bei Störungen eine E-Mail.
 
-### Val Town: ein Val, fünf Dateien
+### Val Town: ein Val, sechs Dateien
 
 Alles, was auf einem Server laufen muss, steckt im Val **GrosjeansHomeDashboard**
 (val.town, Konto `steffgrosjean`). Jede Datei hat ihren eigenen Trigger. Den
@@ -59,6 +59,7 @@ Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
 | `morgens.ts` | Prognose um 06:00 anstossen | Cron `0 4-8 * * *` | `scripts/valtown_pv_prognose/morgens.ts` |
 | `waechter.ts` | E-Mail bei Störungen | Cron alle 30 min | `scripts/valtown_waechter/waechter.ts` |
 | `asche.ts` | Asche-Leerungen der Heizung speichern (Knopf „Asche geleert“ im Dashboard) | HTTP | `scripts/valtown_asche/asche.ts` |
+| `geraete.ts` | Geräte-Zähler: wie viele verschiedene Geräte das Dashboard benutzen (Anzeige im Info-Fenster ℹ️) | HTTP | `scripts/valtown_geraete/geraete.ts` |
 
 Das Repo ist die Vorlage: Änderungen hier machen und dann in den Val kopieren.
 Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
@@ -79,6 +80,7 @@ Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
 | `scripts/valtown_pv_prognose/` | PV-Morgenprognose für Val Town (06:00, 15-min-Raster) |
 | `scripts/valtown_waechter/` | Wächter für Val Town: E-Mail bei Störungen |
 | `scripts/valtown_asche/` | Asche-Leerungen für Val Town (Speicher für den Knopf „Asche geleert“) |
+| `scripts/valtown_geraete/` | Geräte-Zähler für Val Town (Meldung der Geräte, Zahlen fürs Info-Fenster) |
 | `scripts/tibber_token_neu.ps1` | Frischen Tibber-Refresh-Token erzeugen |
 | `scripts/id3_tibber_cloud.py` | Früherer GitHub-Actions-Poller (Reserve) |
 | `scripts/thingspeak_trigger_id3.m` | ThingSpeak-TimeControl-Auslöser (Alternative) |
@@ -249,7 +251,7 @@ jedem Wetter-Update. Fehlt die Morgenprognose, rechnet der Balken wie bisher liv
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-fünf-dateien)) |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-sechs-dateien)) |
 | **Dateien** | `prognose.ts` (Trigger **HTTP**: Rechnung + Abruf) und `morgens.ts` (Trigger **Cron** `0 4-8 * * *`) |
 | **Quelltext** | `scripts/valtown_pv_prognose/` – hier ändern, dann in den Val kopieren |
 | **Speicher** | Blob `pv_prognose_YYYY-MM-DD` je Tag (bleibt erhalten, `?datum=…` liefert ältere Tage) |
@@ -328,7 +330,7 @@ Tag, an dem die Box voll ist. Die übrigen Werte (Brennzeit und Austragung seit 
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-fünf-dateien)) |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-sechs-dateien)) |
 | **Datei** | `asche.ts` (Trigger **HTTP**) |
 | **Quelltext** | `scripts/valtown_asche/asche.ts` – hier ändern, dann in den Val kopieren |
 | **Speicher** | Blob `asche_leerungen`: `leerungen` (Zeitpunkte, UTC) und `anteile` (Füllstand beim Leeren in %, fehlt = 100 %) |
@@ -356,6 +358,34 @@ Solange `ASCHE.URL` leer ist, werden Leerungen nur im jeweiligen Browser
 gespeichert und sind auf anderen Geräten nicht sichtbar.
 
 </details>
+
+## Geräte-Zähler (Val Town)
+
+Das Info-Fenster (ℹ️ oben rechts) zeigt, **von wie vielen Geräten** das Dashboard benutzt wird, und ob dabei
+immer dasselbe Gerät kommt.
+
+- **Kennung:** Jedes Gerät (genauer: jeder Browser) bekommt eine zufällige Kennung (16 Hex-Zeichen) im
+  `localStorage`. Sie bleibt, bis man den Browser-Speicher löscht. In einem privaten Fenster gibt es keine Kennung
+  und keine Meldung.
+- **Meldung:** Beim Öffnen und beim Zurückkehren in die App meldet sich das Gerät bei `geraete.ts`, höchstens alle
+  30 Minuten. Gespeichert werden nur die Kennung und grobe Angaben: **Browser, Betriebssystem, App oder Browser,
+  Bildschirmgrösse, Sprache**, dazu erster und letzter Besuch und die Zahl der Besuche. Keine IP-Adresse, keine Namen.
+- **Anzeige:** Zeile **«Dieses Gerät»** (die eigene Kennung, 8 Zeichen) und Zeile **«Geräte»**: heute / 7 Tage /
+  30 Tage / gesamt. Ist auf dem Gerät das Passwort der Aschebox gespeichert, steht darunter die Liste der Geräte
+  (die letzten 12) mit Kennung, Browser, Bildschirm, erstem und letztem Besuch. Gleiche Kennung = dasselbe Gerät;
+  gleiche Angaben bei wechselnder Kennung = ein Gerät, dessen Browser-Speicher gelöscht wurde.
+
+| | |
+|---|---|
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-sechs-dateien)) |
+| **Datei** | `geraete.ts` (Trigger **HTTP**) |
+| **Quelltext** | `scripts/valtown_geraete/geraete.ts` – hier ändern, dann in den Val kopieren |
+| **Speicher** | Blob `geraete` (höchstens 100 Geräte) |
+| **Umgebungsvariable** | `ASCHE_TOKEN` (dieselbe wie bei der Aschebox): nur damit liefert der Val die Geräteliste, ohne sie nur die Zahlen |
+| **Web-Adresse** | im Dashboard `GERAETE.URL` |
+
+Die Meldung selbst braucht kein Passwort (jeder, der die Adresse kennt, könnte also erfundene Geräte melden – bei
+100 Einträgen ist Schluss). Lesen der Zahlen ist öffentlich, die Einzelheiten nur mit Passwort.
 
 ## Wächter (Val Town)
 
