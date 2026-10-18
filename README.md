@@ -366,6 +366,8 @@ eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
 | Prüfung | Störung, wenn … |
 |---|---|
 | PV-Anlage, Wallbox, Boiler (Kanäle 172430, 172228, 502977) | seit 45 min kein neuer Wert |
+| Pumpwerk-Logger (Kanal 3484334) | seit 20 min kein neuer Wert (der Logger sendet jede Minute) |
+| Pumpwerk-Störung | Feld 6 meldet «Störung» (Kontakt offen) |
 | ID.3 (Kanal 3514838) | seit 90 min kein neuer Wert, z. B. Tibber-Token-Kette gerissen |
 | Heizung (Kanal 172428) | in der Heizsaison (Okt–Apr) seit 2 h kein neuer Wert |
 | SD-Karte der PV-Steuerung | Feld 7 meldet Fehler |
@@ -391,7 +393,8 @@ eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
 2. Datei **`waechter.ts`** anlegen, den Inhalt von
    `scripts/valtown_waechter/waechter.ts` einfügen und als Trigger **Cron** alle
    **30 Minuten** wählen.
-3. Umgebungsvariablen braucht es keine.
+3. Umgebungsvariable **`PUMPWERK_READ_KEY`**: der Lese-Key des privaten Pumpwerk-Kanals 3484334
+   (aus `Secrets.h` im Repo PumpwerkBiral). Ohne ihn meldet der Wächter das Pumpwerk als «nicht abrufbar».
 4. Test: **Run**. Im Log steht "alles in Ordnung" oder die gefundenen Probleme.
    Die erste Mail kommt erst beim zweiten Lauf mit derselben Störung.
 

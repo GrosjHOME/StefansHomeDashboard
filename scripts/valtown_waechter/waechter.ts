@@ -5,6 +5,8 @@
 //  - liefern alle ThingSpeak-Kanaele noch (letzter Eintrag nicht aelter als maxMin)?
 //    Die Heizung nur in der Heizsaison (Okt-Apr), sonst "Sommerpause".
 //    ID.3-Kanal veraltet = der Tibber-Poller (id3.ts im selben Val) laeuft nicht, z. B. Token-Kette gerissen.
+//  - sendet der Pumpwerk-Logger noch (Kanal 3484334, jede Minute) und meldet das Pumpwerk eine Stoerung
+//    (field6 = 1, Kontakt offen)? Der Kanal ist privat: Lese-Key in der Umgebungsvariablen PUMPWERK_READ_KEY.
 //  - meldet die PV-Steuerung die SD-Karte als OK (Kanal 172430, field7 = 1)?
 //  - ist die PV-Morgenprognose von heute um 06:00 entstanden (prognose.ts/morgens.ts im selben Val)?
 //
@@ -23,11 +25,14 @@ const ZONE = "Europe/Zurich";
 const STATUS_KEY = "waechter_status";
 const ERINNERUNG_MS = 24 * 3600_000;
 
-// Alle Kanaele senden auch nachts (PV ~3 min, Wallbox/Boiler minuetlich, ID.3 alle 15 min)
+const PUMPWERK_READ_KEY = (Deno.env.get("PUMPWERK_READ_KEY") || "").trim() || undefined;   // privater Kanal, Key nur als Umgebungsvariable
+
+// Alle Kanaele senden auch nachts (PV ~3 min, Wallbox/Boiler/Pumpwerk minuetlich, ID.3 alle 15 min)
 const KANAELE: { id: string; name: string; kanal: number; key?: string; maxMin: number; saison?: number[] }[] = [
   { id: "pv", name: "PV-Anlage", kanal: 172430, key: PV_READ_KEY, maxMin: 45 },
   { id: "wallbox", name: "Wallbox", kanal: 172228, maxMin: 45 },
   { id: "boiler", name: "Boiler", kanal: 502977, maxMin: 45 },
+  { id: "pumpwerk", name: "Pumpwerk (Logger)", kanal: 3484334, key: PUMPWERK_READ_KEY, maxMin: 20 },
   { id: "id3", name: "ID.3 (Tibber-Poller id3.ts)", kanal: 3514838, maxMin: 90 },
   { id: "heizung", name: "Heizung", kanal: 172428, maxMin: 120, saison: [9, 10, 11, 0, 1, 2, 3] },
 ];
@@ -66,6 +71,11 @@ async function pruefen(): Promise<Record<string, string>> {
         let sd: number | null = null;
         for (const x of f) { const v = parseFloat(x.field7); if (isFinite(v)) sd = v; }
         if (sd === 0) p.sd = "PV-Anlage: SD-Karte meldet Fehler (Kanal 172430, Feld 7)";
+      }
+      if (k.id === "pumpwerk" && f.length) {   // field6 = Stoerung aktiv (1 = Kontakt offen), letzter gueltiger Wert
+        let st: number | null = null;
+        for (const x of f) { const v = parseFloat(x.field6); if (isFinite(v)) st = v; }
+        if (st !== null && st >= 0.5) p.pumpwerkStoerung = "Pumpwerk: Störung gemeldet (Kontakt offen, Kanal 3484334, Feld 6)";
       }
     } catch (e) {
       p[k.id] = `${k.name}: Kanal ${k.kanal} nicht abrufbar (${e})`;
