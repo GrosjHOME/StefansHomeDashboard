@@ -75,6 +75,10 @@
   .doku-body table{width:auto; min-width:100%; border-collapse:collapse; font-size:.84rem; margin:6px 0 12px;}
   .doku-body th, .doku-body td{text-align:left; vertical-align:top; padding:6px 8px; border-bottom:1px solid var(--line); overflow-wrap:normal;}   /* Zellen nur an Leerzeichen umbrechen */
   .doku-body td:first-child, .doku-body th:first-child{white-space:nowrap;}   /* erste Spalte (Tab, Kanal, Pfad) am Stueck; breite Tabellen scrollen seitlich (.tbl-wrap) */
+  /* Geraete-Liste: Kennung und "← dieses Geraet" je am Stueck, aber bei wenig Platz untereinander; Spalte Geraet nicht auf 4 Zeilen quetschen */
+  .doku-body td.ger-kenn{white-space:normal;} .ger-id, .ger-mark{white-space:nowrap;} .ger-mark{color:var(--green); margin-left:6px;}
+  .doku-body td.ger-geraet{min-width:11em;}
+  @media (max-width:600px){ .ger-mark{display:block; margin-left:0;} }   /* Handy (eng): "← dieses Geraet" unter der Kennung statt daneben */
   .doku-body th{color:var(--muted); font-weight:600; font-size:.8rem;}
   .doku-body .md-note{border-left:4px solid var(--blue); background:var(--bg); border-radius:0 8px 8px 0; padding:8px 12px; margin:8px 0 12px;}
   .doku-body .md-note.important{border-left-color:var(--amber);} .doku-body .md-note.warning{border-left-color:var(--red);}
@@ -2917,9 +2921,11 @@ document.addEventListener("visibilitychange",function(){ if(document.visibilityS
   dlg.querySelector(".dlg-x").addEventListener("click",zu);
   dlg.addEventListener("click",function(e){ if(e.target===dlg || e.target.closest(".doku-zu")) zu(); });   // Klick neben das Fenster bzw. Schliessen-Knopf
   function el(tag, text, cls){ var e=document.createElement(tag); if(text!=null) e.textContent=text; if(cls) e.className=cls; return e; }
-  function tabelle(kopf, zeilen, markiert){ var t=el("table"), th=el("thead"), tr=el("tr"), tb=el("tbody");
+  // klassen: Klasse je Spalte (optional); eine Zelle darf statt Text auch ein fertiges Element sein
+  function tabelle(kopf, zeilen, markiert, klassen){ var t=el("table"), th=el("thead"), tr=el("tr"), tb=el("tbody");
     kopf.forEach(function(k){ tr.appendChild(el("th",k)); }); th.appendChild(tr); t.appendChild(th);
-    zeilen.forEach(function(z,i){ var r=el("tr"); z.forEach(function(c){ r.appendChild(el("td",c)); }); if(markiert===i) r.style.fontWeight="700"; tb.appendChild(r); });
+    zeilen.forEach(function(z,i){ var r=el("tr"); z.forEach(function(c,k){ var td=el("td", (c && c.nodeType) ? null : c, klassen && klassen[k]); if(c && c.nodeType) td.appendChild(c); r.appendChild(td); });
+      if(markiert===i) r.style.fontWeight="700"; tb.appendChild(r); });
     t.appendChild(tb); var w=el("div",null,"tbl-wrap"); w.appendChild(t); return w; }
   function datum(iso){ var d=new Date(iso); return isNaN(d.getTime()) ? "–" : d.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric"})+", "+hhmm(d.getTime()); }
   function zeichnen(){
@@ -2938,8 +2944,9 @@ document.addEventListener("visibilitychange",function(){ if(document.visibilityS
       if(!r.geraete){ liste.appendChild(el("p","Die Liste erscheint, wenn auf diesem Gerät das Passwort der Aschebox gespeichert ist (Tab Heizung, «Asche geleert» eintragen und das Passwort einmal eingeben).")); return; }
       if(!r.geraete.length){ liste.appendChild(el("p","Noch keine Geräte gemeldet.")); return; }
       var eigen=-1, zeilen=r.geraete.map(function(x,i){ if(id && x.id===id) eigen=i;
-        return [(x.id||"").slice(0,8)+(id && x.id===id ? " ← dieses Gerät" : ""), (x.browser||"?")+(x.os?" · "+x.os:"")+" · "+(x.app?"App":"Browser"), x.schirm||"–", datum(x.erst), datum(x.zuletzt), x.besuche]; });
-      liste.appendChild(tabelle(["Kennung","Gerät","Bildschirm","Zuerst","Zuletzt","Besuche"],zeilen,eigen));
+        var kenn=el("span",(x.id||"").slice(0,8),"ger-id"); if(id && x.id===id){ var w=el("span",null); w.appendChild(kenn); w.appendChild(el("span","← dieses Gerät","ger-mark")); kenn=w; }
+        return [kenn, (x.browser||"?")+(x.os?" · "+x.os:"")+" · "+(x.app?"App":"Browser"), x.schirm||"–", datum(x.erst), datum(x.zuletzt), x.besuche]; });
+      liste.appendChild(tabelle(["Kennung","Gerät","Bildschirm","Zuerst","Zuletzt","Besuche"],zeilen,eigen,["ger-kenn","ger-geraet"]));
     }).catch(function(){ zahlen.textContent=""; liste.textContent=""; zahlen.appendChild(el("p","Der Zähler ist nicht erreichbar.","doku-msg")); }); }
   btn.addEventListener("click",function(){ zeigen(); zeichnen(); body.scrollTop=0; });
 })();
