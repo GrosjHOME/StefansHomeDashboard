@@ -361,8 +361,9 @@ gespeichert und sind auf anderen Geräten nicht sichtbar.
 
 ## Geräte-Zähler (Val Town)
 
-Das Info-Fenster (ℹ️ oben rechts) zeigt, **von wie vielen Geräten** das Dashboard benutzt wird, und ob dabei
-immer dasselbe Gerät kommt.
+Die Seite **«📱 Geräte»** (Knopf im Info-Fenster ℹ️ oben rechts, neben der Anleitung) zeigt, **von wie vielen Geräten**
+das Dashboard benutzt wird, und ob dabei immer dasselbe Gerät kommt. Sie öffnet sich im selben Fenster wie die
+Anleitung und schliesst mit ✕, «Schliessen», Esc, Klick daneben oder der Zurück-Taste.
 
 - **Kennung:** Jedes Gerät (genauer: jeder Browser) bekommt eine zufällige Kennung (16 Hex-Zeichen) im
   `localStorage`. Sie bleibt, bis man den Browser-Speicher löscht. In einem privaten Fenster gibt es keine Kennung
@@ -370,10 +371,12 @@ immer dasselbe Gerät kommt.
 - **Meldung:** Beim Öffnen und beim Zurückkehren in die App meldet sich das Gerät bei `geraete.ts`, höchstens alle
   30 Minuten. Gespeichert werden nur die Kennung und grobe Angaben: **Browser, Betriebssystem, App oder Browser,
   Bildschirmgrösse, Sprache**, dazu erster und letzter Besuch und die Zahl der Besuche. Keine IP-Adresse, keine Namen.
-- **Anzeige:** Zeile **«Dieses Gerät»** (die eigene Kennung, 8 Zeichen) und Zeile **«Geräte»**: heute / 7 Tage /
-  30 Tage / gesamt. Ist auf dem Gerät das Passwort der Aschebox gespeichert, steht darunter die Liste der Geräte
-  (die letzten 12) mit Kennung, Browser, Bildschirm, erstem und letztem Besuch. Gleiche Kennung = dasselbe Gerät;
-  gleiche Angaben bei wechselnder Kennung = ein Gerät, dessen Browser-Speicher gelöscht wurde.
+- **Anzeige:** Drei Abschnitte. **«Dieses Gerät»**: die eigene Kennung und die Angaben dieses Browsers.
+  **«Geräte insgesamt»**: heute / 7 Tage / 30 Tage / seit Beginn. **«Alle Geräte»**: eine Tabelle mit Kennung (8 Zeichen),
+  Gerät (Browser, Betriebssystem, App oder Browser), Bildschirm, erstem und letztem Besuch und Zahl der Besuche; die
+  eigene Zeile ist markiert. Die Tabelle erscheint nur, wenn auf dem Gerät das Passwort der Aschebox gespeichert ist.
+  Gleiche Kennung = dasselbe Gerät; gleiche Angaben bei wechselnder Kennung = ein Gerät, dessen Browser-Speicher
+  gelöscht wurde.
 
 | | |
 |---|---|

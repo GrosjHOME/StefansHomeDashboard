@@ -316,13 +316,11 @@
         <dt>Entwickelt von</dt><dd>Stefan Grosjean</dd>
         <dt>Läuft als</dt><dd id="info-modus">–</dd>
         <dt>Updates</dt><dd id="info-upd">–</dd>
-        <dt>Dieses Gerät</dt><dd id="info-geraet-id">–</dd>
-        <dt>Geräte</dt><dd id="info-geraete">–</dd>
         <dt>Datenquellen</dt><dd>ThingSpeak (Steuerungen PV, Wallbox, Heizung, Boiler) · Open-Meteo (Wetter, Einstrahlung) · Tibber (VW ID.3, über Val Town)</dd>
         <dt>Android-Widget</dt><dd><a href="https://github.com/GrosjHOME/StefansHomeDashboard/releases/download/widget-latest/Zuhause-Widget.apk">Zuhause-Widget.apk herunterladen</a></dd>
         <dt>Quelltext</dt><dd><a href="https://github.com/GrosjHOME/StefansHomeDashboard" target="_blank" rel="noopener">GitHub · GrosjHOME/StefansHomeDashboard</a></dd>
       </dl>
-      <div class="dlg-btns"><button id="info-check" class="btn">Nach Updates suchen</button><button id="info-doku" class="btn">📖 Anleitung</button><span id="info-msg"></span></div>
+      <div class="dlg-btns"><button id="info-check" class="btn">Nach Updates suchen</button><button id="info-doku" class="btn">📖 Anleitung</button><button id="info-geraete-btn" class="btn">📱 Geräte</button><span id="info-msg"></span></div>
     </div>
   </dialog>
 
@@ -331,6 +329,14 @@
     <div class="dlg-in">
       <div class="dlg-head"><h2 id="doku-titel">📖 Anleitung</h2><button class="dlg-x" aria-label="Schliessen">✕</button></div>
       <div class="doku-body" id="doku-body"><div class="doku-msg">wird geladen…</div></div>
+    </div>
+  </dialog>
+
+  <!-- Geraete: dieses Geraet und alle Geraete, die das Dashboard benutzen (Zaehler Val Town geraete.ts); gleiches Fenster wie die Anleitung -->
+  <dialog id="geraete-dlg" class="dlg doku" aria-labelledby="geraete-titel">
+    <div class="dlg-in">
+      <div class="dlg-head"><h2 id="geraete-titel">📱 Geräte</h2><button class="dlg-x" aria-label="Schliessen">✕</button></div>
+      <div class="doku-body" id="geraete-body"><div class="doku-msg">wird geladen…</div></div>
     </div>
   </dialog>
 
@@ -2897,6 +2903,46 @@ GERAETE.laden=function(){ var h={}, tok=lsGet("asche_token"); if(tok) h["X-Asche
   return fetch(GERAETE.URL,{headers:h}).then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }); };
 GERAETE.ping();
 document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") GERAETE.ping(); });
+// Seite "Geraete" (Knopf im Info-Fenster): Fenster wie die Anleitung, auch mit Zurueck-Taste, Esc, Knopf und Klick daneben zu schliessen.
+// Alle Angaben der Geraete kommen aus einer oeffentlichen Meldung und werden nur per textContent eingesetzt, nie als HTML.
+(function(){
+  var dlg=document.getElementById("geraete-dlg"), body=document.getElementById("geraete-body"), btn=document.getElementById("info-geraete-btn"), info=document.getElementById("info-dlg");
+  if(!dlg||!body||!btn) return;
+  var verlauf=false;   // Verlaufseintrag fuer die Zurueck-Taste (Android), wie bei der Anleitung
+  function zeigen(){ if(info && info.open) info.close(); if(dlg.showModal) dlg.showModal(); else dlg.setAttribute("open","");
+    try{ history.pushState({geraete:1},""); verlauf=true; }catch(e){ verlauf=false; } }
+  function zu(){ if(!dlg.open) return; if(verlauf){ verlauf=false; history.back(); } else dlg.close(); }
+  window.addEventListener("popstate",function(){ if(dlg.open){ verlauf=false; dlg.close(); } });
+  dlg.addEventListener("cancel",function(e){ e.preventDefault(); zu(); });   // Esc bzw. Zurueck-Geste: wie der Knopf
+  dlg.querySelector(".dlg-x").addEventListener("click",zu);
+  dlg.addEventListener("click",function(e){ if(e.target===dlg || e.target.closest(".doku-zu")) zu(); });   // Klick neben das Fenster bzw. Schliessen-Knopf
+  function el(tag, text, cls){ var e=document.createElement(tag); if(text!=null) e.textContent=text; if(cls) e.className=cls; return e; }
+  function tabelle(kopf, zeilen, markiert){ var t=el("table"), th=el("thead"), tr=el("tr"), tb=el("tbody");
+    kopf.forEach(function(k){ tr.appendChild(el("th",k)); }); th.appendChild(tr); t.appendChild(th);
+    zeilen.forEach(function(z,i){ var r=el("tr"); z.forEach(function(c){ r.appendChild(el("td",c)); }); if(markiert===i) r.style.fontWeight="700"; tb.appendChild(r); });
+    t.appendChild(tb); var w=el("div",null,"tbl-wrap"); w.appendChild(t); return w; }
+  function datum(iso){ var d=new Date(iso); return isNaN(d.getTime()) ? "–" : d.toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit",year:"numeric"})+", "+hhmm(d.getTime()); }
+  function zeichnen(){
+    var gi=GERAETE.info(), id=GERAETE.id(); body.textContent="";
+    var h=el("h2","Dieses Gerät"); h.style.borderTop="none"; h.style.marginTop="4px"; body.appendChild(h);
+    body.appendChild(tabelle(["Angabe","Wert"],[["Kennung", id||"keine (Speicher des Browsers nicht verfügbar, z. B. privates Fenster)"],["Browser",gi.browser],
+      ["Betriebssystem",gi.os||"–"],["Läuft als",gi.app?"installierte App":"Browser"],["Bildschirm",gi.schirm],["Sprache",gi.sprache||"–"]]));
+    body.appendChild(el("h2","Geräte insgesamt")); var zahlen=el("div",null,"gz"); zahlen.appendChild(el("p","lädt …","doku-msg")); body.appendChild(zahlen);
+    body.appendChild(el("h2","Alle Geräte")); var liste=el("div",null,"gl"); liste.appendChild(el("p","lädt …","doku-msg")); body.appendChild(liste);
+    var n=el("p","Gezählt wird pro Browser: Jeder Browser hat eine zufällige Kennung (im Speicher des Browsers, ohne Namen und ohne IP-Adresse) und meldet sich beim Öffnen, höchstens alle 30 Minuten. Gleiche Kennung = dasselbe Gerät. Dieselbe Person im Browser und in der installierten App zählt doppelt, ebenso nach dem Löschen des Browser-Speichers (dann erscheint dasselbe Gerät mit neuer Kennung).");
+    n.style.color="var(--muted)"; body.appendChild(n);
+    var ende=el("div",null,"doku-ende"); ende.appendChild(el("button","Schliessen","btn doku-zu")); body.appendChild(ende);
+    GERAETE.laden().then(function(r){
+      zahlen.textContent=""; zahlen.appendChild(tabelle(["Zeitraum","Geräte"],[["Heute",r.heute],["Letzte 7 Tage",r.tage7],["Letzte 30 Tage",r.tage30],["Seit Beginn",r.gesamt]]));
+      liste.textContent="";
+      if(!r.geraete){ liste.appendChild(el("p","Die Liste erscheint, wenn auf diesem Gerät das Passwort der Aschebox gespeichert ist (Tab Heizung, «Asche geleert» eintragen und das Passwort einmal eingeben).")); return; }
+      if(!r.geraete.length){ liste.appendChild(el("p","Noch keine Geräte gemeldet.")); return; }
+      var eigen=-1, zeilen=r.geraete.map(function(x,i){ if(id && x.id===id) eigen=i;
+        return [(x.id||"").slice(0,8)+(id && x.id===id ? " ← dieses Gerät" : ""), (x.browser||"?")+(x.os?" · "+x.os:"")+" · "+(x.app?"App":"Browser"), x.schirm||"–", datum(x.erst), datum(x.zuletzt), x.besuche]; });
+      liste.appendChild(tabelle(["Kennung","Gerät","Bildschirm","Zuerst","Zuletzt","Besuche"],zeilen,eigen));
+    }).catch(function(){ zahlen.textContent=""; liste.textContent=""; zahlen.appendChild(el("p","Der Zähler ist nicht erreichbar.","doku-msg")); }); }
+  btn.addEventListener("click",function(){ zeigen(); zeichnen(); body.scrollTop=0; });
+})();
 
 /* ================= Info (ℹ️ oben rechts) ================= */
 // Version = Veroeffentlichungsdatum dieser Seite (Last-Modified von GitHub Pages, also der
@@ -2914,22 +2960,6 @@ document.addEventListener("visibilitychange",function(){ if(document.visibilityS
     var l=APP_UPD.letzte();
     g("info-upd").textContent = "automatisch einmal pro Woche · zuletzt geprüft: "+(l ? zeit(new Date(l)) : "noch nie");
     g("info-msg").textContent = "";
-    geraete();
-  }
-  // Geraete: eigene Kennung + Zahlen vom Zaehler (Val Town geraete.ts); mit gespeichertem Passwort zusaetzlich die Liste.
-  // Alles per textContent - die Angaben der Geraete kommen aus einer oeffentlichen Meldung und werden nie als HTML eingesetzt.
-  function geraete(){
-    var gi=GERAETE.info(), id=GERAETE.id(), zeile=function(t){ var d=document.createElement("div"); d.textContent=t; return d; };
-    g("info-geraet-id").textContent = id ? id.slice(0,8)+" · "+gi.browser+(gi.os?" · "+gi.os:"")+" · "+(gi.app?"installierte App":"Browser")+" · "+gi.schirm
-      : "keine Kennung (Speicher des Browsers nicht verfügbar, z. B. privates Fenster)";
-    var dd=g("info-geraete"); dd.textContent="lädt …";
-    GERAETE.laden().then(function(r){
-      dd.textContent="heute "+r.heute+" · 7 Tage "+r.tage7+" · 30 Tage "+r.tage30+" · gesamt "+r.gesamt;
-      if(!r.geraete) dd.appendChild(zeile("Einzelheiten erscheinen, wenn das Passwort der Aschebox auf diesem Gerät eingegeben ist."));
-      else r.geraete.slice(0,12).forEach(function(x){ var t=(x.id||"").slice(0,8)+(id && x.id===id ? " (dieses Gerät)" : "")+" · "+(x.browser||"?")+(x.os?" · "+x.os:"")+
-        " · "+(x.app?"App":"Browser")+(x.schirm?" · "+x.schirm:"")+" · zuerst "+zeit(new Date(x.erst))+" · zuletzt "+zeit(new Date(x.zuletzt))+" · "+x.besuche+" Besuch"+(x.besuche===1?"":"e");
-        var z=zeile(t); z.style.marginTop="4px"; z.style.fontSize=".8rem"; dd.appendChild(z); });
-    }).catch(function(){ dd.textContent="nicht erreichbar"; });
   }
   btn.addEventListener("click",function(){ fuellen(); if(dlg.showModal) dlg.showModal(); else dlg.setAttribute("open",""); });
   dlg.querySelector(".dlg-x").addEventListener("click",function(){ dlg.close(); });
