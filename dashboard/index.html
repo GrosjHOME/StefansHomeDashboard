@@ -844,7 +844,7 @@ PV.render=function(main){
       '<div class="note">Tages-Mittel des Tracker-Stroms im Mittagsfenster (11–13 h) – ein Punkt pro Tag aus dem dedizierten Log-Kanal (volle Historie). Zum Erkennen eines schleichenden Rückgangs über Wochen/Monate; Feld „Mittags-PAC" dient später der Normierung gegen die Einstrahlung.</div></div>'+
     '<div class="panel a-lf"><h2>Leistungsfaktor <span class="tag" id="lf-tag">Verlust-Diagnose</span><span class="seg" id="seg-lf"><button data-m="jahre" class="active">Jahre</button><button data-m="monate">Monate</button></span></h2>'+
       '<div id="chart-lf"><div class="chart-empty">wird geladen…</div></div>'+
-      '<div class="note">Leistungsfaktor = PV-Ertrag ÷ Einstrahlung auf die Modulfläche (Open-Meteo-Archiv, Reanalyse ERA5, 60° Süd), in % des Mittels '+PV.LF_REF[0]+'–'+String(PV.LF_REF[1]).slice(2)+'. Unabhängig vom Wetter: Ein sonniger Sommer bringt mehr Ertrag, aber auch mehr Einstrahlung. <b>Jahre:</b> April–September zusammen. Nov–Feb verfälschen Schnee, tiefe Sonne und Verschattung. <b>Monate:</b> März–Oktober einzeln, gestrichelt der Jahreswert. Übliche Modulalterung: etwa 0.5 % pro Jahr.</div></div>'+
+      '<div class="note">Leistungsfaktor = PV-Ertrag ÷ Einstrahlung auf die Modulfläche (Open-Meteo-Archiv, Reanalyse ERA5, '+PLANNER.TILT+'° Süd), in % des Mittels '+PV.LF_REF[0]+'–'+String(PV.LF_REF[1]).slice(2)+'. Unabhängig vom Wetter: Ein sonniger Sommer bringt mehr Ertrag, aber auch mehr Einstrahlung. <b>Jahre:</b> April–September zusammen. Nov–Feb verfälschen Schnee, tiefe Sonne und Verschattung. <b>Monate:</b> März–Oktober einzeln, gestrichelt der Jahreswert. Übliche Modulalterung: etwa 0.5 % pro Jahr.</div></div>'+
     '</div><footer>Datenquelle: ThingSpeak Kanal 172430 · Aktualisierung alle 60 s · <span id="err" style="color:var(--red)"></span></footer></div>';
   // Jahresvergleich an die Hoehe von Strom + Spannung anpassen, sobald diese geladen sind oder
   // sich die Fensterbreite aendert (nur zweispaltig wirksam, siehe PV.fitJahr)
@@ -954,7 +954,7 @@ var CMP_NOTES={
 // Einspaltig: feste Hoehe 600. Ausgeloest nach dem Zeichnen und wenn Strom/Spannung die Groesse aendern.
 // ---- Leistungsfaktor (Verlust-Diagnose) ----
 // PV-Ertrag je Monat (pvMonthTotal) geteilt durch die Einstrahlung auf die Modulflaeche im selben
-// Monat (Open-Meteo-Archiv = Reanalyse ERA5, 60° Sued, stuendlich aufsummiert). Das Wetter kuerzt
+// Monat (Open-Meteo-Archiv = Reanalyse ERA5, PLANNER.TILT° Sued, stuendlich aufsummiert). Das Wetter kuerzt
 // sich heraus: sinkt der Faktor ueber die Jahre, verliert die Anlage Leistung (Alterung, PID,
 // Verschmutzung, Defekte). Bezug = April-September der Jahre PV.LF_REF (= 100 %).
 PV.LF_REF=[2014,2016];
@@ -964,7 +964,8 @@ PV.lfMode="jahre"; PV._lf=null;
 // Einstrahlung je Monat (kWh/m²) eines Jahres; nur abgeschlossene Monate, unvollstaendige
 // (fehlende Stunden im Archiv, ca. 5 Tage Verzug) = null. Abgeschlossene Vorjahre im localStorage.
 function pvMonthIrr(y){
-  var now=new Date(), cy=now.getFullYear(), cm=now.getMonth(), key="pv_h_"+y;
+  // Schluessel mit Neigung: Werte einer anderen Neigung (frueher 60°) duerfen nicht weiterverwendet werden
+  var now=new Date(), cy=now.getFullYear(), cm=now.getMonth(), key="pv_h"+PLANNER.TILT+"_"+y; lsDel("pv_h_"+y);
   var fertig = y<cy-1 || (y===cy-1 && (cm>0 || now.getDate()>10));   // Dezember braucht ein paar Tage
   if(fertig){ var c=lsGet(key); if(c){ try{ return Promise.resolve(JSON.parse(c)); }catch(e){} } }
   if(y===cy && cm===0) return Promise.resolve([]);
@@ -1252,6 +1253,7 @@ PV.loadPower=function(){
    authoritativen Ist-Messwerten (genauer als ThingSpeak, das Luecken hat). */
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,String(v)); }catch(e){} }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
 // Ende eines lokalen Kalendertags als ThingSpeak-Zeitstempel (UTC). ThingSpeak liest end= ohne timezone-Parameter als UTC:
 // ein lokales "23:59:59" waere sonst 00:59/01:59 Ortszeit des Folgetags - nach dem naechtlichen Zaehler-Reset (0 kWh).
 function tsEnd(d){ return tsStamp(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).getTime()); }
@@ -2357,7 +2359,7 @@ var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
 
 /* ================= Routing ================= */
 /* ================= View: Vorgeschlagene Gerätenutzung (Solar-Planer) ================= */
-var PLANNER={ LAT:46.966, LON:7.742, TILT:60, AZ:0, CH:172430,
+var PLANNER={ LAT:46.966, LON:7.742, TILT:45, AZ:0, CH:172430,   // Dach: 45° Neigung (nachgemessen 18.10.2026, vorher 60° angenommen), Sued
   // Haushaltsgeraete, Eco-Programme (Datenblaetter: Samsung 7 kg Eco 40-60, Sharp Eco,
   // Elin Waermepumpentrockner 8 kg). h = Laufdauer, peakKw = Spitzenleistung (Aufheizen bzw.
   // Kompressor) fuer "wie viele gleichzeitig", kwh = Energie je Durchgang fuer die Tagespruefung.

@@ -256,8 +256,8 @@ jedem Wetter-Update. Fehlt die Morgenprognose, rechnet der Balken wie bisher liv
 | **Web-Adresse** | <https://steffgrosjean--23dbba40c0d911f1a70c1607ee4eb77e.web.val.run/> – im Dashboard `PV.PROGNOSE_URL` |
 
 **Rechnung:**
-- **Einstrahlung:** Open-Meteo liefert die Einstrahlung auf die Modulfläche (60°,
-  Süd) im 15-min-Raster.
+- **Einstrahlung:** Open-Meteo liefert die Einstrahlung auf die Modulfläche (45°,
+  Süd; nachgemessen im Oktober 2026, davor war 60° eingestellt) im 15-min-Raster.
 - **Umrechnung in kW:** Je Tagesstunde gilt der Median von *Ist-Leistung ÷
   Einstrahlung* der letzten 15 Tage, zwischen den Stunden linear interpoliert.
   Darin stecken die Verschattung im Tal und die Begrenzung der Wechselrichter.

@@ -7,7 +7,7 @@
 // Balken "Aktuelle Leistung". So sieht man den ganzen Tag, was am Morgen erwartet wurde.
 //
 // Rechnung (wie im Dashboard, aber mit sauber zugeordneten Zeitintervallen):
-//  - Einstrahlung auf die Modulflaeche (60° Neigung, Sued) von Open-Meteo, 15-min-Raster.
+//  - Einstrahlung auf die Modulflaeche (45° Neigung, Sued) von Open-Meteo, 15-min-Raster.
 //    Open-Meteo-Strahlungswerte sind Mittel des VORANGEHENDEN Intervalls (Stempel 13:15 =
 //    13:00-13:15) -> jeder Wert wird der Intervallmitte zugeordnet (13:07:30). forecast_days=2,
 //    damit auch das letzte Intervall des Tages (Stempel 00:00 des Folgetags) dabei ist.
@@ -25,7 +25,7 @@
 
 import { blob } from "https://esm.town/v/std/blob/main.ts";
 
-const LAT = 46.966, LON = 7.742, TILT = 60, AZ = 0;      // Wittenbach bei Lauperswil, 60° Sued
+const LAT = 46.966, LON = 7.742, TILT = 45, AZ = 0;      // Wittenbach bei Lauperswil, Dach 45° Sued (nachgemessen 18.10.2026)
 const PV_KANAL = 172430, PV_READ_KEY = "6GIAGINL9VN4CTL8"; // oeffentlicher Lese-Key (steht auch im Dashboard)
 const ZONE = "Europe/Zurich";
 const AB_STUNDE = 6;                                       // Prognose des Tages ab 06:00 Ortszeit

@@ -37,7 +37,7 @@ object Planer {
 
     private fun omUrl(zeitraum: String) =
         "https://api.open-meteo.com/v1/forecast?latitude=46.966&longitude=7.742" +
-                "&hourly=global_tilted_irradiance&tilt=60&azimuth=0&$zeitraum&timezone=Europe%2FZurich"
+                "&hourly=global_tilted_irradiance&tilt=45&azimuth=0&$zeitraum&timezone=Europe%2FZurich"   // Dach 45° Sued (wie PLANNER.TILT im Dashboard)
 
     /**
      * Einstrahlung auf die geneigte Flaeche: "YYYY-MM-DDTHH" (Ortszeit, Stundenbeginn) -> W/m².
