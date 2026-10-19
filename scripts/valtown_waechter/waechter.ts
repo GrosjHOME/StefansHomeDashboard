@@ -4,6 +4,8 @@
 // Prueft bei jedem Lauf:
 //  - liefern alle ThingSpeak-Kanaele noch (letzter Eintrag nicht aelter als maxMin)?
 //    Die Heizung nur in der Heizsaison (Okt-Apr), sonst "Sommerpause".
+//  - ist der Kessel oben noch warm (Kanal 172428, field1 >= KESSEL_MIN)? Nur in der Heizsaison;
+//    Lesefehler der Fuehler (0.0, -127) zaehlen nicht.
 //    ID.3-Kanal veraltet = der Tibber-Poller (id3.ts im selben Val) laeuft nicht, z. B. Token-Kette gerissen.
 //  - sendet der Pumpwerk-Logger noch (Kanal 3484334, jede Minute) und meldet das Pumpwerk eine Stoerung
 //    (field6 = 1, Kontakt offen)? Der Kanal ist privat: Lese-Key in der Umgebungsvariablen PUMPWERK_READ_KEY.
@@ -24,6 +26,7 @@ const PV_READ_KEY = "6GIAGINL9VN4CTL8";   // oeffentlicher Lese-Key (steht auch 
 const ZONE = "Europe/Zurich";
 const STATUS_KEY = "waechter_status";
 const ERINNERUNG_MS = 24 * 3600_000;
+const KESSEL_MIN = 50;   // Grad C, Kessel oben darunter = Feuer aus / Stoerung
 
 const PUMPWERK_READ_KEY = (Deno.env.get("PUMPWERK_READ_KEY") || "").trim() || undefined;   // privater Kanal, Key nur als Umgebungsvariable
 
@@ -71,6 +74,11 @@ async function pruefen(): Promise<Record<string, string>> {
         let sd: number | null = null;
         for (const x of f) { const v = parseFloat(x.field7); if (isFinite(v)) sd = v; }
         if (sd === 0) p.sd = "PV-Anlage: SD-Karte meldet Fehler (Kanal 172430, Feld 7)";
+      }
+      if (k.id === "heizung" && f.length && !(alter > k.maxMin)) {   // field1 = Kessel oben, letzter gueltiger Wert
+        let ko: number | null = null;
+        for (const x of f) { const v = parseFloat(x.field1); if (isFinite(v) && v > 0 && v < 150) ko = v; }
+        if (ko !== null && ko < KESSEL_MIN) p.kessel = `Heizung: Kessel oben nur ${ko.toFixed(1)} °C (unter ${KESSEL_MIN} °C, Kanal 172428, Feld 1)`;
       }
       if (k.id === "pumpwerk" && f.length) {   // field6 = Stoerung aktiv (1 = Kontakt offen), letzter gueltiger Wert
         let st: number | null = null;

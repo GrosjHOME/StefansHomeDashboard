@@ -405,6 +405,7 @@ eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
 | Pumpwerk-Störung | Feld 6 meldet «Störung» (Kontakt offen) |
 | ID.3 (Kanal 3514838) | seit 90 min kein neuer Wert, z. B. Tibber-Token-Kette gerissen |
 | Heizung (Kanal 172428) | in der Heizsaison (Okt–Apr) seit 2 h kein neuer Wert |
+| Kesseltemperatur oben | in der Heizsaison unter 50 °C (Feld 1; Lesefehler der Fühler wie 0.0 oder -127 zählen nicht) |
 | SD-Karte der PV-Steuerung | Feld 7 meldet Fehler |
 | PV-Morgenprognose | ab 07:00 keine Prognose von heute oder nicht um 06:00 erstellt |
 
