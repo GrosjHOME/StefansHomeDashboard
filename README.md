@@ -11,7 +11,7 @@ aktualisiert sich im Takt des jeweiligen Loggers (die Seite lernt je Gerät aus 
 **Inhalt:** [Ansichten](#ansichten) · [Datenfluss](#datenfluss) ·
 [Projektstruktur](#projektstruktur) · [ThingSpeak-Kanäle](#thingspeak-kanäle) ·
 [Deployment](#deployment) · [Als App installieren](#als-app-installieren-pwa) · [Android-Widget](#android-widget-32) ·
-[PV-Morgenprognose](#pv-morgenprognose-val-town) · [Wächter](#wächter-val-town) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
+[PV-Morgenprognose](#pv-morgenprognose-val-town) · [Schnitzel-Prognose](#schnitzel-prognose-val-town) · [Wächter](#wächter-val-town) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
 [Nutzung](#nutzung) · [Herkunft](#herkunft)
 
 ## Ansichten
@@ -20,7 +20,7 @@ aktualisiert sich im Takt des jeweiligen Loggers (die Seite lernt je Gerät aus 
 |---|---|
 | ☀️&nbsp;**PV&#8209;Anlage** | Aktuelle Leistung gegen die Soll-Leistung aus der Prognose (Soll-Strich, Toleranzband ±10 %, Farbverlauf orange → grün) · Energie heute/gestern/Monat/Jahr · Leistungsverlauf (heute mit der Morgenprognose von 06:00, blau gestrichelt) · Energie nach Tagen (mit 3-Tage-Prognose und Min/Max desselben Kalendertags der Vorjahre), Monaten und Jahren (laufende Periode gegen Ø und Min/Max **aller** Jahre ab 2014) · PV-Arbeit je Jahr · Strom und Spannung je MPP-Tracker · Tracker-Strom mittags zur Verlust-Diagnose · **Leistungsfaktor** (Ertrag ÷ Einstrahlung aus dem Open-Meteo-Archiv, wetterbereinigt, in % von 2014–16) |
 | 🚗&nbsp;**Wallbox** | Zwei Gruppen mit eigener Aktualität: **Wallbox** (Ladeleistung, PV-Ladevorgabe, Ladestrom-Begrenzung, Verbindung, geladene Menge) und **Auto** (VW ID.3 via Tibber: Ladezustand, Ziel, Reichweite, Verbindung = Stecker + Ladestatus, Restladezeit) · Verläufe |
-| 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Symbol: 🔥 Flamme = Feuer brennt, glühende Kohle = nur noch Glut; Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **Brennbetrieb im Zeitraum**: Heizzyklen, Gluterhaltung (Glutstösse), Brennzeit, Ø Heizzyklus, **Auslastung** = Brennanteil des Zeitraums, direkt aus den Heizungsdaten gerechnet (in Klammern vorübergehend der Wert des ThingSpeak-Skripts „TS" zum Gegenprüfen) (Zählung wie in HeizungTiba `docs/Heizzyklen-Auswertung-2010-2026.xlsx`: Abgas − Kessel > 30 K bis < 20 K, ab 60 s und 45 K, unter 5 min = Glutstoss; bei heissem Kessel zusätzlich Abgas-Sprung ab 30 K, der binnen 5 min abklingt) · Verläufe, darunter die **Temperatursteigung** (°C pro Minute von Kessel oben und mitte, über 6 min geglättet; Lesefehler der Fühler wie 0.0 oder -127 werden herausgefiltert) und der **Füllstand mit der Schnitzel-Austragung** (Feld 6 des Loggers: hellgrüner Streifen unten = Automatik an, blauer Bereich = Austragung läuft, Höhe = Füllmodus wenig/normal/viel, violett = von Hand, rot = Störung) · **Aschebox**: geschätzter Füllstand und voraussichtlicher Leerungstag aus der Brennzeit (Kapazität aus den eingetragenen Leerungen, Verbrauch voraus aus der Temperaturprognose), Knopf **Asche geleert** |
+| 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Symbol: 🔥 Flamme = Feuer brennt, glühende Kohle = nur noch Glut; Kessel oben/mitte, Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **Brennbetrieb im Zeitraum**: Heizzyklen, Gluterhaltung (Glutstösse), Brennzeit, Ø Heizzyklus, **Auslastung** = Brennanteil des Zeitraums, direkt aus den Heizungsdaten gerechnet (in Klammern vorübergehend der Wert des ThingSpeak-Skripts „TS" zum Gegenprüfen) (Zählung wie in HeizungTiba `docs/Heizzyklen-Auswertung-2010-2026.xlsx`: Abgas − Kessel > 30 K bis < 20 K, ab 60 s und 45 K, unter 5 min = Glutstoss; bei heissem Kessel zusätzlich Abgas-Sprung ab 30 K, der binnen 5 min abklingt) · Verläufe, darunter die **Temperatursteigung** (°C pro Minute von Kessel oben und mitte, über 6 min geglättet; Lesefehler der Fühler wie 0.0 oder -127 werden herausgefiltert) und der **Füllstand mit der Schnitzel-Austragung** (Feld 6 des Loggers: hellgrüner Streifen unten = Automatik an, blauer Bereich = Austragung läuft, Höhe = Füllmodus wenig/normal/viel, violett = von Hand, rot = Störung) · **Aschebox**: geschätzter Füllstand und voraussichtlicher Leerungstag aus der Brennzeit (Kapazität aus den eingetragenen Leerungen, Verbrauch voraus aus der Temperaturprognose), Knopf **Asche geleert** · **Schnitzel-Bunker** (20 m³): Füllstand aus der Laufzeit der Austragung, voraussichtlicher Tag zum Auffüllen (bei 20 %), Lagerbestand (80 m³), Knöpfe **Bunker aufgefüllt** und **Lager gefüllt** |
 | 💧&nbsp;**Boiler** | Temperaturen Mitte/Unten mit den Schaltschwellen der Steuerung (Laden ein < 45 °C, aus > 58 bzw. 63 °C) · **Temperatursteigung** (°C pro Minute, über 20 min geglättet: Aufheizen, Auskühlen, Warmwasser-Entnahme) · Ladeleistung gegen Einschaltschwelle und PV · geladene Menge |
 | 🚰&nbsp;**Pumpwerk** | Frischwasser-Pumpwerk (Biral HPE Combo, Arduino-Logger im Repo `PumpwerkBiral`): Pumpenzustand in vier Stufen (**Ein** = gerade gestartet, **Läuft**, **Aus** = gerade ausgegangen, **Steht**; aus Signal und Zählern der letzten Minute abgeleitet), das Symbol im Titel folgt dem Zustand (**grün = Ein/Läuft**, **blau = Aus/Steht**, **rot = Störung**, grau = keine aktuellen Daten), Störung, Einschaltungen und Laufzeit heute und gesamt (Verschleiss), Störzeit · Zeitraum-Kennzahlen zur Schalthäufigkeit: **Max. Starts pro Stunde**, **Ø Laufdauer je Start** und **Kurzläufe unter 30 s** (Anteil der Starts, bei denen die Pumpe insgesamt weniger als 30 s lief; ein Lauf über eine Minutengrenze zählt als ein Lauf) · **Tagesübersicht** der letzten 14 Tage (je Tag Starts, Laufzeit, Ø Laufdauer je Start, Max. Starts pro Stunde, Anteil Kurzläufe, Nachtstarts 0–5 Uhr; unabhängig vom gewählten Zeitraum) · Grafiken: **Laufsekunden pro Minute** (aus den sekundengenauen Zählern, mit Markern für Einschaltungen), Laufzeit heute, **Laufzeit je Lauf** (Liniengrafik: ein Punkt je Lauf, direkt verbunden, rot gestrichelte Linie bei 30 s) und dieselbe Grafik **mit Pumpenstatus** (blasser Streifen = Pumpe läuft, aus den Zählern berechnet), Einschaltungen heute, Störung, Gesamt (Laufzeit + Einschaltungen) |
 | 🗓️&nbsp;**Nutzung** | 7-Tage-Solarprognose (Open-Meteo, stündlich an den letzten 14 Tagen kalibriert, heute mit Nowcast) · Tageskarten mit Empfehlungen für Waschmaschine (Programme Normal 1 h 05 / Wolle 2 h / Eco 3 h – pro Tag das längste, das ins Solarfenster passt; Normal und Wolle mit geschätzten Verbrauchswerten), Geschirrspüler, Tumbler, Auto und Boiler · Knopf **Details** je Tag: Überschuss mit Geräteschwellen und Startfenster je Programm im Tagesverlauf (nach Gerät gruppiert, mit Symbolen 🧺 🍽️ 🌀) |
@@ -60,12 +60,12 @@ Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
 | `prognose.ts` | PV-Morgenprognose rechnen und ausliefern | HTTP | `scripts/valtown_pv_prognose/prognose.ts` |
 | `morgens.ts` | Prognose um 06:00 anstossen | Cron `0 4-8 * * *` | `scripts/valtown_pv_prognose/morgens.ts` |
 | `waechter.ts` | E-Mail bei Störungen | Cron alle 30 min | `scripts/valtown_waechter/waechter.ts` |
-| `asche.ts` | Asche-Leerungen der Heizung speichern (Knopf „Asche geleert“ im Dashboard) | HTTP | `scripts/valtown_asche/asche.ts` |
+| `heizung.ts` | von Hand eingetragene Werte der Heizung speichern: Asche-Leerungen, Auffüllen des Schnitzel-Bunkers, Lager (früher `asche.ts`) | HTTP | `scripts/valtown_heizung/heizung.ts` |
 | `geraete.ts` | Geräte-Zähler: wie viele verschiedene Geräte das Dashboard benutzen (Anzeige im Info-Fenster ℹ️) | HTTP | `scripts/valtown_geraete/geraete.ts` |
 
 Das Repo ist die Vorlage: Änderungen hier machen und dann in den Val kopieren.
 Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
-[PV-Morgenprognose](#pv-morgenprognose-val-town) · [Wächter](#wächter-val-town).
+[PV-Morgenprognose](#pv-morgenprognose-val-town) · [Schnitzel-Prognose](#schnitzel-prognose-val-town) · [Wächter](#wächter-val-town).
 
 ## Projektstruktur
 
@@ -81,7 +81,7 @@ Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
 | `scripts/valtown_id3_tibber.ts` | ID.3-Poller für Val Town – **aktiv** |
 | `scripts/valtown_pv_prognose/` | PV-Morgenprognose für Val Town (06:00, 15-min-Raster) |
 | `scripts/valtown_waechter/` | Wächter für Val Town: E-Mail bei Störungen |
-| `scripts/valtown_asche/` | Asche-Leerungen für Val Town (Speicher für den Knopf „Asche geleert“) |
+| `scripts/valtown_heizung/` | Einträge der Heizung für Val Town (Knöpfe „Asche geleert“, „Bunker aufgefüllt“, „Lager gefüllt“) |
 | `scripts/valtown_geraete/` | Geräte-Zähler für Val Town (Meldung der Geräte, Zahlen fürs Info-Fenster) |
 | `scripts/tibber_token_neu.ps1` | Frischen Tibber-Refresh-Token erzeugen |
 | `scripts/id3_tibber_cloud.py` | Früherer GitHub-Actions-Poller (Reserve) |
@@ -339,21 +339,21 @@ Füllstand und als zwei Spalten (auf dem Handy nacheinander):
 | | |
 |---|---|
 | **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-sechs-dateien)) |
-| **Datei** | `asche.ts` (Trigger **HTTP**) |
-| **Quelltext** | `scripts/valtown_asche/asche.ts` – hier ändern, dann in den Val kopieren |
-| **Speicher** | Blob `asche_leerungen`: `leerungen` (Zeitpunkte, UTC) und `anteile` (Füllstand beim Leeren in %, fehlt = 100 %) |
-| **Umgebungsvariable** | `ASCHE_TOKEN` – frei gewähltes Passwort; nur wer es kennt, kann Leerungen eintragen oder löschen |
+| **Datei** | `heizung.ts` (Trigger **HTTP**; früher `asche.ts`, speichert auch die [Schnitzel](#schnitzel-prognose-val-town)) |
+| **Quelltext** | `scripts/valtown_heizung/heizung.ts` – hier ändern, dann in den Val kopieren |
+| **Speicher** | Blob `asche_leerungen`: `leerungen` (Zeitpunkte, UTC) und `anteile` (Füllstand beim Leeren in %, fehlt = 100 %); Blob `schnitzel_daten`: Auffüllungen des Bunkers und Lager (siehe [Schnitzel-Prognose](#schnitzel-prognose-val-town)) |
+| **Umgebungsvariable** | `ASCHE_TOKEN` – frei gewähltes Passwort; nur wer es kennt, kann Leerungen, Auffüllungen und Lager-Einträge eintragen oder löschen |
 | **Web-Adresse** | im Dashboard `ASCHE.URL` (leer = Leerungen nur im jeweiligen Browser) |
 
 <details>
 <summary><b>Einrichtung Schritt für Schritt</b></summary>
 
 1. Den Val **GrosjeansHomeDashboard** öffnen.
-2. Datei **`asche.ts`** anlegen, den Inhalt von `scripts/valtown_asche/asche.ts`
+2. Datei **`heizung.ts`** anlegen, den Inhalt von `scripts/valtown_heizung/heizung.ts`
    einfügen und als Trigger **HTTP** wählen. Den Vorlagen-Code vorher ganz ersetzen.
 3. Unter *Environment variables* des Vals **`ASCHE_TOKEN`** anlegen, Wert = ein
    frei gewähltes Passwort (z. B. 16 Zeichen).
-4. Test: die Web-Adresse von `asche.ts` im Browser öffnen, es kommt
+4. Test: die Web-Adresse von `heizung.ts` im Browser öffnen, es kommt
    `{"leerungen":[]}`.
 5. Diese Adresse in `dashboard/index.html` bei `ASCHE.URL` eintragen.
 6. Im Dashboard (Tab *Heizung*, Bereich *Aschebox*) das Datum wählen und
@@ -366,6 +366,42 @@ Solange `ASCHE.URL` leer ist, werden Leerungen nur im jeweiligen Browser
 gespeichert und sind auf anderen Geräten nicht sichtbar.
 
 </details>
+
+## Schnitzel-Prognose (Val Town)
+
+Die Schnitzel kommen aus dem **80-m³-Lager** (50 m entfernt, mit dem Weidemann) in den **20-m³-Bunker** über der
+Heizung. Von dort fördert die **Austragung** sie in den 2-m³-Behälter vor dem Kessel, dessen Füllstand der Logger
+misst. Der Bereich **Schnitzel-Bunker** im Tab *Heizung* schätzt, wie voll der Bunker ist und wann er aufgefüllt
+werden muss (bei **20 %**, ≈ 4 m³ Reserve).
+
+**Rechnung** (im Dashboard und gleich im Wächter):
+- **Mass:** die Laufzeit der Austragung (Feld 6, wie bei der Asche), je Tag gezählt und gespeichert.
+- **Verbrauch je Stunde Austragung:** je Intervall zwischen zwei Auffüllungen 20 m³ × (100 % − Rest vor dem
+  Auffüllen) ÷ Austragung im Intervall; Median der Intervalle. Die **Uhrzeit** teilt den Auffülltag wie bei der Asche.
+- **Erste Schätzung**, solange es noch kein ganzes Intervall gibt: **70 m³ je Heizsaison**, verteilt nach den
+  Heizgradtagen der letzten Saison (1.9.–30.4., Open-Meteo-Archiv; ohne Archiv 3300) und der Austragung je
+  Heizgradtag der letzten 14 Tage.
+- **Inhalt jetzt** = 20 m³ − Verbrauch seit dem letzten Auffüllen (danach gilt der Bunker als voll).
+- **Prognose** bis 20 %: Austragung je Heizgradtag der letzten 14 Tage × Heizgradtage der 7-Tage-Prognose, danach
+  deren Mittel.
+- **Lager:** «Lager gefüllt» setzt den Bestand (Standard 80 m³), jedes Auffüllen zieht 20 m³ × (100 % − Rest) ab.
+  Angezeigt: Bestand, für wie viele Auffüllungen (je 16 m³, von 20 % auf 100 %) er reicht und etwa bis wann
+  (weit voraus nur grob, da die Temperaturprognose nur 7 Tage reicht).
+
+**Erfassung** wie bei der Asche: *Aufgefüllt am*, *Uhrzeit* und *Rest vorher* (0–90 %) → **Bunker aufgefüllt**;
+*Lager gefüllt am* und *Bestand danach* → **Lager gefüllt**; jeweils mit **Löschen** für Fehleinträge. Gespeichert
+in `heizung.ts` (Blob `schnitzel_daten`: `auffuellungen` + `rest`, `lager` + `bestand`), Schreiben mit demselben
+Token `ASCHE_TOKEN` wie die Asche. Solange in Val Town noch die alte `asche.ts` läuft, schreibt das Dashboard nichts
+(sie würde den Eintrag sonst als Asche-Leerung speichern) und zeigt einen Hinweis.
+
+**E-Mail:** Der Wächter meldet sich, wenn das Auffüllen in höchstens **2 Tagen** fällig ist (Betreff
+„🪵 Zuhause: Schnitzel-Bunker auffüllen“), und nach dem Eintragen des Auffüllens mit „wieder in Ordnung“. Er speichert
+die Austragung je Tag im Blob `schnitzel_tage` und holt je Lauf höchstens 25 fehlende Tage von ThingSpeak.
+
+**Einrichtung:** In Val Town die Datei `asche.ts` in **`heizung.ts`** umbenennen und ihren Inhalt durch
+`scripts/valtown_heizung/heizung.ts` ersetzen (Web-Adresse und gespeicherte Leerungen bleiben, beide hängen nicht am
+Dateinamen), dazu `waechter.ts` durch die neue Fassung ersetzen. Neue Umgebungsvariablen braucht es keine. Danach im Dashboard das letzte Auffüllen (Datum, Uhrzeit, geschätzter Rest)
+und den Lagerbestand eintragen.
 
 ## Geräte-Zähler (Val Town)
 
@@ -414,6 +450,7 @@ eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
 | Kesseltemperatur oben | in der Heizsaison unter 50 °C (Feld 1; Lesefehler der Fühler wie 0.0 oder -127 zählen nicht) |
 | SD-Karte der PV-Steuerung | Feld 7 meldet Fehler |
 | PV-Morgenprognose | ab 07:00 keine Prognose von heute oder nicht um 06:00 erstellt |
+| Schnitzel-Bunker | in der Heizsaison: Auffüllen (Rest 20 %) in höchstens 2 Tagen fällig, siehe [Schnitzel-Prognose](#schnitzel-prognose-val-town) |
 
 **Wann eine Mail kommt:**
 - **Neue Störung:** Eine Störung zählt erst, wenn sie zwei Läufe hintereinander

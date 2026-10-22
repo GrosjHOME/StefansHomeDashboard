@@ -11,6 +11,9 @@
 //    (field6 = 1, Kontakt offen)? Der Kanal ist privat: Lese-Key in der Umgebungsvariablen PUMPWERK_READ_KEY.
 //  - meldet die PV-Steuerung die SD-Karte als OK (Kanal 172430, field7 = 1)?
 //  - ist die PV-Morgenprognose von heute um 06:00 entstanden (prognose.ts/morgens.ts im selben Val)?
+//  - muss der 20-m3-Schnitzel-Bunker in den naechsten SCHNITZEL_VORLAUF Tagen aufgefuellt werden (Rest unter 20 %)?
+//    Gleiche Rechnung wie im Dashboard (Heizung -> Schnitzel-Bunker): Auffuellungen aus dem Blob "schnitzel_daten"
+//    (heizung.ts), Austragung (field6) je Tag aus Kanal 172428, im Blob "schnitzel_tage" gemerkt. Nur in der Heizsaison.
 //
 // E-Mail: bei einer neuen Stoerung, wenn alles wieder in Ordnung ist, und taeglich als Erinnerung,
 // solange etwas gestoert ist. Eine Stoerung zaehlt erst, wenn sie zwei Laeufe hintereinander
@@ -27,6 +30,12 @@ const ZONE = "Europe/Zurich";
 const STATUS_KEY = "waechter_status";
 const ERINNERUNG_MS = 24 * 3600_000;
 const KESSEL_MIN = 50;   // Grad C, Kessel oben darunter = Feuer aus / Stoerung
+const HEIZSAISON = [9, 10, 11, 0, 1, 2, 3];   // Okt-Apr (Monatsindex 0-11)
+
+// Schnitzel-Bunker (wie SCHNITZEL im Dashboard)
+const SZ = { BUNKER: 20, SCHWELLE: 20, SAISON_M3: 70, HGT_NORMAL: 3300, LAT: 46.966, LON: 7.742, KANAL: 172428 };
+const SCHNITZEL_VORLAUF = 2;   // Tage: so frueh vor dem Auffuellen kommt die Mail
+const SZ_TAGE_KEY = "schnitzel_tage", SZ_MAX_TAGE = 150, SZ_MAX_ABRUFE = 25;   // je Lauf hoechstens so viele Tage nachholen
 
 const PUMPWERK_READ_KEY = (Deno.env.get("PUMPWERK_READ_KEY") || "").trim() || undefined;   // privater Kanal, Key nur als Umgebungsvariable
 
@@ -37,7 +46,7 @@ const KANAELE: { id: string; name: string; kanal: number; key?: string; maxMin: 
   { id: "boiler", name: "Boiler", kanal: 502977, maxMin: 45 },
   { id: "pumpwerk", name: "Pumpwerk (Logger)", kanal: 3484334, key: PUMPWERK_READ_KEY, maxMin: 20 },
   { id: "id3", name: "ID.3 (Tibber-Poller id3.ts)", kanal: 3514838, maxMin: 90 },
-  { id: "heizung", name: "Heizung", kanal: 172428, maxMin: 120, saison: [9, 10, 11, 0, 1, 2, 3] },
+  { id: "heizung", name: "Heizung", kanal: 172428, maxMin: 120, saison: HEIZSAISON },
 ];
 
 type Status = { probleme: Record<string, string>; verdacht: string[]; gemeldet: number };
@@ -58,8 +67,106 @@ async function feeds(kanal: number, key?: string): Promise<any[]> {
   return (await r.json()).feeds ?? [];
 }
 
-// Aktuelle Probleme: id -> Beschreibung
-async function pruefen(): Promise<Record<string, string>> {
+// ---- Schnitzel-Bunker ----
+const hgt = (t: number) => (t < 12 ? 20 - t : 0);   // Heizgradtage 20/12
+const median = (a: number[]) => { if (!a.length) return null; const s = a.slice().sort((x, y) => x - y);
+  return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2; };
+const plusTage = (ymd: string, n: number) => { const d = new Date(ymd + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+// Beginn eines Zuercher Kalendertags als UTC-Zeitpunkt (Sommer-/Winterzeit beachtet)
+function tagBeginn(ymd: string): number {
+  const g = Date.parse(ymd + "T00:00:00Z"), p = lokalVoll(g), alsUtc = Date.parse(`${p.datum}T${p.hm}:00Z`);
+  return g - (alsUtc - g);
+}
+const lokalVoll = (ms: number) => {
+  const s = new Intl.DateTimeFormat("sv-SE", { timeZone: ZONE, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(ms));
+  return { datum: s.slice(0, 10), hm: s.slice(11, 16) };
+};
+const austrMinute = (v: number) => Math.abs(v - 0.4) < 0.02 || Math.abs(v - 0.7) < 0.02 || Math.abs(v - 1) < 0.02;   // field6: Austragung laeuft
+const tsStempel = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+// Austragung eines Tages (Minuten), dazu je Auffuellen an diesem Tag die Minuten davor (va) und danach (na)
+async function austrTag(ymd: string, schnitte: number[]) {
+  const von = tagBeginn(ymd), bis = Math.min(tagBeginn(plusTage(ymd, 1)), Date.now());
+  const r = await fetch(`https://api.thingspeak.com/channels/${SZ.KANAL}/feeds.json?results=8000&start=${encodeURIComponent(tsStempel(von))}&end=${encodeURIComponent(tsStempel(bis))}`);
+  if (!r.ok) throw new Error(`ThingSpeak HTTP ${r.status}`);
+  const f: any[] = (await r.json()).feeds ?? [];
+  let min = 0; const teile: Record<string, { va: number; na: number }> = {};
+  for (const ts of schnitte) teile[ts] = { va: 0, na: 0 };
+  for (const x of f) { const v = parseFloat(x.field6); if (!isFinite(v) || !austrMinute(v)) continue; min++;
+    const t = Date.parse(x.created_at); for (const ts of schnitte) { if (t <= ts) teile[ts].va++; else teile[ts].na++; } }
+  return { min, n: f.length, teile };
+}
+// Ergebnis: Text = auffuellen bald faellig, null = in Ordnung, undefined = (noch) nicht berechenbar
+async function schnitzelPruefen(heute: string): Promise<string | null | undefined> {
+  const d = (await blob.getJSON("schnitzel_daten").catch(() => null)) as any;
+  const fJeTag: Record<string, { ymd: string; ts: number; rest: number }> = {};
+  for (const z of ((d?.auffuellungen ?? []) as string[]).slice().sort()) { const ts = Date.parse(z); if (!isFinite(ts)) continue;
+    const ymd = lokal(ts).datum; fJeTag[ymd] = { ymd, ts, rest: +(d?.rest?.[z] ?? 0) }; }   // mehrere am selben Tag: der letzte gilt
+  const f = Object.keys(fJeTag).sort().map((k) => fJeTag[k]);
+  if (!f.length) return null;   // noch kein Auffuellen erfasst: Stand unbekannt
+  // Tagesliste: ab dem vorletzten Auffuellen bzw. 15 Tage zurueck, hoechstens SZ_MAX_TAGE
+  let von = plusTage(heute, -15); for (const F of f) if (F.ymd < von) von = F.ymd;
+  const minVon = plusTage(heute, -SZ_MAX_TAGE); if (von < minVon) von = minVon;
+  const cache = ((await blob.getJSON(SZ_TAGE_KEY).catch(() => null)) as any) ?? { tage: {}, teile: {} };
+  const tage: Record<string, number> = {}, teile: Record<string, { va: number; na: number }> = {};
+  let abrufe = 0, fehlt = false;
+  for (let y = von; y <= heute; y = plusTage(y, 1)) {
+    const schnitte = f.filter((F) => F.ymd === y).map((F) => F.ts);
+    const fertig = y < heute && cache.tage[y] !== undefined && schnitte.every((ts) => cache.teile[ts]);
+    if (fertig) { tage[y] = cache.tage[y]; for (const ts of schnitte) teile[ts] = cache.teile[ts]; continue; }
+    if (abrufe >= SZ_MAX_ABRUFE) { fehlt = true; continue; }
+    abrufe++;
+    const w = await austrTag(y, schnitte);
+    tage[y] = w.min; Object.assign(teile, w.teile);
+    if (y < heute && (w.n > 0 || y < plusTage(heute, -2))) { cache.tage[y] = w.min; Object.assign(cache.teile, w.teile); }   // leere Tage erst cachen, wenn sicher vorbei
+  }
+  for (const k of Object.keys(cache.tage)) if (k < minVon) delete cache.tage[k];   // alte Tage aufraeumen
+  await blob.setJSON(SZ_TAGE_KEY, cache);
+  if (fehlt) { console.log(`Schnitzel: ${abrufe} Tage nachgeholt, Rest beim naechsten Lauf`); return undefined; }
+  const voll = (a: string, b: string | null) => { let s = 0; for (const [y, m] of Object.entries(tage)) if (y > a && (b === null || y < b)) s += m; return s; };
+  const vor = (F: { ymd: string; ts: number }) => teile[F.ts]?.va ?? tage[F.ymd] ?? 0;
+  const nach = (F: { ts: number }) => teile[F.ts]?.na ?? 0;
+  // Verbrauch je Minute Austragung: Median der Intervalle, sonst erste Schaetzung aus 70 m3 je Saison
+  const raten: number[] = [];
+  for (let i = 1; i < f.length; i++) { const a = f[i - 1], b = f[i]; if (a.ymd < von) continue;
+    const A = voll(a.ymd, b.ymd) + nach(a) + vor(b), m3 = SZ.BUNKER * (1 - b.rest / 100); if (A >= 60 && m3 > 0) raten.push(m3 / A); }
+  const om = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${SZ.LAT}&longitude=${SZ.LON}&daily=temperature_2m_mean&past_days=14&forecast_days=7&timezone=Europe%2FZurich`)).json();
+  const temps: Record<string, number> = {}; (om?.daily?.time ?? []).forEach((t: string, i: number) => { const v = om.daily.temperature_2m_mean[i]; if (v != null) temps[t] = v; });
+  let as = 0, nT = 0, asH = 0, hs14 = 0, nH = 0;
+  for (let y = plusTage(heute, -14); y < heute; y = plusTage(y, 1)) { if (tage[y] === undefined) continue; as += tage[y]; nT++;
+    if (temps[y] != null) { asH += tage[y]; hs14 += hgt(temps[y]); nH++; } }
+  const mittelA = nT ? as / nT : 0, rateAH = nH >= 5 && hs14 >= 10 && asH > 0 ? asH / hs14 : null;
+  let k = median(raten), quelle = raten.length ? `${raten.length} Auffüllung${raten.length === 1 ? "" : "en"}` : "erste Schätzung";
+  if (!k) {
+    const n = new Date(), y = n.getUTCMonth() >= 8 ? n.getUTCFullYear() - 1 : n.getUTCFullYear() - 2, key = `schnitzel_hgt_${y}`;
+    let hs = (await blob.getJSON(key).catch(() => null)) as number | null;
+    if (!hs) { try {
+      const a = await (await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${SZ.LAT}&longitude=${SZ.LON}&start_date=${y}-09-01&end_date=${y + 1}-04-30&daily=temperature_2m_mean&timezone=Europe%2FZurich`)).json();
+      const t: (number | null)[] = a?.daily?.temperature_2m_mean ?? []; const ok = t.filter((v) => v != null) as number[];
+      if (ok.length >= 200) { hs = Math.round(ok.reduce((s, v) => s + hgt(v), 0)); await blob.setJSON(key, hs); }
+    } catch (_) { /* Normalwert */ } }
+    hs = hs || SZ.HGT_NORMAL;
+    if (rateAH) k = SZ.SAISON_M3 / (rateAH * hs); else if (mittelA > 0) k = SZ.SAISON_M3 / (mittelA * 242);
+  }
+  if (!k) return undefined;
+  const X = f[f.length - 1]; if (X.ymd < von) return undefined;
+  const seitA = voll(X.ymd, null) + nach(X), inhalt = Math.max(0, SZ.BUNKER - k * seitA), pct = (inhalt / SZ.BUNKER) * 100;
+  // Tage bis zur Schwelle (wie das Dashboard: Austragung je Heizgradtag x Prognose, danach deren Mittel)
+  const pred = (y: string) => (rateAH !== null && temps[y] != null ? rateAH * hgt(temps[y]) : mittelA);
+  let rest = (inhalt - (SZ.BUNKER * SZ.SCHWELLE) / 100) / k, tageBis: number | null = null;
+  if (rest <= 0) tageBis = 0;
+  else { rest -= Math.max(0, pred(heute) - (tage[heute] ?? 0));
+    const zuk: number[] = []; for (let q = 1; q <= 7; q++) { const y = plusTage(heute, q); if (temps[y] != null) zuk.push(pred(y)); }
+    const fern = zuk.length ? zuk.reduce((s, v) => s + v, 0) / zuk.length : mittelA;
+    if (rest <= 0) tageBis = 0; else for (let n = 1; n <= 60; n++) { const y = plusTage(heute, n); rest -= temps[y] != null ? pred(y) : fern; if (rest <= 0) { tageBis = n; break; } } }
+  console.log(`Schnitzel: ${pct.toFixed(0)} % (${inhalt.toFixed(1)} m³), ${(k * 60).toFixed(2)} m³/h Austragung (${quelle}), Schwelle in ${tageBis ?? ">60"} Tagen`);
+  if (tageBis === null || tageBis > SCHNITZEL_VORLAUF) return null;
+  const wann = tageBis === 0 ? "jetzt" : tageBis === 1 ? "morgen" : `in ${tageBis} Tagen`;
+  return `Schnitzel-Bunker: noch ca. ${pct.toFixed(0)} % (${inhalt.toFixed(1)} m³) – auffüllen ${wann} (Schwelle ${SZ.SCHWELLE} %, Verbrauch aus ${quelle})`;
+}
+
+// Aktuelle Probleme: id -> Beschreibung (alt: Stand des letzten Laufs, fuer Pruefungen, die einmal nicht rechnen koennen)
+async function pruefen(alt: Status): Promise<Record<string, string>> {
   const p: Record<string, string> = {};
   const jetzt = Date.now(), heute = lokal(jetzt);
   for (const k of KANAELE) {
@@ -102,13 +209,20 @@ async function pruefen(): Promise<Record<string, string>> {
       p.prognose = `PV-Morgenprognose: nicht abrufbar (${e})`;
     }
   }
+  // Schnitzel-Bunker: nur in der Heizsaison; ein Fehler hier ist keine Stoerung der Anlage (nur Log). Kann einmal nicht
+  // gerechnet werden, bleibt ein schon gemeldeter Hinweis stehen (sonst kaeme faelschlich "wieder in Ordnung")
+  if (HEIZSAISON.includes(heute.monat)) {
+    let t: string | null | undefined;
+    try { t = await schnitzelPruefen(heute.datum); } catch (e) { console.log(`Schnitzel: nicht berechnet (${e})`); t = undefined; }
+    if (t) p.schnitzel = t; else if (t === undefined && alt.probleme.schnitzel) p.schnitzel = alt.probleme.schnitzel;
+  }
   return p;
 }
 
 export default async function (_interval: unknown) {
   const alt = ((await blob.getJSON(STATUS_KEY).catch(() => undefined)) as Status | undefined) ??
     { probleme: {}, verdacht: [], gemeldet: 0 };
-  const aktuell = await pruefen();
+  const aktuell = await pruefen(alt);
 
   // Bestaetigt = jetzt gestoert UND schon beim letzten Lauf (Verdacht) oder bereits gemeldet
   const bestaetigt: Record<string, string> = {};
@@ -123,13 +237,16 @@ export default async function (_interval: unknown) {
   let gemeldet = alt.gemeldet;
   if (neu.length || behoben.length || erinnern) {
     const z: string[] = [];
+    const ids = Object.keys(bestaetigt), nurSchnitzel = ids.length === 1 && ids[0] === "schnitzel";   // nur der Bunker-Hinweis, keine Stoerung
     if (offen) {
-      z.push("Aktuelle Störungen:", ...Object.entries(bestaetigt).map(([id, t]) => `- ${t}${neu.includes(id) ? "  (neu)" : ""}`), "");
+      z.push(nurSchnitzel ? "Hinweis:" : "Aktuelle Störungen:", ...Object.entries(bestaetigt).map(([id, t]) => `- ${t}${neu.includes(id) ? "  (neu)" : ""}`), "");
     }
     if (behoben.length) z.push("Wieder in Ordnung:", ...behoben.map((id) => `- ${alt.probleme[id]}`), "");
     z.push(`Dashboard: ${DASHBOARD}`, "", "– Zuhause-Wächter (Val Town)");
-    const subject = offen
-      ? `⚠ Zuhause: ${Object.keys(bestaetigt).length} Störung${Object.keys(bestaetigt).length > 1 ? "en" : ""}${erinnern && !neu.length ? " (Erinnerung)" : ""}`
+    const subject = nurSchnitzel
+      ? `🪵 Zuhause: Schnitzel-Bunker auffüllen${erinnern && !neu.length ? " (Erinnerung)" : ""}`
+      : offen
+      ? `⚠ Zuhause: ${ids.length} Störung${ids.length > 1 ? "en" : ""}${erinnern && !neu.length ? " (Erinnerung)" : ""}`
       : "✅ Zuhause: wieder alles in Ordnung";
     await email({ subject, text: z.join("\n") });
     gemeldet = Date.now();

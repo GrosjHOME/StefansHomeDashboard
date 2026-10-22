@@ -1885,7 +1885,7 @@ function heizVoll(ff){ return heizPhasen(ff).filter(function(p){ return p.voll; 
    - Fuellstand = Brennzeit seit der letzten Leerung / Kapazitaet.
    - Prognose: Brennzeit je Heizgradtag (HGT 20/12 aus der Aussentemperatur in 2 m, Open-Meteo) der letzten
      14 Tage x HGT der 7-Tage-Prognose; weiter weg das Mittel dieser 7 Tage -> Tag, an dem die Box voll ist.
-   - Leerungen: Val Town asche.ts (ASCHE.URL, scripts/valtown_asche/). Schreiben braucht einen Token, der je
+   - Leerungen: Val Town heizung.ts (ASCHE.URL, scripts/valtown_heizung/, frueher asche.ts). Schreiben braucht einen Token, der je
      Geraet einmal abgefragt und im Browser gemerkt wird. Ohne URL werden Leerungen nur lokal im Browser gefuehrt. */
 var ASCHE={ URL:"https://steffgrosjean--6a065972ca1011f18c2a1607ee4eb77e.web.val.run", CH:172428, MAX_TAGE:150, _t:0, _laden:null };
 ASCHE.folgetag=function(ymd){ var d=new Date(ymd+"T12:00:00"); d.setDate(d.getDate()+1); return ymdLocal(d); };
@@ -1914,17 +1914,20 @@ ASCHE.temps=function(){ return j("https://api.open-meteo.com/v1/forecast?latitud
   .catch(function(){ return {}; }); };
 // Ergebnis immer { l: [ISO, ...] aufsteigend, p: { ISO: Fuellstand beim Leeren in % } }; fehlt ein Anteil, gilt 100 %
 ASCHE.lokal=function(){ var l=[], p={}; try{ l=JSON.parse(localStorage.getItem("asche_leerungen")||"[]"); p=JSON.parse(localStorage.getItem("asche_anteile")||"{}"); }catch(e){} return {l:l, p:p}; };
-ASCHE.leerungen=function(){ if(!ASCHE.URL) return Promise.resolve(ASCHE.lokal());
-  return j(ASCHE.URL).then(function(r){ return {l:(r&&r.leerungen)||[], p:(r&&r.anteile)||{}}; }); };
+// s = Schnitzel-Daten von heizung.ts (Auffuellungen des Bunkers, Lager); null = in Val Town laeuft noch die alte asche.ts ohne Schnitzel
+ASCHE.leerungen=function(){ if(!ASCHE.URL){ var d=ASCHE.lokal(); d.s=null; return Promise.resolve(d); }
+  return j(ASCHE.URL).then(function(r){ return {l:(r&&r.leerungen)||[], p:(r&&r.anteile)||{}, s:(r&&r.schnitzel)||null}; }); };
+// An heizung.ts senden (Token je Geraet einmal abfragen und merken); liefert die ganze Antwort
+ASCHE.senden=function(method, body){
+  var tok=null; try{ tok=localStorage.getItem("asche_token"); }catch(e){}
+  if(!tok){ tok=prompt("Token für das Eintragen (Asche und Schnitzel, einmalig je Gerät):"); if(!tok) return Promise.reject(new Error("abgebrochen")); try{ localStorage.setItem("asche_token",tok); }catch(e){} }
+  return fetch(ASCHE.URL,{method:method, headers:{"Content-Type":"application/json","X-Asche-Token":tok}, body:JSON.stringify(body)})
+    .then(function(r){ if(r.status===401){ try{ localStorage.removeItem("asche_token"); }catch(e){} throw new Error("Token falsch"); } if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }); };
 ASCHE.schreiben=function(method, zeit, pct){
   if(!ASCHE.URL){ var d=ASCHE.lokal(), l=d.l, p=d.p;
     if(method==="POST"){ if(l.indexOf(zeit)<0) l.push(zeit); p[zeit]=pct||100; } else { l=l.filter(function(z){ return z!==zeit; }); delete p[zeit]; }
     l.sort(); try{ localStorage.setItem("asche_leerungen", JSON.stringify(l)); localStorage.setItem("asche_anteile", JSON.stringify(p)); }catch(e){} return Promise.resolve({l:l, p:p}); }
-  var tok=null; try{ tok=localStorage.getItem("asche_token"); }catch(e){}
-  if(!tok){ tok=prompt("Token für das Eintragen der Asche-Leerung (einmalig je Gerät):"); if(!tok) return Promise.reject(new Error("abgebrochen")); try{ localStorage.setItem("asche_token",tok); }catch(e){} }
-  return fetch(ASCHE.URL,{method:method, headers:{"Content-Type":"application/json","X-Asche-Token":tok}, body:JSON.stringify(method==="POST"?{zeit:zeit, pct:pct}:{zeit:zeit})})
-    .then(function(r){ if(r.status===401){ try{ localStorage.removeItem("asche_token"); }catch(e){} throw new Error("Token falsch"); } if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
-    .then(function(r){ return {l:r.leerungen||[], p:r.anteile||{}}; }); };
+  return ASCHE.senden(method, method==="POST"?{zeit:zeit, pct:pct}:{zeit:zeit}).then(function(r){ return {l:r.leerungen||[], p:r.anteile||{}}; }); };
 // Fuellstand beim Leeren (10-100 %, Schritte 10): Auswahl im Panel, im Browser gemerkt, Standard 90 %.
 // Dient nur beim Eintragen als Anteil der Leerung; die Prognose rechnet immer bis 100 %.
 ASCHE.anteil=function(){ var v=90; try{ var s=parseInt(localStorage.getItem("asche_anteil"),10); if(s>=10 && s<=100) v=s; }catch(e){} return v; };
@@ -2114,7 +2117,176 @@ ASCHE.panel={
       t.textContent="Daten konnten nicht geladen werden"+(noch?" – Anzeige vom letzten Abruf":""); t.className="as-sub warn"; }); }
 };
 
-var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung", extra:ASCHE.panel,
+/* ================= Schnitzel-Bunker (Heizung) =================
+   Die Austragung foerdert die Schnitzel aus dem 20-m3-Bunker ueber der Heizung in den 2-m3-Behaelter vor dem Kessel (dessen
+   Fuellstand misst der Logger). Ihre Laufzeit (field6, wie bei der Asche) ist damit das Mass fuer den Verbrauch aus dem Bunker.
+   Den Bunker fuellt man von Hand (Weidemann) aus dem 80-m3-Lager auf.
+   - Auffuellen eintragen: Datum, Uhrzeit und geschaetzter Rest vor dem Auffuellen (danach gilt der Bunker als voll).
+   - Verbrauch = m3 je Minute Austragung: je Intervall zwischen zwei Auffuellungen 20 m3 x (100 % - Rest) / Austragung,
+     Median der Intervalle (wie die Asche). Ohne eigene Intervalle eine erste Schaetzung aus SAISON_M3 (70 m3 je Heizsaison):
+     Austragung je Heizgradtag der letzten 14 Tage x Heizgradtage der letzten Saison (Open-Meteo-Archiv).
+   - Inhalt jetzt = 20 m3 - Verbrauch x Austragung seit dem letzten Auffuellen (die Uhrzeit teilt den Tag wie bei der Asche).
+   - Prognose bis SCHWELLE (20 %): Austragung je Heizgradtag x Heizgradtage der 7-Tage-Prognose, danach deren Mittel.
+   - Lager: "Lager gefuellt" setzt den Bestand (m3), jedes Auffuellen zieht 20 m3 x (100 % - Rest) ab.
+   Gespeichert in heizung.ts (gleiche Adresse und gleicher Token wie die Asche), Blob "schnitzel_daten". */
+var SCHNITZEL={ BUNKER:20, LAGER:80, SAISON_M3:70, SCHWELLE:20, HGT_NORMAL:3300, _t:0 };
+// Eintraege je Tag (mehrere am selben Tag: der letzte gilt): {f:[{ymd,ts,z,rest}], l:[{ymd,ts,z,m3}]} aufsteigend
+SCHNITZEL.daten=function(s){ s=s||{};
+  var jeTag=function(liste, werte, feld, std){ var o={}; (liste||[]).slice().sort().forEach(function(z){ var ts=Date.parse(z); if(isNaN(ts)) return;
+      var ymd=ymdLocal(new Date(ts)), e={ymd:ymd, ts:ts, z:z}; e[feld]=(werte && werte[z]!=null) ? +werte[z] : std; o[ymd]=e; });
+    return Object.keys(o).sort().map(function(k){ return o[k]; }); };
+  return {f:jeTag(s.auffuellungen, s.rest, "rest", 0), l:jeTag(s.lager, s.bestand, "m3", SCHNITZEL.LAGER)}; };
+// Heizgradtage 20/12 der letzten ganzen Heizsaison (1.9.-30.4., Open-Meteo-Archiv); im Browser gemerkt. Fehlt das Archiv: Normalwert.
+SCHNITZEL.hgtSaison=function(){ var n=new Date(), y=n.getMonth()>=8 ? n.getFullYear()-1 : n.getFullYear()-2, key="sz_hgt_"+y, c=+lsGet(key);
+  if(c>500) return Promise.resolve({hgt:c, jahr:y, archiv:true});
+  return j("https://archive-api.open-meteo.com/v1/archive?latitude="+PLANNER.LAT+"&longitude="+PLANNER.LON+"&start_date="+y+"-09-01&end_date="+(y+1)+"-04-30&daily=temperature_2m_mean&timezone=Europe%2FZurich")
+    .then(function(r){ var t=(r&&r.daily&&r.daily.temperature_2m_mean)||[], s=0, n=0; t.forEach(function(v){ if(v!=null){ s+=hgt(v); n++; } });
+      if(n<200) throw new Error("Archiv unvollstaendig"); lsSet(key, Math.round(s)); return {hgt:Math.round(s), jahr:y, archiv:true}; })
+    .catch(function(){ return {hgt:SCHNITZEL.HGT_NORMAL, jahr:y, archiv:false}; }); };
+// Rechnung: tage=[{ymd,w}] (w.austr = Minuten Austragung), d=SCHNITZEL.daten(), temps={ymd:°C}, teile={ymd:{va,na}}, hs={hgt}
+SCHNITZEL.rechne=function(tage, d, temps, teile, hs){
+  teile=teile||{}; var B=SCHNITZEL.BUNKER, heute=ymdLocal(new Date()), erster=tage.length?tage[0].ymd:heute;
+  function voll(von, bis){ var s=0; tage.forEach(function(t){ if(t.w && t.ymd>von && (bis===null || t.ymd<bis)) s+=t.w.austr||0; }); return s; }
+  function tagWert(ymd){ var s=0; tage.forEach(function(t){ if(t.w && t.ymd===ymd) s=t.w.austr||0; }); return s; }
+  function vor(F){ var w=teile[F.ymd]; return w ? w.va : tagWert(F.ymd); }   // ohne Teilung: ganzer Tag zum alten Intervall
+  function nach(F){ var w=teile[F.ymd]; return w ? w.na : 0; }
+  var median=function(a){ if(!a.length) return null; var so=a.slice().sort(function(x,y){ return x-y; }); return so.length%2 ? so[(so.length-1)/2] : (so[so.length/2-1]+so[so.length/2])/2; };
+  // Intervalle zwischen zwei Auffuellungen (beide im Datenbereich): verbraucht / Austragung
+  var raten=[], hist=[], f=d.f;
+  for(var i=1;i<f.length;i++){ var a=f[i-1], b=f[i]; if(a.ymd<erster) continue;
+    var A=voll(a.ymd,b.ymd)+nach(a)+vor(b), m3=B*(1-b.rest/100);
+    hist.push({ts:b.ts, vonTs:a.ts, rest:b.rest, m3:m3, austr:A, rate:(A>=60 && m3>0) ? m3/A : null});
+    if(A>=60 && m3>0) raten.push(m3/A); }
+  // Austragung der letzten 14 abgeschlossenen Tage: je Tag und je Heizgradtag
+  var as=0, nT=0, asH=0, hs14=0, nH=0;
+  tage.slice(-15,-1).forEach(function(t){ if(!t.w) return; as+=t.w.austr||0; nT++; var T=temps[t.ymd]; if(T!=null){ asH+=t.w.austr||0; hs14+=hgt(T); nH++; } });
+  var mittelA=nT?as/nT:0, rateAH=(nH>=5 && hs14>=10 && asH>0) ? asH/hs14 : null;
+  // Verbrauch je Minute Austragung: aus den Auffuellungen, sonst erste Schaetzung aus 70 m3 je Saison
+  var k=median(raten), quelle=raten.length ? "auffuellungen" : null;
+  if(!k && rateAH && hs && hs.hgt){ k=SCHNITZEL.SAISON_M3/(rateAH*hs.hgt); quelle="schaetzung"; }
+  else if(!k && mittelA>0){ k=SCHNITZEL.SAISON_M3/(mittelA*242); quelle="schaetzung"; }   // ohne Temperaturen: 242 Tage (1.9.-30.4.)
+  // Stand seit dem letzten Auffuellen
+  var X=f.length?f[f.length-1]:null, seitA=(X && X.ymd>=erster) ? voll(X.ymd,null)+nach(X) : null;
+  var inhalt=(seitA!==null && k) ? Math.max(0, B-k*seitA) : null, pct=inhalt!==null ? inhalt/B*100 : null;
+  // Tage bis zur Menge "m3" (Austragung je Heizgradtag x Prognose, weiter weg deren Mittel); null = mehr als maxTage
+  function bis(m3, maxTage){ if(m3<=0) return {tage:0, ymd:heute};
+    var pred=function(ymd){ var T=temps[ymd]; return (rateAH!==null && T!=null) ? rateAH*hgt(T) : mittelA; };
+    var rest=m3/k, hw=null; tage.forEach(function(t){ if(t.ymd===heute) hw=t.w; }); rest-=Math.max(0, pred(heute)-(hw?hw.austr||0:0));
+    var zuk=[], y=heute; for(var q=0;q<7;q++){ y=ASCHE.folgetag(y); if(temps[y]!=null) zuk.push(pred(y)); }
+    var fern=zuk.length ? zuk.reduce(function(s,x){ return s+x; },0)/zuk.length : mittelA;
+    if(rest<=0) return {tage:0, ymd:heute};
+    y=heute; for(var n=1;n<=maxTage;n++){ y=ASCHE.folgetag(y); rest-=(temps[y]!=null)?pred(y):fern; if(rest<=0) return {tage:n, ymd:y}; }
+    return {tage:null, ymd:null}; }
+  var prog=(inhalt!==null && k) ? bis(inhalt-B*SCHNITZEL.SCHWELLE/100, 120) : null;
+  // Lager: Bestand nach dem letzten "Lager gefuellt" minus alle Auffuellungen seither
+  var L=d.l.length?d.l[d.l.length-1]:null, lager=null, lagerProg=null, auffuellungen=null;
+  if(L){ lager=L.m3; f.forEach(function(F){ if(F.ts>L.ts) lager-=B*(1-F.rest/100); }); lager=Math.max(0,lager);
+    auffuellungen=lager/(B*(1-SCHNITZEL.SCHWELLE/100));   // je Auffuellen von 20 % auf 100 %: 16 m3
+    if(inhalt!==null && k) lagerProg=bis(lager+inhalt-B*SCHNITZEL.SCHWELLE/100, 400); }
+  return {k:k, quelle:quelle, nInt:raten.length, hist:hist, letzteTs:X?X.ts:null, letzteRest:X?X.rest:null, seitA:seitA, inhalt:inhalt, pct:pct,
+    verbraucht:(inhalt!==null)?B-inhalt:null, prog:prog, mittelA:mittelA, rateAH:rateAH, nT:nT, hs:hs,
+    lager:lager, lagerTs:L?L.ts:null, lagerProg:lagerProg, auffuellungen:auffuellungen}; };
+// Farbe: wenig im Bunker ist schlecht (bis 20 % rot, bis 40 % orange)
+SCHNITZEL.farbe=function(pct){ return pct<=SCHNITZEL.SCHWELLE?"var(--red)":(pct<=40?"var(--amber)":"var(--green)"); };
+SCHNITZEL.rest=function(){ var v=20; try{ var s=parseInt(localStorage.getItem("sz_rest"),10); if(s>=0 && s<=90) v=s; }catch(e){} return v; };
+SCHNITZEL.panel={
+  reset:function(){ SCHNITZEL._t=0; },
+  html:function(){ var heute=ymdLocal(new Date());
+    var wert=function(k,id,unit,cls){ return '<div'+(cls?' class="'+cls+'"':'')+'><dt>'+k+'</dt><dd><span id="'+id+'">–</span>'+(unit?' <small>'+unit+'</small>':'')+'</dd></div>'; };
+    var restOpt=[0,10,20,30,40,50,60,70,80,90].map(function(p){ return '<option value="'+p+'"'+(p===SCHNITZEL.rest()?' selected':'')+'>'+p+' %</option>'; }).join("");
+    return '<div class="panel"><h2>🪵 Schnitzel-Bunker <span class="tag">'+SCHNITZEL.BUNKER+' m³</span></h2>'+
+      '<div class="as-top"><div>'+
+        '<div class="as-kopf"><span class="lbl">Bunker voll</span><span class="val"><span id="sz-pct">–</span> <small>%</small></span></div>'+
+        '<div class="bar as-fuellbar"><span id="sz-fuell" style="width:0%"></span><i class="mark" style="display:block;left:'+SCHNITZEL.SCHWELLE+'%"></i></div>'+
+        '<div class="bar-scale"><span>0</span><span class="mid">50 %</span><span>100 %</span></div>'+
+        '<div class="as-progz">Auffüllen (bei '+SCHNITZEL.SCHWELLE+' %) voraussichtlich <b id="sz-prog">–</b></div>'+
+        '<div class="as-sub" id="sz-tag">wird geladen…</div></div>'+
+      // links der Bunker seit dem Auffuellen und der Verbrauch, rechts das Lager (wie bei der Aschebox: breit zwei Spalten, Handy nacheinander)
+      '<dl class="as-werte">'+
+        wert("Inhalt jetzt","sz-inhalt","m³","as-l")+wert("Austragung seit Auffüllen","sz-austr","h","as-l")+wert("Letztes Auffüllen","sz-letzte","","as-l")+
+        wert("Ø Verbrauch je Tag","sz-tagm3","m³","as-l")+
+        wert("Verbrauch je h Austragung","sz-k","m³","as-r")+wert("Lager ("+SCHNITZEL.LAGER+" m³)","sz-lager","m³","as-r")+
+        wert("Lager reicht für","sz-lagerauf","","as-r")+wert("Lager leer etwa","sz-lagerprog","","as-r")+'</dl></div>'+
+      '<div class="frei" style="margin:0 0 6px;padding:0;background:transparent;box-shadow:none">'+
+        '<label>Aufgefüllt am<input type="date" id="sz-d" value="'+heute+'" max="'+heute+'"></label>'+
+        '<label>Uhrzeit<input type="time" id="sz-t" value="'+ASCHE.jetztHm()+'"></label>'+
+        '<label>Rest vorher<select id="sz-restsel">'+restOpt+'</select></label>'+
+        '<button class="btn" id="sz-ok">Bunker aufgefüllt</button><button class="btn" id="sz-undo">Letztes Auffüllen löschen</button></div>'+
+      '<div class="frei" style="margin:0 0 10px;padding:0;background:transparent;box-shadow:none">'+
+        '<label>Lager gefüllt am<input type="date" id="sz-ld" value="'+heute+'" max="'+heute+'"></label>'+
+        '<label>Bestand danach (m³)<input type="number" id="sz-lm3" value="'+SCHNITZEL.LAGER+'" min="1" max="200" step="1" style="width:7em"></label>'+
+        '<button class="btn" id="sz-lok">Lager gefüllt</button><button class="btn" id="sz-lundo">Letzten Lager-Eintrag löschen</button>'+
+        '<span class="frei-msg" id="sz-msg"></span></div>'+
+      '<details class="note as-info"><summary>Schätzung aus der Austragung – so wird gerechnet</summary>Die <b>Austragung</b> fördert die Schnitzel aus dem '+SCHNITZEL.BUNKER+'-m³-Bunker in den 2-m³-Behälter vor dem Kessel – ihre Laufzeit ist das Mass für den Verbrauch. '+
+        '<b>Verbrauch pro Stunde Austragung</b> = '+SCHNITZEL.BUNKER+' m³ × (100 % − Rest vorher) ÷ Austragung zwischen zwei Auffüllungen (Median aller Intervalle). Solange es noch kein ganzes Intervall gibt, gilt eine erste Schätzung: '+
+        SCHNITZEL.SAISON_M3+' m³ je Heizsaison, verteilt nach den Heizgradtagen der letzten Saison und der Austragung je Heizgradtag der letzten 14 Tage. '+
+        '<b>Inhalt jetzt</b> = '+SCHNITZEL.BUNKER+' m³ − Verbrauch seit dem letzten Auffüllen (danach gilt der Bunker als voll; die Uhrzeit teilt den Tag). '+
+        '<b>Prognose</b> bis '+SCHNITZEL.SCHWELLE+' %: Austragung je Heizgradtag der letzten 14 Tage × Heizgradtage der 7-Tage-Prognose, danach deren Mittel. '+
+        '<b>Lager</b>: «Lager gefüllt» setzt den Bestand, jedes Auffüllen zieht die eingefüllte Menge ab; «reicht» = Auffüllungen von '+SCHNITZEL.SCHWELLE+' % auf 100 % und der Tag, an dem Lager und Bunker bis auf die Reserve leer wären (weit voraus nur grob). '+
+        'Gespeichert auf Val Town (heizung.ts), Schreiben mit demselben Token wie die Asche.</details>'+
+      '</div>'; },
+  bind:function(){ var g=function(id){ return document.getElementById(id); };
+    function sag(t,farbe){ var m=g("sz-msg"); if(m){ m.textContent=t; m.style.color=farbe||"var(--red)"; } }
+    function neu(){ SCHNITZEL._t=0; SCHNITZEL.panel.load(); }
+    // Schreiben nur, wenn heizung.ts die Schnitzel kennt - die alte asche.ts wuerde den Eintrag sonst als Asche-Leerung speichern
+    function bereit(){ return ASCHE.leerungen().then(function(d){ if(!d.s) throw new Error("in Val Town läuft noch die alte asche.ts – bitte durch heizung.ts ersetzen"); return d; }); }
+    function zeitAus(dId, tId){ var d=g(dId).value, hm=(tId && g(tId).value)||"12:00", ts=new Date(d+"T"+hm+":00").getTime();
+      if(!d || isNaN(ts)) { sag("Bitte Datum und Uhrzeit prüfen."); return null; }
+      if(ts>Date.now()+60000){ sag("Der Zeitpunkt liegt in der Zukunft – bitte prüfen."); return null; } return {ts:ts, d:d, hm:hm}; }
+    if(g("sz-restsel")) g("sz-restsel").addEventListener("change",function(){ try{ localStorage.setItem("sz_rest", g("sz-restsel").value); }catch(e){} });
+    if(g("sz-ok")) g("sz-ok").addEventListener("click",function(){ var z=zeitAus("sz-d","sz-t"); if(!z) return; var rest=parseInt(g("sz-restsel").value,10)||0;
+      if(!confirm("Bunker aufgefüllt am "+ASCHE.fmtTag(z.d)+" um "+z.hm+" Uhr, Rest vorher "+rest+" % ("+fmt(SCHNITZEL.BUNKER*(1-rest/100),0)+" m³ eingefüllt)?")) return;
+      bereit().then(function(){ return ASCHE.senden("POST",{art:"schnitzel", zeit:new Date(z.ts).toISOString(), rest:rest}); })
+        .then(function(){ sag("Auffüllen eingetragen.","var(--green)"); neu(); }).catch(function(e){ sag("Nicht gespeichert: "+e.message); }); });
+    if(g("sz-undo")) g("sz-undo").addEventListener("click",function(){ bereit().then(function(d){ var f=(d.s.auffuellungen||[]).slice().sort(); if(!f.length){ sag("Kein Auffüllen vorhanden."); return; }
+      var z=f[f.length-1]; if(!confirm("Letztes Auffüllen ("+ASCHE.fmtZeit(Date.parse(z))+") löschen?")) return;
+      return ASCHE.senden("DELETE",{art:"schnitzel", zeit:z}).then(function(){ sag("Auffüllen gelöscht.","var(--green)"); neu(); }); }).catch(function(e){ sag("Nicht gelöscht: "+e.message); }); });
+    if(g("sz-lok")) g("sz-lok").addEventListener("click",function(){ var z=zeitAus("sz-ld",null); if(!z) return; var m3=parseFloat(g("sz-lm3").value);
+      if(!(m3>=1 && m3<=200)){ sag("Bestand bitte zwischen 1 und 200 m³."); return; }
+      if(!confirm("Lager gefüllt am "+ASCHE.fmtTag(z.d)+", Bestand danach "+fmt(m3,0)+" m³?")) return;
+      bereit().then(function(){ return ASCHE.senden("POST",{art:"lager", zeit:new Date(z.ts).toISOString(), m3:m3}); })
+        .then(function(){ sag("Lager eingetragen.","var(--green)"); neu(); }).catch(function(e){ sag("Nicht gespeichert: "+e.message); }); });
+    if(g("sz-lundo")) g("sz-lundo").addEventListener("click",function(){ bereit().then(function(d){ var l=(d.s.lager||[]).slice().sort(); if(!l.length){ sag("Kein Lager-Eintrag vorhanden."); return; }
+      var z=l[l.length-1]; if(!confirm("Letzten Lager-Eintrag ("+ASCHE.fmtTag(ymdLocal(new Date(z)))+") löschen?")) return;
+      return ASCHE.senden("DELETE",{art:"lager", zeit:z}).then(function(){ sag("Lager-Eintrag gelöscht.","var(--green)"); neu(); }); }).catch(function(e){ sag("Nicht gelöscht: "+e.message); }); }); },
+  load:function(){ if(Date.now()-SCHNITZEL._t<600000) return; SCHNITZEL._t=Date.now();
+    var g=function(id){ return document.getElementById(id); };
+    ASCHE.leerungen().then(function(leer){ var d=SCHNITZEL.daten(leer.s);
+      // Tage ab dem vorletzten Auffuellen (fuer das letzte Intervall), hoechstens ASCHE.MAX_TAGE zurueck, mindestens 15 Tage (Raten)
+      var minVon=ymdLocal(new Date(Date.now()-ASCHE.MAX_TAGE*864e5)), von=ymdLocal(new Date(Date.now()-15*864e5));
+      d.f.forEach(function(F){ if(F.ymd<von) von=F.ymd; }); if(von<minVon) von=minVon;
+      return Promise.all([ASCHE.tage(von), ASCHE.temps(), ASCHE.teile(d.f.filter(function(F){ return F.ymd>=von; })), SCHNITZEL.hgtSaison()])
+        .then(function(r){ return {leer:leer, d:d, e:SCHNITZEL.rechne(r[0], d, r[1], r[2], r[3])}; }); })
+    .then(function(r){ var e=r.e; if(!g("sz-pct")) return;
+      var set=function(id,txt,farbe){ var el=g(id); if(!el) return; el.textContent=txt; el.style.color=farbe||""; };
+      var tag=function(txt, warn){ var t=g("sz-tag"); if(!t) return; t.textContent=txt; t.className="as-sub"+(warn?" warn":""); };
+      var pf=e.pct===null?"":SCHNITZEL.farbe(e.pct), fb=g("sz-fuell");
+      set("sz-pct", e.pct===null?"–":fmt(e.pct,0), pf); if(fb){ fb.style.width=ASCHE.breite(e.pct); fb.style.background=pf; }
+      var tageTxt=function(p){ return p.tage===0 ? "jetzt" : p.tage===null ? null : ASCHE.fmtTag(p.ymd)+" · in "+p.tage+" Tag"+(p.tage===1?"":"en"); };
+      set("sz-prog", !r.leer.s ? "–" : !e.letzteTs ? "noch kein Auffüllen erfasst" : e.pct===null ? "–" : (tageTxt(e.prog)||"in mehr als 120 Tagen"), (e.prog && e.prog.tage!==null && e.prog.tage<=2) ? "var(--red)" : "");
+      var herkunft = e.quelle==="auffuellungen" ? "Verbrauch aus "+e.nInt+" Auffüllung"+(e.nInt===1?"":"en") :
+        e.quelle==="schaetzung" ? "erste Schätzung: "+SCHNITZEL.SAISON_M3+" m³ je Saison"+(e.hs && e.hs.archiv ? " ("+fmt(e.hs.hgt,0)+" Heizgradtage "+e.hs.jahr+"/"+String(e.hs.jahr+1).slice(2)+")" : "") : "noch keine Austragung gemessen";
+      if(!r.leer.s) tag("Val Town: alte asche.ts ohne Schnitzel – bitte durch heizung.ts ersetzen", true);
+      else tag((e.letzteTs ? "seit Auffüllen "+ASCHE.fmtTag(ymdLocal(new Date(e.letzteTs)))+" (Rest vorher "+e.letzteRest+" %)" : "Auffüllen eintragen, dann startet die Rechnung")+" · "+herkunft);
+      set("sz-inhalt", e.inhalt===null?"–":fmt(e.inhalt,1)); set("sz-austr", e.seitA===null?"–":fmt(e.seitA/60,1));
+      set("sz-letzte", e.letzteTs ? ASCHE.fmtZeit(e.letzteTs) : "–");
+      set("sz-k", e.k ? fmt(e.k*60,2) : "–"); set("sz-tagm3", (e.k && e.nT) ? fmt(e.k*e.mittelA,1) : "–");
+      set("sz-lager", e.lager===null ? "–" : fmt(e.lager,0));
+      set("sz-lagerauf", e.lager===null ? "Lager-Eintrag fehlt" : "ca. "+fmt(e.auffuellungen,1)+" × Auffüllen");
+      set("sz-lagerprog", !e.lagerProg ? "–" : e.lagerProg.tage===null ? "in über 400 Tagen" : ASCHE.fmtTag(e.lagerProg.ymd));
+    }).catch(function(err){ SCHNITZEL._t=0; console.error(err);
+      var t=g("sz-tag"); if(!t) return; var noch=g("sz-pct") && g("sz-pct").textContent!=="–";
+      t.textContent="Daten konnten nicht geladen werden"+(noch?" – Anzeige vom letzten Abruf":""); t.className="as-sub warn"; }); }
+};
+// Zwei Zusatz-Bereiche in einer Ansicht (simpleView kennt nur ein cfg.extra): Aschebox und Schnitzel-Bunker nacheinander
+function extraKombi(teile){ return {
+  reset:function(){ teile.forEach(function(x){ if(x.reset) x.reset(); }); },
+  html:function(){ return teile.map(function(x){ return x.html(); }).join(""); },
+  htmlTab:function(){ return teile.map(function(x){ return x.htmlTab ? x.htmlTab() : ""; }).join(""); },
+  bind:function(){ teile.forEach(function(x){ if(x.bind) x.bind(); }); },
+  load:function(){ teile.forEach(function(x){ x.load(); }); } }; }
+
+var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung", extra:extraKombi([ASCHE.panel, SCHNITZEL.panel]),
   // Links aktuelle Werte des Heizungs-Loggers (Kanal 172428, laeuft nur in der Heizsaison),
   // rechts Werte ueber den gewaehlten Zeitraum - inkl. Ø Auslastung aus dem Wallbox-Kanal 172228.
   sections:[
