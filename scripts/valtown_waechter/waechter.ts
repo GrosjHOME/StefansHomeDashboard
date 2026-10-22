@@ -35,7 +35,7 @@ const HEIZSAISON = [9, 10, 11, 0, 1, 2, 3];   // Okt-Apr (Monatsindex 0-11)
 // Schnitzel-Bunker (wie SCHNITZEL im Dashboard)
 const SZ = { BUNKER: 20, SCHWELLE: 20, START_M3_H: 1, LAT: 46.966, LON: 7.742, KANAL: 172428 };
 const SCHNITZEL_VORLAUF = 2;   // Tage: so frueh vor dem Auffuellen kommt die Mail
-const SZ_TAGE_VERSION = 2;   // 2 = Stoerungszeit zaehlt nicht als Austragung
+const SZ_TAGE_VERSION = 3;   // 2 = Stoerungszeit zaehlt nicht als Austragung, 3 = Mai bis August zaehlt nichts (Logger nur zu Testzwecken)
 const SZ_TAGE_KEY = "schnitzel_tage", SZ_MAX_TAGE = 150, SZ_MAX_ABRUFE = 25;   // je Lauf hoechstens so viele Tage nachholen
 
 const PUMPWERK_READ_KEY = (Deno.env.get("PUMPWERK_READ_KEY") || "").trim() || undefined;   // privater Kanal, Key nur als Umgebungsvariable
@@ -100,7 +100,8 @@ async function austrTag(ymd: string, schnitte: number[]) {
     else if (isFinite(v) && Math.abs(v - 0.2) < 0.02) { for (const k of lauf) fl[k] = 2; lauf = []; fl[i] = 2; }
     else { for (const k of lauf) fl[k] = 1; lauf = []; } });
   for (const k of lauf) fl[k] = 1;
-  for (let i = 0; i < f.length; i++) { const x = f[i]; if (fl[i] !== 1) continue; min++;
+  const sommer = ["05", "06", "07", "08"].includes(ymd.slice(5, 7));   // ausserhalb der Heizsaison zaehlt nichts
+  for (let i = 0; i < f.length; i++) { const x = f[i]; if (fl[i] !== 1 || sommer) continue; min++;
     const t = Date.parse(x.created_at); for (const ts of schnitte) { if (t <= ts) teile[ts].va++; else teile[ts].na++; } }
   return { min, n: f.length, teile };
 }

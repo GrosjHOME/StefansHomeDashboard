@@ -1878,7 +1878,7 @@ function heizVoll(ff){ return heizPhasen(ff).filter(function(p){ return p.voll; 
    deren Menge folgt der Brennzeit (heizPhasen) - die Laufzeit der Schnitzel-Austragung (field6: 0.4/0.7/1 =
    Austragung laeuft; Fuellmodus hat wenig Einfluss) wird als zweites Mass mitgefuehrt.
    - Je Tag werden Brennzeit, Austragung und Heizzyklen einmal gerechnet und im Browser gecacht
-     (hz_tag2_YYYY-MM-DD; abgeschlossene Tage aendern sich nicht), nur der heutige Tag wird neu geholt.
+     (hz_tag3_YYYY-MM-DD; abgeschlossene Tage aendern sich nicht), nur der heutige Tag wird neu geholt.
    - Saisonstart = erster Tag ab 1. September mit >= 30 min Brennzeit (gecacht als hz_saison_<Jahr>).
    - Kapazitaet der Box = Brennzeit zwischen zwei Leerungen (Median aller Intervalle, angezeigt als "Brennzeit pro Leerung"; das erste Intervall
      beginnt am Saisonstart, die Box war dort leer). Die Uhrzeit der Leerung teilt den Leerungstag: davor alter, danach neues Intervall.
@@ -1895,6 +1895,8 @@ function hgt(t){ return t<12 ? 20-t : 0; }   // Heizgradtage 20/12 (Schweizer Ko
 // Stoerung (0.2, rot im Diagramm) heisst: die Austragung ist zu lange gelaufen. Der ganze Lauf bis zur Stoerung
 // (die Austragung hat in dieser Zeit nichts gefoerdert) plus die Stoerungsminuten zaehlen als Stoerungszeit, nicht als Austragung.
 ASCHE.austrFlags=function(ff){ var fl=[], lauf=[];
+  // Ausserhalb der Heizsaison (Mai bis August) sendet der Logger nur zu Testzwecken: dann zaehlt nichts als Austragung oder Stoerung
+  if(ff.length && [4,5,6,7].indexOf(new Date(ff[0].created_at).getMonth())>=0){ ff.forEach(function(x,i){ fl[i]=0; }); return fl; }
   var zu=function(){ lauf.forEach(function(k){ fl[k]=1; }); lauf=[]; };
   ff.forEach(function(x,i){ var v=num(x.field6); fl[i]=0;
     if(v!==null && (Math.abs(v-0.4)<0.02||Math.abs(v-0.7)<0.02||Math.abs(v-1)<0.02)) lauf.push(i);
@@ -1907,7 +1909,7 @@ ASCHE.tagWerte=function(ff){ var brenn=0, zyk=0; heizPhasen(ff).forEach(function
   return {brenn:Math.round(brenn), austr:au, stoer:st, zyk:zyk, n:ff.length}; };
 // Tageswerte von vonYmd bis heute: gecachte Tage aus dem Browser, fehlende in zusammenhaengenden Bereichen holen
 ASCHE.tage=function(vonYmd){ var heute=ymdLocal(new Date()), vorgestern=ymdLocal(new Date(Date.now()-2*864e5)), tage=[], fehlt=[];
-  for(var k=vonYmd; k<=heute; k=ASCHE.folgetag(k)){ var c=k<heute?lsGet("hz_tag2_"+k):null, w=null;
+  for(var k=vonYmd; k<=heute; k=ASCHE.folgetag(k)){ var c=k<heute?lsGet("hz_tag3_"+k):null, w=null;
     if(c){ try{ w=JSON.parse(c); }catch(e){ w=null; } }
     if(!w) fehlt.push(k); tage.push({ymd:k, w:w}); }
   if(!fehlt.length) return Promise.resolve(tage);
@@ -1916,7 +1918,7 @@ ASCHE.tage=function(vonYmd){ var heute=ymdLocal(new Date()), vorgestern=ymdLocal
       return holeBereich(ASCHE.CH, von, bis, false); }))
     .then(function(rs){ var proTag={}; rs.forEach(function(r){ ((r&&r.feeds)||[]).forEach(function(x){ var k=ymdLocal(new Date(x.created_at)); (proTag[k]=proTag[k]||[]).push(x); }); });
       tage.forEach(function(t){ if(t.w) return; t.w=ASCHE.tagWerte(proTag[t.ymd]||[]);
-        if(t.ymd<heute && (t.w.n>0 || t.ymd<vorgestern)) lsSet("hz_tag2_"+t.ymd, JSON.stringify(t.w)); });   // leere Tage erst cachen, wenn sicher vorbei
+        if(t.ymd<heute && (t.w.n>0 || t.ymd<vorgestern)) lsSet("hz_tag3_"+t.ymd, JSON.stringify(t.w)); });   // leere Tage erst cachen, wenn sicher vorbei
       return tage; }); };
 // Tagesmittel der Aussentemperatur (2 m): 14 Tage zurueck + 7 Tage Prognose -> {ymd: °C}
 ASCHE.temps=function(){ return j("https://api.open-meteo.com/v1/forecast?latitude="+PLANNER.LAT+"&longitude="+PLANNER.LON+"&daily=temperature_2m_mean&past_days=14&forecast_days=7&timezone=Europe%2FZurich")
@@ -1953,10 +1955,10 @@ ASCHE.teilen=function(ff, ts){ var vb=0, nb=0, va=0, na=0;
   heizPhasen(ff).forEach(function(p){ vb+=Math.max(0, Math.min(p.e,ts)-p.s)/60000; nb+=Math.max(0, p.e-Math.max(p.s,ts))/60000; });
   var fl=ASCHE.austrFlags(ff); ff.forEach(function(x,i){ if(fl[i]===1){ if(Date.parse(x.created_at)<=ts) va++; else na++; } });
   return {vb:Math.round(vb), nb:Math.round(nb), va:va, na:na}; };
-// Teilungen fuer alle Leerungstage holen ({ymd: {vb,nb,va,na}}); abgeschlossene Tage im Browser gecacht (hz_split2_<ms>),
+// Teilungen fuer alle Leerungstage holen ({ymd: {vb,nb,va,na}}); abgeschlossene Tage im Browser gecacht (hz_split3_<ms>),
 // der heutige Tag wird bei jedem Laden neu geholt. Fehlt ein Tag (Abruf fehlgeschlagen), zaehlt er ganz zum alten Intervall.
 ASCHE.teile=function(lt){ var heute=ymdLocal(new Date());
-  return Promise.all(lt.map(function(L){ var key="hz_split2_"+L.ts, c=L.ymd<heute?lsGet(key):null, w=null;
+  return Promise.all(lt.map(function(L){ var key="hz_split3_"+L.ts, c=L.ymd<heute?lsGet(key):null, w=null;
     if(c){ try{ w=JSON.parse(c); }catch(e){ w=null; } }
     if(w) return {ymd:L.ymd, w:w};
     var von=new Date(L.ymd+"T00:00:00").getTime(), bis=Math.min(new Date(ASCHE.folgetag(L.ymd)+"T00:00:00").getTime(), Date.now());
