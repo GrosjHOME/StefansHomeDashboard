@@ -311,10 +311,10 @@ Oben steht der Füllstand gross mit farbigem Balken (grün, ab 70 % orange, ab 9
 Tag, an dem die Box voll ist. Die übrigen Werte folgen als kompakte Liste in zwei Gruppen, ab 1100 Pixeln Breite neben dem
 Füllstand und als zwei Spalten (auf dem Handy nacheinander):
 - **Seit der Leerung:** Brennzeit, Austragung, Zeitpunkt der letzten Leerung.
-- **Volle Box und Raten:** Box-Kapazität (Brennzeit für 100 %), Ø Austragung pro Leerung (Laufzeit der Schnitzel-Austragung
-  zwischen zwei Leerungen, je Leerung auf die volle Box hochgerechnet und gemittelt), Ø Brennzeit je Tag der letzten 14 Tage
-  und Brennzeit je Heizgradtag. So steht breit die Brennzeit seit der Leerung neben der Kapazität und die Austragung seit
-  der Leerung neben ihrem Wert für die volle Box.
+- **Volle Box und Raten:** Austragung pro Leerung und Brennzeit pro Leerung (Laufzeit der Schnitzel-Austragung bzw.
+  Brennzeit zwischen zwei Leerungen, je Leerung auf die volle Box hochgerechnet, Median über die Leerungen der Saison;
+  die Brennzeit ist die Kapazität), Ø Brennzeit je Tag der letzten 14 Tage und Brennzeit je Heizgradtag. So steht breit die Austragung bzw.
+  Brennzeit seit der Leerung neben ihrem Wert für die volle Box.
 
 **Rechnung:**
 - **Mass:** Asche entsteht aus den verbrannten Schnitzeln, deren Menge der
@@ -322,7 +322,8 @@ Füllstand und als zwei Spalten (auf dem Handy nacheinander):
   Die **Austragung** (Laufzeit der Schnitzelförderung, Feld 6) läuft als zweites
   Mass mit. Je Tag werden beide einmal gerechnet und im Browser gespeichert.
 - **Kapazität (= 100 %):** Brennzeit zwischen zwei Leerungen, hochgerechnet auf
-  100 % aus dem **Füllstand beim Leeren** (Median aller Intervalle): Wer bei 50 %
+  100 % aus dem **Füllstand beim Leeren** (Median aller Intervalle, angezeigt als „Brennzeit pro Leerung“; der Median, weil es pro Saison nur wenige
+  Leerungen gibt und ein geschätzter Füllstand daneben oder eine Lücke im Logger sonst die Prognose verschiebt): Wer bei 50 %
   leert, dessen Brennzeit zählt doppelt. Das erste Intervall beginnt am **Saisonstart** (erster Tag ab 1. September mit
   Feuer), dort ist die Box leer. Die **Uhrzeit der Leerung** teilt den Leerungstag: Brennzeit und Austragung davor zählen zum alten, danach zum neuen Intervall (der Tag wird dazu einmal minutengenau geholt und im Browser gemerkt, `hz_split_…`). Das Datum und die Uhrzeit trägt man beim Eintragen ein (Standard: jetzt); ältere Einträge ohne Uhrzeit gelten als 12:00.
   Mit jeder Leerung wird die Kapazität genauer – Rinde, Feuchte und

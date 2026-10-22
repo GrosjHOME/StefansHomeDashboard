@@ -1880,7 +1880,7 @@ function heizVoll(ff){ return heizPhasen(ff).filter(function(p){ return p.voll; 
    - Je Tag werden Brennzeit, Austragung und Heizzyklen einmal gerechnet und im Browser gecacht
      (hz_tag_YYYY-MM-DD; abgeschlossene Tage aendern sich nicht), nur der heutige Tag wird neu geholt.
    - Saisonstart = erster Tag ab 1. September mit >= 30 min Brennzeit (gecacht als hz_saison_<Jahr>).
-   - Kapazitaet der Box = Brennzeit zwischen zwei Leerungen (Median aller Intervalle; das erste Intervall
+   - Kapazitaet der Box = Brennzeit zwischen zwei Leerungen (Median aller Intervalle, angezeigt als "Brennzeit pro Leerung"; das erste Intervall
      beginnt am Saisonstart, die Box war dort leer). Die Uhrzeit der Leerung teilt den Leerungstag: davor alter, danach neues Intervall.
    - Fuellstand = Brennzeit seit der letzten Leerung / Kapazitaet.
    - Prognose: Brennzeit je Heizgradtag (HGT 20/12 aus der Aussentemperatur in 2 m, Open-Meteo) der letzten
@@ -1972,9 +1972,10 @@ ASCHE.rechne=function(tage, leer, temps, teile){
       var au=iv("austr"); if(au>0) kapsA.push(au/(L.pct/100));
       hist.push({ymd:L.ymd, ts:L.ts, von:prev?prev.ymd:saison, vonTs:startTs, vonLeerung:!!prev, tage:(L.ts-startTs)/864e5, brenn:b, austr:au, pct:L.pct, kap:k}); }
     prev=L; });
+  // Median der Leerungen, je auf die volle Box hochgerechnet: Brennzeit (= Kapazitaet, Basis fuer Fuellstand und Prognose) und Austragung.
+  // Median statt Mittel: wenige Leerungen je Saison, und ein Ausreisser (geschaetzter Fuellstand daneben, Logger-Luecke) soll die Prognose nicht verschieben
   var median=function(a){ if(!a.length) return null; var so=a.slice().sort(function(x,y){ return x-y; }); return so.length%2 ? so[(so.length-1)/2] : (so[so.length/2-1]+so[so.length/2])/2; };
-  var kap=median(kaps);   // Kapazitaet: Median der Leerungen (Brennzeit fuer eine volle Box)
-  var kapA=kapsA.length ? kapsA.reduce(function(s,x){ return s+x; },0)/kapsA.length : null;   // Ø Austragung pro Leerung, auf die volle Box hochgerechnet
+  var kap=median(kaps), kapA=median(kapsA);
   var X=lt.length?lt[lt.length-1]:null, hatStart=!!(X||saison);
   // seit der letzten Leerung: Rest des Leerungstags (nach der Uhrzeit) + alle folgenden Tage bis heute
   var seit=function(feld){ return X ? voll(X.ymd,false,null,feld)+nach(X,feld) : (saison ? voll(saison,true,null,feld) : 0); };
@@ -2043,11 +2044,11 @@ ASCHE.panel={
         '<div class="as-progz">Voll voraussichtlich <b id="as-prog">–</b></div>'+
         '<div class="as-sub" id="as-tag">wird geladen…</div></div>'+
       // Gruppen: links der laufende Stand seit der Leerung, rechts die volle Box (aus den Leerungen) und darunter die Raten
-      // fuer die Prognose. Breit stehen die Gruppen als zwei Spalten (Brennzeit neben Kapazitaet, Austragung neben Ø pro
+      // fuer die Prognose. Breit stehen die Gruppen als zwei Spalten (Austragung bzw. Brennzeit seit der Leerung neben ihrem Wert pro
       // Leerung), auf dem Handy nacheinander in dieser Reihenfolge.
       '<dl class="as-werte">'+
-        wert("Brennzeit seit Leerung","as-seit","h","as-l")+wert("Austragung seit Leerung","as-austr","h","as-l")+wert("Letzte Leerung","as-letzte","","as-l")+
-        wert("Box-Kapazität (Brennzeit)","as-kap","h","as-r")+wert("Ø Austragung pro Leerung","as-arate","h","as-r")+
+        wert("Austragung seit Leerung","as-austr","h","as-l")+wert("Brennzeit seit Leerung","as-seit","h","as-l")+wert("Letzte Leerung","as-letzte","","as-l")+
+        wert("Austragung pro Leerung","as-arate","h","as-r")+wert("Brennzeit pro Leerung","as-kap","h","as-r")+
         wert("Ø Brennzeit je Tag","as-rate","h","as-r")+wert("Brennzeit je Heizgradtag","as-hgt","min","as-r")+'</dl></div>'+
       '<div class="frei" style="margin:0 0 10px;padding:0;background:transparent;box-shadow:none">'+
         '<label>Geleert am<input type="date" id="as-d" value="'+heute+'" max="'+heute+'"></label>'+
@@ -2060,7 +2061,7 @@ ASCHE.panel={
   htmlTab:function(){
     return '<div class="panel"><h2>🪣 Aschebox – letzte Leerungen</h2><div id="as-tab" class="tbl-wrap"></div>'+
       '<details class="note as-info"><summary>Schätzung aus der Brennzeit – so wird gerechnet</summary>Schätzung aus der <b>Brennzeit</b> (Abgas − Kessel &gt; 30 K, wie die Heizzyklen): Die Aschemenge folgt den verbrannten Schnitzeln, '+
-      'die <b>Austragung</b> (Laufzeit der Schnitzelförderung) läuft als zweites Mass mit. <b>Kapazität</b> (= 100 %) = Brennzeit zwischen zwei Leerungen, hochgerechnet auf 100 % aus dem <b>Füllstand beim Leeren</b> (Median; '+
+      'die <b>Austragung</b> (Laufzeit der Schnitzelförderung) läuft als zweites Mass mit. <b>Kapazität</b> (= 100 %) = Brennzeit zwischen zwei Leerungen, hochgerechnet auf 100 % aus dem <b>Füllstand beim Leeren</b> (Median aller Leerungen, angezeigt als «Brennzeit pro Leerung»; '+
       'leerst du bei 50 %, zählt die Brennzeit doppelt; das erste Intervall beginnt am Saisonstart = erster Tag ab 1. September mit Feuer, Box dort leer). <b>Prognose</b> bis die Box voll ist (100 %): Brennzeit je Heizgradtag der letzten '+
       '14 Tage × Heizgradtage aus der 7-Tage-Temperaturprognose (Aussentemperatur 2 m, Open-Meteo), danach deren Mittel. '+
       'Rinde, Feuchte und Herkunft der Schnitzel ändern die Asche je Stunde – mit jeder eingetragenen Leerung wird die Kapazität genauer. '+
@@ -2101,7 +2102,7 @@ ASCHE.panel={
         setzeBalken(e.pct, pf);
         set("as-prog", !e.prog ? (e.kap?"–":"noch keine Leerung erfasst") : e.prog.tage===0 ? "jetzt (Box voll)" : e.prog.tage===null ? "in mehr als 120 Tagen" : ASCHE.fmtTag(e.prog.ymd)+" · in "+e.prog.tage+" Tag"+(e.prog.tage===1?"":"en"),
           (e.prog && e.prog.tage===0) ? "var(--red)" : "");   // Prognose neutral; die Ampel zeigen Zahl und Balken - nur "Box voll" rot
-        tag((e.letzte?"seit Leerung "+ASCHE.fmtTag(e.letzte):"seit Saisonstart "+ASCHE.fmtTag(e.saison))+(e.nInt?" · Kapazität aus "+e.nInt+" Leerung"+(e.nInt===1?"":"en"):"")); }
+        tag((e.letzte?"seit Leerung "+ASCHE.fmtTag(e.letzte):"seit Saisonstart "+ASCHE.fmtTag(e.saison))+(e.nInt?" · Box aus "+e.nInt+" Leerung"+(e.nInt===1?"":"en"):"")); }
       set("as-seit", fmt(e.seitBrenn/60,1)); set("as-austr", fmt(e.seitAustr/60,1));
       set("as-letzte", e.letzteTs?ASCHE.fmtZeit(e.letzteTs):(e.saison?"– (Saisonstart "+ASCHE.fmtTag(e.saison)+")":"–"));
       ASCHE.tabelle(e, g("as-tab"));
