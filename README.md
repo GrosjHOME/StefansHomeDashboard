@@ -309,7 +309,7 @@ Die Aschebox der Schnitzelheizung wird von Hand geleert. Der Bereich **Aschebox*
 im Tab *Heizung* schätzt, wie voll sie ist und wann sie geleert werden muss.
 Oben steht der Füllstand gross mit farbigem Balken (grün, ab 70 % orange, ab 90 % rot) und darunter der voraussichtliche
 Tag, an dem die Box voll ist. Die übrigen Werte (Brennzeit und Austragung seit der Leerung, letzte Leerung, Kapazität,
-Ø Brennzeit je Tag, Brennzeit je Heizgradtag) folgen als kompakte Liste, ab 1100 Pixeln Breite neben dem Füllstand.
+Ø Brennzeit und Ø Austragung je Tag der letzten 14 Tage, Brennzeit je Heizgradtag) folgen als kompakte Liste, ab 1100 Pixeln Breite neben dem Füllstand.
 
 **Rechnung:**
 - **Mass:** Asche entsteht aus den verbrannten Schnitzeln, deren Menge der

@@ -17,13 +17,14 @@
     --bg:#eef2f5; --card:#ffffff; --ink:#1f2933; --muted:#6b7280; --line:#e3e8ee;
     --amber:#f5a623; --amber-lt:#f7d774; --green:#2e9e5b; --blue:#2b83c7; --red:#d64545;
     --nav:#ffffff; --shadow:0 1px 3px rgba(20,30,40,.10), 0 1px 2px rgba(20,30,40,.06);
+    color-scheme:light;   /* Scrollleisten, Datums-/Zeitfelder und Auswahllisten des Browsers folgen dem Hell/Dunkel des Dashboards */
   }
   :root[data-theme="dark"]{
     --bg:#0f1720; --card:#18212b; --ink:#e6edf3; --muted:#95a1ad; --line:#2a3540;
-    --nav:#131b24; --shadow:0 1px 3px rgba(0,0,0,.4);
+    --nav:#131b24; --shadow:0 1px 3px rgba(0,0,0,.4); color-scheme:dark;
   }
   @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
-    --bg:#0f1720; --card:#18212b; --ink:#e6edf3; --muted:#95a1ad; --line:#2a3540; --nav:#131b24; --shadow:0 1px 3px rgba(0,0,0,.4);
+    --bg:#0f1720; --card:#18212b; --ink:#e6edf3; --muted:#95a1ad; --line:#2a3540; --nav:#131b24; --shadow:0 1px 3px rgba(0,0,0,.4); color-scheme:dark;
   }}
   *{box-sizing:border-box;}
   body{margin:0; background:var(--bg); color:var(--ink);
@@ -128,7 +129,7 @@
   .frei{background:var(--card); border-radius:12px; box-shadow:var(--shadow); padding:12px 14px; margin:-4px 0 14px; display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px 14px;}
   .frei[hidden]{display:none;}
   .frei label{display:flex; flex-direction:column; gap:3px; font-size:.72rem; font-weight:600; color:var(--muted);}
-  .frei input,.frei select{font:inherit; font-size:.9rem; font-weight:500; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:6px 8px; color-scheme:light dark;}
+  .frei input,.frei select{font:inherit; font-size:.9rem; font-weight:500; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:6px 8px; }
   .frei-msg{font-size:.82rem; color:var(--red); flex:1 1 100%;}
   .frei-msg:empty{display:none;}
   .kpi .chk{display:block; font-size:.74rem; font-weight:600; color:var(--muted); margin-top:2px;}   /* Pruefwert in Klammern */
@@ -249,7 +250,7 @@
   .as-werte dt{color:var(--muted); font-size:.82rem;}
   .as-werte dd{margin:0 0 0 auto; font-weight:700; min-width:0; max-width:100%; overflow-wrap:anywhere; text-align:right; font-variant-numeric:tabular-nums;}   /* ein zu langer Wert bricht um statt ueberzustehen */
   .as-werte dd small{font-weight:600; color:var(--muted);}
-  @media (min-width:1100px){ .as-top{grid-template-columns:minmax(0,1fr) minmax(0,1fr);} }
+  @media (min-width:1100px){ .as-top{grid-template-columns:minmax(0,1fr) minmax(0,1fr);} .as-werte{grid-template-columns:repeat(2,minmax(0,1fr));} .as-werte > .as-rechts{grid-column:2;} }   /* breit: immer 2 Spalten; 7 Werte: der letzte rechts unter "Ø Austragung je Tag" */
   /* Aschebox - letzte Leerungen: Handy kompakte Liste mit Fuellstand-Balken, ab 1100 px Tabelle */
   .as-it{padding:10px 0; border-bottom:1px solid var(--line);}
   .as-it:last-child{border-bottom:0;}
@@ -1977,10 +1978,10 @@ ASCHE.rechne=function(tage, leer, temps, teile){
   // seit der letzten Leerung: Rest des Leerungstags (nach der Uhrzeit) + alle folgenden Tage bis heute
   var seit=function(feld){ return X ? voll(X.ymd,false,null,feld)+nach(X,feld) : (saison ? voll(saison,true,null,feld) : 0); };
   var seitBrenn=seit("brenn"), seitAustr=seit("austr"), letzte=X?X.ymd:null;
-  // Rate der letzten 14 abgeschlossenen Tage: Brennzeit je Heizgradtag (nur Tage mit Temperatur) und Brennzeit je Tag
-  var bs=0, nT=0, bsH=0, hs=0, nH=0;
-  tage.slice(-15,-1).forEach(function(t){ if(!t.w) return; bs+=t.w.brenn; nT++; var T=temps[t.ymd]; if(T!=null){ bsH+=t.w.brenn; hs+=hgt(T); nH++; } });
-  var mittelTag=nT?bs/nT:0, rateHGT=(nH>=5 && hs>=10) ? bsH/hs : null;
+  // Rate der letzten 14 abgeschlossenen Tage: Brennzeit je Heizgradtag (nur Tage mit Temperatur), Brennzeit und Austragung je Tag
+  var bs=0, as=0, nT=0, bsH=0, hs=0, nH=0;
+  tage.slice(-15,-1).forEach(function(t){ if(!t.w) return; bs+=t.w.brenn; as+=t.w.austr||0; nT++; var T=temps[t.ymd]; if(T!=null){ bsH+=t.w.brenn; hs+=hgt(T); nH++; } });
+  var mittelTag=nT?bs/nT:0, mittelAustr=nT?as/nT:0, rateHGT=(nH>=5 && hs>=10) ? bsH/hs : null;
   function pred(ymd){ var T=temps[ymd]; return (rateHGT!==null && T!=null) ? rateHGT*hgt(T) : mittelTag; }
   // Prognose: Rest = Kapazitaet (100 %) - bisher; heute nur der noch erwartete Teil, dann Tag fuer Tag
   var prog=null;
@@ -1993,7 +1994,7 @@ ASCHE.rechne=function(tage, leer, temps, teile){
       y=heute; for(var n=1; n<=120 && rest>0; n++){ y=ASCHE.folgetag(y); rest-=(temps[y]!=null)?pred(y):fern; if(rest<=0){ prog={tage:n, ymd:y}; break; } }
       if(!prog) prog={tage:null, ymd:null}; } }
   return {hist:hist, saison:saison, kap:kap, nInt:kaps.length, letzte:letzte, letzteTs:X?X.ts:null, seitBrenn:seitBrenn, seitAustr:seitAustr,
-    pct:(kap&&kap>0)?seitBrenn/kap*100:null, prog:prog, mittelTag:mittelTag, rateHGT:rateHGT, nT:nT}; };
+    pct:(kap&&kap>0)?seitBrenn/kap*100:null, prog:prog, mittelTag:mittelTag, mittelAustr:mittelAustr, rateHGT:rateHGT, nT:nT}; };
 // Farbe und Balkenbreite des Fuellstands - eine Regel fuer den grossen Balken oben und die Balken der letzten Leerungen
 ASCHE.farbe=function(pct){ return pct>=90?"var(--red)":(pct>=70?"var(--amber)":"var(--green)"); };
 ASCHE.breite=function(pct){ return (pct==null||isNaN(pct)?0:Math.max(0,Math.min(100,pct)))+"%"; };   // null/undefined/NaN -> 0 % (sonst "NaN%", vom Browser verworfen)
@@ -2032,7 +2033,7 @@ ASCHE.tabelle=function(e, el){ if(!el) return;
 ASCHE.panel={
   reset:function(){ ASCHE._t=0; },
   html:function(){ var heute=ymdLocal(new Date());
-    var wert=function(k,id,unit){ return '<div><dt>'+k+'</dt><dd><span id="'+id+'">–</span>'+(unit?' <small>'+unit+'</small>':'')+'</dd></div>'; };
+    var wert=function(k,id,unit,cls){ return '<div'+(cls?' class="'+cls+'"':'')+'><dt>'+k+'</dt><dd><span id="'+id+'">–</span>'+(unit?' <small>'+unit+'</small>':'')+'</dd></div>'; };
     return '<div class="panel"><h2>🪣 Aschebox</h2>'+
       '<div class="as-top"><div>'+
         '<div class="as-kopf"><span class="lbl">Aschebox voll</span><span class="val"><span id="as-pct">–</span> <small>%</small></span></div>'+
@@ -2043,7 +2044,8 @@ ASCHE.panel={
       '<dl class="as-werte">'+
         wert("Brennzeit seit Leerung","as-seit","h")+wert("Box-Kapazität (Brennzeit)","as-kap","h")+
         wert("Austragung seit Leerung","as-austr","h")+wert("Ø Brennzeit je Tag","as-rate","h")+
-        wert("Letzte Leerung","as-letzte","")+wert("Brennzeit je Heizgradtag","as-hgt","min")+'</dl></div>'+
+        wert("Letzte Leerung","as-letzte","")+wert("Ø Austragung je Tag","as-arate","h")+
+        wert("Brennzeit je Heizgradtag","as-hgt","min","as-rechts")+'</dl></div>'+
       '<div class="frei" style="margin:0 0 10px;padding:0;background:transparent;box-shadow:none">'+
         '<label>Geleert am<input type="date" id="as-d" value="'+heute+'" max="'+heute+'"></label>'+
         '<label>Uhrzeit<input type="time" id="as-t" value="'+ASCHE.jetztHm()+'"></label>'+
@@ -2100,7 +2102,7 @@ ASCHE.panel={
       set("as-seit", fmt(e.seitBrenn/60,1)); set("as-austr", fmt(e.seitAustr/60,1));
       set("as-letzte", e.letzteTs?ASCHE.fmtZeit(e.letzteTs):(e.saison?"– (Saisonstart "+ASCHE.fmtTag(e.saison)+")":"–"));
       ASCHE.tabelle(e, g("as-tab"));
-      set("as-kap", e.kap?fmt(e.kap/60,0):"–"); set("as-rate", e.nT?fmt(e.mittelTag/60,1):"–"); set("as-hgt", e.rateHGT!==null?fmt(e.rateHGT,0):"–");
+      set("as-kap", e.kap?fmt(e.kap/60,0):"–"); set("as-rate", e.nT?fmt(e.mittelTag/60,1):"–"); set("as-arate", e.nT?fmt(e.mittelAustr/60,1):"–"); set("as-hgt", e.rateHGT!==null?fmt(e.rateHGT,0):"–");
     }).catch(function(err){ ASCHE._t=0; console.error(err);
       // Zahl und Balken bleiben stehen (ein Aussetzer soll gueltige Werte nicht loeschen), die Zeile darunter sagt rot, dass sie
       // vom letzten Abruf stammen; beim ersten Laden ohne Werte steht ohnehin "–" und der Balken auf 0
