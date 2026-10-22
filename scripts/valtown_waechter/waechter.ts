@@ -33,8 +33,9 @@ const KESSEL_MIN = 50;   // Grad C, Kessel oben darunter = Feuer aus / Stoerung
 const HEIZSAISON = [9, 10, 11, 0, 1, 2, 3];   // Okt-Apr (Monatsindex 0-11)
 
 // Schnitzel-Bunker (wie SCHNITZEL im Dashboard)
-const SZ = { BUNKER: 20, SCHWELLE: 20, SAISON_M3: 70, HGT_NORMAL: 3300, LAT: 46.966, LON: 7.742, KANAL: 172428 };
+const SZ = { BUNKER: 20, SCHWELLE: 20, START_M3_H: 1, LAT: 46.966, LON: 7.742, KANAL: 172428 };
 const SCHNITZEL_VORLAUF = 2;   // Tage: so frueh vor dem Auffuellen kommt die Mail
+const SZ_TAGE_VERSION = 2;   // 2 = Stoerungszeit zaehlt nicht als Austragung
 const SZ_TAGE_KEY = "schnitzel_tage", SZ_MAX_TAGE = 150, SZ_MAX_ABRUFE = 25;   // je Lauf hoechstens so viele Tage nachholen
 
 const PUMPWERK_READ_KEY = (Deno.env.get("PUMPWERK_READ_KEY") || "").trim() || undefined;   // privater Kanal, Key nur als Umgebungsvariable
@@ -92,7 +93,14 @@ async function austrTag(ymd: string, schnitte: number[]) {
   const f: any[] = (await r.json()).feeds ?? [];
   let min = 0; const teile: Record<string, { va: number; na: number }> = {};
   for (const ts of schnitte) teile[ts] = { va: 0, na: 0 };
-  for (const x of f) { const v = parseFloat(x.field6); if (!isFinite(v) || !austrMinute(v)) continue; min++;
+  // Stoerung (0.2, zu lange gelaufen): der ganze Lauf bis zur Stoerung plus die Stoerungsminuten zaehlen nicht als Austragung
+  const fl: number[] = []; let lauf: number[] = [];
+  f.forEach((x, i) => { const v = parseFloat(x.field6); fl[i] = 0;
+    if (isFinite(v) && austrMinute(v)) lauf.push(i);
+    else if (isFinite(v) && Math.abs(v - 0.2) < 0.02) { for (const k of lauf) fl[k] = 2; lauf = []; fl[i] = 2; }
+    else { for (const k of lauf) fl[k] = 1; lauf = []; } });
+  for (const k of lauf) fl[k] = 1;
+  for (let i = 0; i < f.length; i++) { const x = f[i]; if (fl[i] !== 1) continue; min++;
     const t = Date.parse(x.created_at); for (const ts of schnitte) { if (t <= ts) teile[ts].va++; else teile[ts].na++; } }
   return { min, n: f.length, teile };
 }
@@ -107,7 +115,8 @@ async function schnitzelPruefen(heute: string): Promise<string | null | undefine
   // Tagesliste: ab dem vorletzten Auffuellen bzw. 15 Tage zurueck, hoechstens SZ_MAX_TAGE
   let von = plusTage(heute, -15); for (const F of f) if (F.ymd < von) von = F.ymd;
   const minVon = plusTage(heute, -SZ_MAX_TAGE); if (von < minVon) von = minVon;
-  const cache = ((await blob.getJSON(SZ_TAGE_KEY).catch(() => null)) as any) ?? { tage: {}, teile: {} };
+  let cache = ((await blob.getJSON(SZ_TAGE_KEY).catch(() => null)) as any) ?? { tage: {}, teile: {} };
+  if (cache.v !== SZ_TAGE_VERSION) cache = { v: SZ_TAGE_VERSION, tage: {}, teile: {} };   // Zaehlweise geaendert (Stoerungszeit): Tageswerte neu holen
   const tage: Record<string, number> = {}, teile: Record<string, { va: number; na: number }> = {};
   let abrufe = 0, fehlt = false;
   for (let y = von; y <= heute; y = plusTage(y, 1)) {
@@ -126,7 +135,7 @@ async function schnitzelPruefen(heute: string): Promise<string | null | undefine
   const voll = (a: string, b: string | null) => { let s = 0; for (const [y, m] of Object.entries(tage)) if (y > a && (b === null || y < b)) s += m; return s; };
   const vor = (F: { ymd: string; ts: number }) => teile[F.ts]?.va ?? tage[F.ymd] ?? 0;
   const nach = (F: { ts: number }) => teile[F.ts]?.na ?? 0;
-  // Verbrauch je Minute Austragung: Median der Intervalle, sonst erste Schaetzung aus 70 m3 je Saison
+  // Verbrauch je Minute Austragung: Median der Intervalle, sonst Startwert 1 m3 je Stunde Austragung
   const raten: number[] = [];
   for (let i = 1; i < f.length; i++) { const a = f[i - 1], b = f[i]; if (a.ymd < von) continue;
     const A = voll(a.ymd, b.ymd) + nach(a) + vor(b), m3 = SZ.BUNKER * (1 - b.rest / 100); if (A >= 60 && m3 > 0) raten.push(m3 / A); }
@@ -137,17 +146,7 @@ async function schnitzelPruefen(heute: string): Promise<string | null | undefine
     if (temps[y] != null) { asH += tage[y]; hs14 += hgt(temps[y]); nH++; } }
   const mittelA = nT ? as / nT : 0, rateAH = nH >= 5 && hs14 >= 10 && asH > 0 ? asH / hs14 : null;
   let k = median(raten), quelle = raten.length ? `${raten.length} Auffüllung${raten.length === 1 ? "" : "en"}` : "erste Schätzung";
-  if (!k) {
-    const n = new Date(), y = n.getUTCMonth() >= 8 ? n.getUTCFullYear() - 1 : n.getUTCFullYear() - 2, key = `schnitzel_hgt_${y}`;
-    let hs = (await blob.getJSON(key).catch(() => null)) as number | null;
-    if (!hs) { try {
-      const a = await (await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${SZ.LAT}&longitude=${SZ.LON}&start_date=${y}-09-01&end_date=${y + 1}-04-30&daily=temperature_2m_mean&timezone=Europe%2FZurich`)).json();
-      const t: (number | null)[] = a?.daily?.temperature_2m_mean ?? []; const ok = t.filter((v) => v != null) as number[];
-      if (ok.length >= 200) { hs = Math.round(ok.reduce((s, v) => s + hgt(v), 0)); await blob.setJSON(key, hs); }
-    } catch (_) { /* Normalwert */ } }
-    hs = hs || SZ.HGT_NORMAL;
-    if (rateAH) k = SZ.SAISON_M3 / (rateAH * hs); else if (mittelA > 0) k = SZ.SAISON_M3 / (mittelA * 242);
-  }
+  if (!k && (rateAH || mittelA > 0)) k = SZ.START_M3_H / 60;   // k = m3 je Minute
   if (!k) return undefined;
   const X = f[f.length - 1]; if (X.ymd < von) return undefined;
   const seitA = voll(X.ymd, null) + nach(X), inhalt = Math.max(0, SZ.BUNKER - k * seitA), pct = (inhalt / SZ.BUNKER) * 100;

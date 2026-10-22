@@ -334,7 +334,10 @@ Füllstand und als zwei Spalten (auf dem Handy nacheinander):
   7-Tage-Prognose von Open-Meteo, weiter weg deren Mittel. Daraus der Tag, an dem
   die Box voll ist (100 %).
 - **Füllstand beim Leeren:** Auswahlbox 10–100 % in 10-%-Schritten (Standard 90 %, im Browser gemerkt). Sie gilt als Füllstand der Leerung, die man mit **Asche geleert** einträgt. Die Prognose rechnet davon unabhängig immer bis zur vollen Box (100 %).
-- **«Aschebox – letzte Leerungen»:** Je Leerung der Füllstand beim Leeren (gross, mit farbigem Balken wie der Füllstand oben), die Tage seit der vorherigen (bzw. dem Saisonstart), die Brennzeit und die Austragung im Intervall und die Brennzeit auf 100 % hochgerechnet (die letzten 10), oben die laufende Periode. Auf dem Handy als kompakte Liste (je Leerung zwei Zeilen), ab 1100 Pixeln Breite als Tabelle. Die Leerungen stehen im Val-Town-Blob `asche_leerungen` (Zeitpunkte und Füllstand je Leerung); Tage und Brennzeiten werden daraus im Browser gerechnet, die Tageswerte je Tag liegen im `localStorage` (`hz_tag_…`).
+- **«Aschebox – letzte Leerungen»:** Je Leerung der Füllstand beim Leeren (gross, mit farbigem Balken wie der Füllstand oben), die Tage seit der vorherigen (bzw. dem Saisonstart), die Brennzeit und die Austragung im Intervall und die Brennzeit auf 100 % hochgerechnet (die letzten 10), oben die laufende Periode. Auf dem Handy als kompakte Liste (je Leerung zwei Zeilen), ab 1100 Pixeln Breite als Tabelle. Die Leerungen stehen im Val-Town-Blob `asche_leerungen` (Zeitpunkte und Füllstand je Leerung); Tage und Brennzeiten werden daraus im Browser gerechnet, die Tageswerte je Tag liegen im `localStorage` (`hz_tag2_…`).
+  Mit dem **Umschalter** im Kopf des Bereichs (**Asche / Schnitzel-Bunker / Lager**, Auswahl im Browser gemerkt, `hz_verlauf`) zeigt derselbe Platz stattdessen
+  die **letzten Auffüllungen** des Bunkers (Füllstand vorher, eingefüllte Menge, Austragung im Intervall, Verbrauch je Stunde) oder die
+  **Lager-Einträge** (Bestand danach, seither entnommen, Anzahl Auffüllungen); jeweils oben die laufende Periode.
 
 | | |
 |---|---|
@@ -376,11 +379,15 @@ werden muss (bei **20 %**, ≈ 4 m³ Reserve).
 
 **Rechnung** (im Dashboard und gleich im Wächter):
 - **Mass:** die Laufzeit der Austragung (Feld 6, wie bei der Asche), je Tag gezählt und gespeichert.
+- **Störungszeit:** Meldet die Austragung eine Störung (Feld 6 = 0,2, im Diagramm rot: zu lange gelaufen), zählt der **ganze
+  Lauf bis zur Störung** plus die Störungsminuten als **Störungszeit** und nicht als Austragung – die Austragung hat in
+  dieser Zeit nichts gefördert (Beispiel 9.10.2026: 60 min Lauf + 13 min rot = 73 min Störungszeit, der Füllstand des
+  2-m³-Behälters fiel dabei auf null). Das gilt für Asche und Schnitzel, im Dashboard und im Wächter. Angezeigt als
+  «Störungszeit seit Auffüllen» im Schnitzel-Bunker und als KPI «Störungszeit Austragung» (zusammen mit «Austragung»)
+  im Tab *Heizung* über den gewählten Zeitraum, wie die Störzeit bei der Pumpe.
 - **Verbrauch je Stunde Austragung:** je Intervall zwischen zwei Auffüllungen 20 m³ × (100 % − Rest vor dem
   Auffüllen) ÷ Austragung im Intervall; Median der Intervalle. Die **Uhrzeit** teilt den Auffülltag wie bei der Asche.
-- **Erste Schätzung**, solange es noch kein ganzes Intervall gibt: **70 m³ je Heizsaison**, verteilt nach den
-  Heizgradtagen der letzten Saison (1.9.–30.4., Open-Meteo-Archiv; ohne Archiv 3300) und der Austragung je
-  Heizgradtag der letzten 14 Tage.
+- **Startwert**, solange es noch kein ganzes Intervall gibt: **1 m³ je Stunde Austragung** (Erfahrungswert).
 - **Inhalt jetzt** = 20 m³ − Verbrauch seit dem letzten Auffüllen (danach gilt der Bunker als voll).
 - **Prognose** bis 20 %: Austragung je Heizgradtag der letzten 14 Tage × Heizgradtage der 7-Tage-Prognose, danach
   deren Mittel.
