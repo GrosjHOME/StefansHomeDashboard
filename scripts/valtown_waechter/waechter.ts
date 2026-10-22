@@ -11,7 +11,7 @@
 //    (field6 = 1, Kontakt offen)? Der Kanal ist privat: Lese-Key in der Umgebungsvariablen PUMPWERK_READ_KEY.
 //  - meldet die PV-Steuerung die SD-Karte als OK (Kanal 172430, field7 = 1)?
 //  - ist die PV-Morgenprognose von heute um 06:00 entstanden (prognose.ts/morgens.ts im selben Val)?
-//  - muss der 20-m3-Schnitzel-Bunker in den naechsten SCHNITZEL_VORLAUF Tagen aufgefuellt werden (Rest unter 20 %)?
+//  - muss der 20-m3-Schnitzel-Bunker in den naechsten SCHNITZEL_VORLAUF Tagen aufgefuellt werden (Rest unter 10 %)?
 //    Gleiche Rechnung wie im Dashboard (Heizung -> Schnitzel-Bunker): Auffuellungen aus dem Blob "schnitzel_daten"
 //    (heizung.ts), Austragung (field6) je Tag aus Kanal 172428, im Blob "schnitzel_tage" gemerkt. Nur in der Heizsaison.
 //
@@ -33,7 +33,7 @@ const KESSEL_MIN = 50;   // Grad C, Kessel oben darunter = Feuer aus / Stoerung
 const HEIZSAISON = [9, 10, 11, 0, 1, 2, 3];   // Okt-Apr (Monatsindex 0-11)
 
 // Schnitzel-Bunker (wie SCHNITZEL im Dashboard)
-const SZ = { BUNKER: 20, SCHWELLE: 20, START_M3_H: 1, LAT: 46.966, LON: 7.742, KANAL: 172428 };
+const SZ = { BUNKER: 20, SCHWELLE: 10, START_M3_H: 1, LAT: 46.966, LON: 7.742, KANAL: 172428 };
 const SCHNITZEL_VORLAUF = 2;   // Tage: so frueh vor dem Auffuellen kommt die Mail
 const SZ_TAGE_VERSION = 3;   // 2 = Stoerungszeit zaehlt nicht als Austragung, 3 = Mai bis August zaehlt nichts (Logger nur zu Testzwecken)
 const SZ_TAGE_KEY = "schnitzel_tage", SZ_MAX_TAGE = 150, SZ_MAX_ABRUFE = 25;   // je Lauf hoechstens so viele Tage nachholen

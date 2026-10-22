@@ -2163,10 +2163,10 @@ ASCHE.panel={
    - Verbrauch = m3 je Minute Austragung: je Intervall zwischen zwei Auffuellungen 20 m3 x (100 % - Rest) / Austragung,
      Median der Intervalle (wie die Asche). Ohne eigene Intervalle gilt als Startwert START_M3_H (1 m3 je Stunde Austragung).
    - Inhalt jetzt = 20 m3 - Verbrauch x Austragung seit dem letzten Auffuellen (die Uhrzeit teilt den Tag wie bei der Asche).
-   - Prognose bis SCHWELLE (20 %): Austragung je Heizgradtag x Heizgradtage der 7-Tage-Prognose, danach deren Mittel.
+   - Prognose bis SCHWELLE (10 %): Austragung je Heizgradtag x Heizgradtage der 7-Tage-Prognose, danach deren Mittel.
    - Lager: "Lager gefuellt" setzt den Bestand (m3), jedes Auffuellen zieht 20 m3 x (100 % - Rest) ab.
    Gespeichert in heizung.ts (gleiche Adresse und gleicher Token wie die Asche), Blob "schnitzel_daten". */
-var SCHNITZEL={ BUNKER:20, LAGER:80, START_M3_H:1, SCHWELLE:20, _t:0 };
+var SCHNITZEL={ BUNKER:20, LAGER:80, START_M3_H:1, SCHWELLE:10, _t:0 };
 // Eintraege je Tag (mehrere am selben Tag: der letzte gilt): {f:[{ymd,ts,z,rest}], l:[{ymd,ts,z,m3}]} aufsteigend
 SCHNITZEL.daten=function(s){ s=s||{};
   var jeTag=function(liste, werte, feld, std){ var o={}; (liste||[]).slice().sort().forEach(function(z){ var ts=Date.parse(z); if(isNaN(ts)) return;
@@ -2213,7 +2213,7 @@ SCHNITZEL.rechne=function(tage, d, temps, teile){
   var L=d.l.length?d.l[d.l.length-1]:null, lager=null, lagerProg=null, auffuellungen=null;
   var lagerSeit=null;
   if(L){ lager=L.m3; var entSeit=0, nSeit=0; f.forEach(function(F){ if(F.ts>L.ts){ var q=B*(1-F.rest/100); lager-=q; entSeit+=q; nSeit++; } }); lagerSeit={ent:entSeit, n:nSeit}; lager=Math.max(0,lager);
-    auffuellungen=lager/(B*(1-SCHNITZEL.SCHWELLE/100));   // je Auffuellen von 20 % auf 100 %: 16 m3
+    auffuellungen=lager/(B*(1-SCHNITZEL.SCHWELLE/100));   // je Auffuellen von 10 % auf 100 %: 18 m3
     if(inhalt!==null && k) lagerProg=bis(lager+inhalt-B*SCHNITZEL.SCHWELLE/100, 400); }
   // Lager-Eintraege mit der Entnahme (Auffuellungen des Bunkers) seit dem vorherigen Eintrag
   var lagerHist=d.l.map(function(Li,i){ var von=i?d.l[i-1].ts:null, ent=null, n=0;
@@ -2222,7 +2222,7 @@ SCHNITZEL.rechne=function(tage, d, temps, teile){
   return {auff:f, lagerHist:lagerHist, lagerSeit:lagerSeit, k:k, quelle:quelle, nInt:raten.length, hist:hist, letzteTs:X?X.ts:null, letzteRest:X?X.rest:null, seitA:seitA, stoerSeit:stoerSeit, inhalt:inhalt, pct:pct,
     verbraucht:(inhalt!==null)?B-inhalt:null, prog:prog, mittelA:mittelA, rateAH:rateAH, nT:nT,
     lager:lager, lagerTs:L?L.ts:null, lagerProg:lagerProg, auffuellungen:auffuellungen}; };
-// Farbe: wenig im Bunker ist schlecht (bis 20 % rot, bis 40 % orange)
+// Farbe: wenig im Bunker ist schlecht (bis 10 % rot, bis 40 % orange)
 // Verlaeufe im Tab "Schnitzel-Bunker" und "Lager" (unter dem Fuellstand-Diagramm, neben der Asche)
 SCHNITZEL.tabellen=function(e, leer){
   var B=SCHNITZEL.BUNKER, zeit=ASCHE.fmtZeit, sz=[], lg=[];
