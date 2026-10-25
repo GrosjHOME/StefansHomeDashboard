@@ -10,7 +10,7 @@ aktualisiert sich im Takt des jeweiligen Loggers (die Seite lernt je Gerät aus 
 
 **Inhalt:** [Ansichten](#ansichten) · [Datenfluss](#datenfluss) ·
 [Projektstruktur](#projektstruktur) · [ThingSpeak-Kanäle](#thingspeak-kanäle) ·
-[Deployment](#deployment) · [Als App installieren](#als-app-installieren-pwa) · [Android-Widget](#android-widget-32) ·
+[Deployment](#deployment) · [Als App installieren](#als-app-installieren-pwa) · [Android-Widget](#android-widget-32) · [PV-Anteil am Laden](#pv-anteil-am-laden) ·
 [PV-Morgenprognose](#pv-morgenprognose-val-town) · [Asche-Prognose](#asche-prognose-val-town) · [Schnitzel-Prognose](#schnitzel-prognose-val-town) · [Geräte-Zähler](#geräte-zähler-val-town) · [Wächter](#wächter-val-town) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
 [Nutzung](#nutzung) · [Herkunft](#herkunft)
 
@@ -19,7 +19,7 @@ aktualisiert sich im Takt des jeweiligen Loggers (die Seite lernt je Gerät aus 
 | Tab | Was man sieht |
 |---|---|
 | ☀️&nbsp;**PV&#8209;Anlage** | Aktuelle Leistung gegen die Soll-Leistung aus der Prognose (Soll-Strich, Toleranzband ±10 %, mindestens ±0,5 kW, Farbverlauf orange → grün) · Energie heute/gestern/Monat/Jahr · Leistungsverlauf (heute mit der Morgenprognose von 06:00, blau gestrichelt) · Energie nach Tagen (mit 3-Tage-Prognose und Min/Max desselben Kalendertags der Vorjahre), Monaten und Jahren (laufende Periode gegen Ø und Min/Max **aller** Jahre ab 2014) · PV-Arbeit je Jahr · Strom und Spannung je MPP-Tracker · Tracker-Strom mittags zur Verlust-Diagnose · **Leistungsfaktor** (Ertrag ÷ Einstrahlung aus dem Open-Meteo-Archiv, wetterbereinigt, in % von 2014–16) |
-| 🚗&nbsp;**Wallbox** | Zwei Gruppen mit eigener Aktualität: **Wallbox** (Ladeleistung, PV-Ladevorgabe, Ladestrom-Begrenzung, Verbindung, geladene Menge) und **Auto** (VW ID.3 via Tibber: Ladezustand, Ziel, Reichweite, Verbindung = Stecker + Ladestatus, Restladezeit) · Verläufe |
+| 🚗&nbsp;**Wallbox** | Zwei Gruppen mit eigener Aktualität: **Wallbox** (Ladeleistung, PV-Ladevorgabe, Ladestrom-Begrenzung, Verbindung, geladene Menge) und **Auto** (VW ID.3 via Tibber: Ladezustand, Ziel, Reichweite, Verbindung = Stecker + Ladestatus, Restladezeit) · Verläufe · **PV-Anteil am Laden** je Ladevorgang und Monat (siehe [PV-Anteil am Laden](#pv-anteil-am-laden)) |
 | 🔥&nbsp;**Heizung** | **Kessel & Schnitzel** (Symbol: 🔥 Flamme = Feuer brennt, glühende Kohle = nur noch Glut; Kessel oben/mitte (unter Kessel oben Min/Max seit dem letzten Reset an der Steuerung; der Logger sendet beide abwechselnd in Feld 5), Abgas, Schnitzel-Füllstand, Temperatur vor dem Bunker) mit Veraltet-Warnung nur in der Heizsaison (Okt–Apr, sonst „Sommerpause") · **Brennbetrieb im Zeitraum**: Heizzyklen, Gluterhaltung (Glutstösse), Brennzeit, Ø Heizzyklus, **Austragung** (h) und **Störungszeit Austragung** (min), **Auslastung** = Brennanteil des Zeitraums, direkt aus den Heizungsdaten gerechnet (in Klammern vorübergehend der Wert des ThingSpeak-Skripts „TS" zum Gegenprüfen) (Zählung wie in HeizungTiba `docs/Heizzyklen-Auswertung-2010-2026.xlsx`: Abgas − Kessel > 30 K bis < 20 K, ab 60 s und 45 K, unter 5 min = Glutstoss; bei heissem Kessel zusätzlich Abgas-Sprung ab 30 K, der binnen 5 min abklingt) · Verläufe, darunter die **Temperatursteigung** (°C pro Minute von Kessel oben und mitte, über 6 min geglättet; Lesefehler der Fühler wie 0.0 oder -127 werden herausgefiltert) und der **Füllstand mit der Schnitzel-Austragung** (Feld 6 des Loggers: hellgrüner Streifen unten = Automatik an, blauer Bereich = Austragung läuft, Höhe = Füllmodus wenig/normal/viel, violett = von Hand, rot = Störung) · **Aschebox**: geschätzter Füllstand und voraussichtlicher Leerungstag aus der Brennzeit (Kapazität aus den eingetragenen Leerungen, Verbrauch voraus aus der Temperaturprognose), Knopf **Asche geleert** · **Schnitzel-Bunker** (20 m³): Füllstand aus der Laufzeit der Austragung, voraussichtlicher Tag zum Auffüllen (bei 10 %), Lagerbestand (80 m³), Knöpfe **Bunker aufgefüllt** und **Lager gefüllt** · darunter der **Verlauf** mit Umschalter *Asche / Schnitzel-Bunker / Lager / Saison* (letzte Leerungen, Auffüllungen, Lager-Einträge bzw. die **Saison-Bilanz** mit Vergleich zu früheren Wintern) |
 | 💧&nbsp;**Boiler** | Temperaturen Mitte/Unten mit den Schaltschwellen der Steuerung (Laden ein < 45 °C, aus > 58 bzw. 63 °C) · **Temperatursteigung** (°C pro Minute, über 20 min geglättet: Aufheizen, Auskühlen, Warmwasser-Entnahme) · Ladeleistung gegen Einschaltschwelle und PV · geladene Menge |
 | 🚰&nbsp;**Pumpwerk** | Frischwasser-Pumpwerk (Biral HPE Combo, Arduino-Logger im Repo `PumpwerkBiral`): Pumpenzustand in vier Stufen (**Ein** = gerade gestartet, **Läuft**, **Aus** = gerade ausgegangen, **Steht**; aus Signal und Zählern der letzten Minute abgeleitet), das Symbol im Titel folgt dem Zustand (**grün = Ein/Läuft**, **blau = Aus/Steht**, **rot = Störung**, grau = keine aktuellen Daten), Störung, Einschaltungen und Laufzeit heute und gesamt (Verschleiss), Störzeit · Zeitraum-Kennzahlen zur Schalthäufigkeit: **Max. Starts pro Stunde**, **Ø Laufdauer je Start**, **Kurzläufe unter 30 s** (Anteil der Starts, bei denen die Pumpe insgesamt weniger als 30 s lief; ein Lauf über eine Minutengrenze zählt als ein Lauf) und **Kürzeste Pause (Schätzung)** · **Tagesübersicht** der letzten 14 Tage (je Tag Starts, Laufzeit, Ø Laufdauer je Start, Max. Starts pro Stunde, Anteil Kurzläufe, Nachtstarts 0–5 Uhr; unabhängig vom gewählten Zeitraum) · Grafiken: **Laufsekunden pro Minute** (aus den sekundengenauen Zählern, mit Markern für Einschaltungen), Laufzeit heute, **Laufzeit je Lauf** (Liniengrafik: ein Punkt je Lauf, direkt verbunden, rot gestrichelte Linie bei 30 s) und dieselbe Grafik **mit Pumpenstatus** (blasser Streifen = Pumpe läuft, aus den Zählern berechnet), Einschaltungen heute, Störung, Gesamt (Laufzeit + Einschaltungen) |
@@ -255,6 +255,23 @@ System.
 > nur öffentliche Daten zeigt, ist das in Ordnung. Für den Play Store taugt der
 > Schlüssel nicht. Der Workflow erzeugt ihn beim ersten Build selbst, falls er
 > fehlt.
+
+## PV-Anteil am Laden
+
+Der Bereich **☀️ PV-Anteil am Laden** im Tab *Wallbox* zeigt, wie viel der Ladeenergie fürs Auto vom Dach kam –
+umschaltbar zwischen **Ladevorgänge** (die letzten 12: Zeit vom Einstecken bis zum Ausstecken, PV-Anteil mit Balken,
+geladene kWh, davon PV, angeschlossene Dauer; ein Ladevorgang über Mitternacht zählt als einer) und **Monate**
+(geladen, davon PV, Anteil, Anzahl Ladevorgänge). Oben steht der laufende Monat und die letzten 30 Tage.
+
+- **Rechnung:** Einen Hauszähler gibt es nicht. Geschätzt wird wie in der Regelung der Wallbox (Repo WallboxWeidmuller):
+  **PV-Überschuss = PV-Leistung − Boiler − Reserve** (Poti an der Wallbox); die Wallbox sendet diesen Wert jede Minute in
+  Feld 3 von Kanal 172228. Je Minute zählt von der Ladeleistung (Feld 4) höchstens der Überschuss als PV, der Rest als
+  Netzstrom. Ist die Reserve negativ gestellt (bewusst mit Netzstrom laden), zählt höchstens PV − Boiler (Kanäle 172430
+  Feld 1 und 502977 Feld 3). Integriert wie «Geladene Menge» (Trapez, Lücken unter 2 h). Die Grundlast des Hauses steckt nur
+  so weit drin, wie die Reserve sie abdeckt.
+- **Daten:** automatisch ab dem 1. des Vormonats; der Knopf «‹Monat› laden» holt jeweils einen früheren Monat einmal
+  von ThingSpeak. Tageswerte im Browser (`lade_tag1_…`, geladene Monate in `lade_monate`, Auswahl des Umschalters in `ld_tab`);
+  Tage mit einer Fehlerantwort von ThingSpeak werden nicht gemerkt.
 
 ## PV-Morgenprognose (Val Town)
 

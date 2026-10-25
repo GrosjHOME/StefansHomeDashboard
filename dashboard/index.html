@@ -1775,7 +1775,126 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
   };
 }
 
-var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox",
+/* ================= PV-Anteil am Laden (Wallbox) =================
+   Wie viel der Ladeenergie fuers Auto kam vom Dach? Einen Hauszaehler gibt es nicht - geschaetzt wird mit derselben Rechnung wie die
+   Regelung der Wallbox (Repo WallboxWeidmuller): Ueberschuss = PV-Leistung - Boiler - Reserve (Poti). Die Wallbox sendet diesen Wert
+   in field3 (W). Steht die Reserve negativ (bewusst mit Netzstrom laden), zaehlt hoechstens PV - Boiler als PV.
+   Je Minute: PV-Anteil = min(Ladeleistung, Ueberschuss); integriert wie "Geladene Menge" (Trapez, Luecken unter 2 h).
+   - Tageswerte (kWh, davon PV, Ladevorgaenge des Tages) im Browser gecacht (lade_tag1_YYYY-MM-DD), heute immer neu.
+   - Ladevorgang = vom Einstecken bis zum Ausstecken (field8 66/67 = angeschlossen), ueber Mitternacht zusammengesetzt.
+   - Automatisch ab dem 1. des Vormonats; fruehere Monate auf Knopfdruck (gemerkt in lade_monate). */
+var LADEN={ WB:172228, PV:172430, BO:502977, _t:0, _r:null, _laeuft:false, AB:"2023-01" };
+LADEN.folgetag=function(ymd){ var d=new Date(ymd+"T12:00:00"); d.setDate(d.getDate()+1); return ymdLocal(d); };
+// Werte eines Tages aus den Feeds von Wallbox, PV und Boiler
+LADEN.tagWerte=function(wb, pv, bo){
+  var ip=0, ib=0, lastPv=null, lastBo=null, prev=null, e=0, epv=0, seg=[], cur=null;
+  wb.forEach(function(x, idx){ var t=Date.parse(x.created_at);
+    while(ip<pv.length && Date.parse(pv[ip].created_at)<=t){ var v=num(pv[ip].field1); if(v!==null) lastPv={t:Date.parse(pv[ip].created_at), v:v}; ip++; }
+    while(ib<bo.length && Date.parse(bo[ib].created_at)<=t){ var w=num(bo[ib].field3); if(w!==null) lastBo={t:Date.parse(bo[ib].created_at), v:w}; ib++; }
+    var st=Math.round(num(x.field8)), angeschlossen=(st===66 || st===67);
+    // Session-Segmente: angeschlossen von ... bis ...; a = schon beim ersten Eintrag des Tags angeschlossen, z = noch beim letzten
+    if(angeschlossen){ if(!cur){ cur={s:t, e:t, kwh:0, pv:0, a:idx===0, z:false}; seg.push(cur); } cur.e=t; }
+    var c=num(x.field4); if(c===null) { if(!angeschlossen) cur=null; return; }
+    c=Math.max(0, c/1e6);                                                                     // kW (field4 in mW)
+    var f3=num(x.field3), pvW=(lastPv && t-lastPv.t<15*60000) ? lastPv.v : null, boW=(lastBo && t-lastBo.t<15*60000) ? Math.max(0,lastBo.v) : 0;
+    var ueb=pvW!==null ? (f3!==null ? Math.min(f3, pvW-boW) : pvW-boW) : (f3!==null ? f3 : 0);   // W
+    var p={t:t, c:c, pvc:Math.min(c, Math.max(0, ueb/1000))};
+    if(prev){ var dt=(t-prev.t)/36e5; if(dt>0 && dt<2){ var de=(prev.c+p.c)/2*dt, dp=(prev.pvc+p.pvc)/2*dt; e+=de; epv+=dp; if(cur){ cur.kwh+=de; cur.pv+=dp; } } }
+    prev=p; if(!angeschlossen) cur=null; });
+  if(cur) cur.z=true;
+  var r3=function(v){ return Math.round(v*1000)/1000; };
+  return {kwh:r3(e), pv:r3(epv), n:wb.length, seg:seg.map(function(x){ return {s:x.s, e:x.e, kwh:r3(x.kwh), pv:r3(x.pv), a:x.a, z:x.z}; })}; };
+// Tageswerte von vonYmd bis bisYmd (ohne: heute), wie ASCHE.tage: gecachte Tage aus dem Browser, fehlende bereichsweise holen
+LADEN.tage=function(vonYmd, bisYmd){ var heute=ymdLocal(new Date()), vorgestern=ymdLocal(new Date(Date.now()-2*864e5)), tage=[], fehlt=[];
+  var ende=(bisYmd && bisYmd<heute) ? bisYmd : heute;
+  for(var k=vonYmd; k<=ende; k=LADEN.folgetag(k)){ var c=k<heute?lsGet("lade_tag1_"+k):null, w=null;
+    if(c){ try{ w=JSON.parse(c); }catch(e){ w=null; } }
+    if(!w) fehlt.push(k); tage.push({ymd:k, w:w}); }
+  if(!fehlt.length) return Promise.resolve(tage);
+  var bereiche=[], cur=null; fehlt.forEach(function(k){ if(cur && LADEN.folgetag(cur.bis)===k) cur.bis=k; else { cur={von:k, bis:k}; bereiche.push(cur); } });
+  return Promise.all(bereiche.map(function(b){ var von=new Date(b.von+"T00:00:00").getTime(), bis=Math.min(new Date(LADEN.folgetag(b.bis)+"T00:00:00").getTime(), Date.now());
+      return Promise.all([holeBereich(LADEN.WB, von, bis, false), holeBereich(LADEN.PV, von, bis, true), holeBereich(LADEN.BO, von, bis, false)]); }))
+    .then(function(rs){ var wb={}, pv={}, bo={}, unsicher={};
+      var ein=function(o, r){ ((r&&r.feeds)||[]).forEach(function(x){ var k=ymdLocal(new Date(x.created_at)); (o[k]=o[k]||[]).push(x); }); };
+      rs.forEach(function(r,i){ ein(wb,r[0]); ein(pv,r[1]); ein(bo,r[2]);
+        if(r.some(function(x){ return !x || x.luecke; })) for(var k=bereiche[i].von; k<=bereiche[i].bis; k=LADEN.folgetag(k)) unsicher[k]=1; });   // Fehlerantwort: nicht merken
+      var zeit=function(a){ return a.sort(function(x,y){ return Date.parse(x.created_at)-Date.parse(y.created_at); }); };
+      tage.forEach(function(t){ if(t.w) return; t.w=LADEN.tagWerte(zeit(wb[t.ymd]||[]), zeit(pv[t.ymd]||[]), zeit(bo[t.ymd]||[]));
+        if(t.ymd<heute && !unsicher[t.ymd] && (t.w.n>0 || t.ymd<vorgestern)) lsSet("lade_tag1_"+t.ymd, JSON.stringify(t.w)); });
+      return tage; }); };
+// Ladevorgaenge aus den Tages-Segmenten, ueber Mitternacht zusammengesetzt (nur ab 0,1 kWh)
+LADEN.vorgaenge=function(tage){ var out=[], offen=null;
+  tage.forEach(function(t){ if(!t.w){ offen=null; return; }
+    t.w.seg.forEach(function(sg, i){
+      if(i===0 && sg.a && offen){ offen.e=sg.e; offen.kwh+=sg.kwh; offen.pv+=sg.pv; offen.z=sg.z; }
+      else { offen={s:sg.s, e:sg.e, kwh:sg.kwh, pv:sg.pv, z:sg.z}; out.push(offen); } });
+    var l=t.w.seg[t.w.seg.length-1]; if(!l || !l.z) offen=null; });
+  return out.filter(function(v){ return v.kwh>=0.1; }); };
+LADEN.geladen=function(){ var a=[]; try{ a=JSON.parse(lsGet("lade_monate")||"[]"); }catch(e){} return a.filter(function(m){ return /^\d{4}-\d{2}$/.test(m); }); };
+LADEN.monatStart=function(n){ var d=new Date(); d=new Date(d.getFullYear(), d.getMonth()-n, 1); return ymdLocal(d); };   // 1. des Monats vor n Monaten
+LADEN.MONAT=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+LADEN.farbe=function(pct){ return pct>=70?"var(--green)":(pct>=30?"var(--amber)":"var(--muted)"); };   // wenig PV ist kein Fehler (z. B. nachts bewusst geladen)
+LADEN.zeichnen=function(){ var r=LADEN._r, g=function(id){ return document.getElementById(id); }; if(!r || !g("ld-vg")) return;
+  var tage=r.tage, heute=ymdLocal(new Date()), p2=function(n){ return ("0"+n).slice(-2); };
+  var hm=function(ts){ var d=new Date(ts); return p2(d.getHours())+":"+p2(d.getMinutes()); };
+  var anteil=function(kwh, pv){ return kwh>0.05 ? pv/kwh*100 : null; };
+  var pctTxt=function(p){ return p===null ? "–" : fmt(p,0)+" %"; };
+  var dauer=function(ms){ var m=Math.round(ms/60000); return m<60 ? m+"\u00a0min" : Math.floor(m/60)+"\u00a0h\u00a0"+p2(m%60)+"\u00a0min"; };
+  // Ladevorgaenge (neueste zuerst, die letzten 12)
+  var vg=LADEN.vorgaenge(tage).reverse().slice(0,12).map(function(v){ var pc=anteil(v.kwh, v.pv), laeuft=v.z && ymdLocal(new Date(v.e))===heute && Date.now()-v.e<15*60000;
+    var bis=laeuft ? "jetzt" : (ymdLocal(new Date(v.s))===ymdLocal(new Date(v.e)) ? hm(v.e) : ASCHE.fmtZeit(v.e));
+    return {akt:laeuft, titel:ASCHE.fmtZeit(v.s)+" – "+bis, gross:pctTxt(pc), pct:pc, farbe:pc===null?"":LADEN.farbe(pc),
+      zellen:[fmt(v.kwh,1)+" kWh", fmt(v.pv,1)+" kWh", dauer(v.e-v.s)],
+      klein:[fmt(v.kwh,1)+" kWh geladen", "davon "+fmt(v.pv,1)+" kWh PV", (laeuft?"angeschlossen seit ":"angeschlossen ")+dauer(v.e-v.s)]}; });
+  ASCHE.verlauf(g("ld-vg"), ["Ladevorgang","PV-Anteil","Geladen","davon PV","Angeschlossen"], vg, "Keine Ladevorgänge im geladenen Zeitraum.");
+  // Monate (nur ganz geladene, der laufende bis heute)
+  var mo={}; tage.forEach(function(t){ if(!t.w) return; var m=t.ymd.slice(0,7); (mo[m]=mo[m]||{kwh:0, pv:0, tage:0}); mo[m].kwh+=t.w.kwh; mo[m].pv+=t.w.pv; mo[m].tage++; });
+  var vgM={}; LADEN.vorgaenge(tage).forEach(function(v){ var m=ymdLocal(new Date(v.s)).slice(0,7); vgM[m]=(vgM[m]||0)+1; });
+  var monate=Object.keys(mo).filter(function(m){ var d=new Date(+m.slice(0,4), +m.slice(5,7), 0).getDate(); return mo[m].tage>=d || m===heute.slice(0,7); }).sort().reverse();
+  var rowsM=monate.map(function(m){ var x=mo[m], pc=anteil(x.kwh, x.pv), name=LADEN.MONAT[+m.slice(5,7)-1]+" "+m.slice(0,4)+(m===heute.slice(0,7)?" (bis heute)":"");
+    return {akt:m===heute.slice(0,7), titel:name, gross:pctTxt(pc), pct:pc, farbe:pc===null?"":LADEN.farbe(pc),
+      zellen:[fmt(x.kwh,0)+" kWh", fmt(x.pv,0)+" kWh", String(vgM[m]||0)], klein:[fmt(x.kwh,0)+" kWh geladen", "davon "+fmt(x.pv,0)+" kWh PV", (vgM[m]||0)+" Ladevorgänge"]}; });
+  ASCHE.verlauf(g("ld-mo"), ["Monat","PV-Anteil","Geladen","davon PV","Ladevorgänge"], rowsM, "Noch keine Monatswerte.");
+  // Zusammenfassung: laufender Monat und letzte 30 Tage
+  var sum=function(von){ var k=0, pv=0; tage.forEach(function(t){ if(t.w && t.ymd>=von){ k+=t.w.kwh; pv+=t.w.pv; } }); return {k:k, pv:pv}; };
+  var mm=sum(heute.slice(0,7)+"-01"), d30=sum(ymdLocal(new Date(Date.now()-29*864e5)));
+  var satz=function(n, s){ var pc=anteil(s.k, s.pv); return "<b>"+n+"</b>: "+fmt(s.k,0)+" kWh geladen"+(pc===null?"":", davon "+fmt(s.pv,0)+" kWh <b style=\"color:"+LADEN.farbe(pc)+"\">("+fmt(pc,0)+" %)</b> aus PV"); };
+  if(g("ld-sum")) g("ld-sum").innerHTML=satz(LADEN.MONAT[new Date().getMonth()], mm)+" · "+satz("letzte 30 Tage", d30);
+  // Knopf fuer den naechstaelteren Monat
+  var b=g("ld-mehr"); if(b){ var erster=tage.length?tage[0].ymd:heute, d=new Date(erster+"T12:00:00"), vm=ymdLocal(new Date(d.getFullYear(), d.getMonth()-1, 1)).slice(0,7);
+    if(vm>=LADEN.AB && !LADEN._laeuft){ b.style.display=""; b.textContent=LADEN.MONAT[+vm.slice(5,7)-1]+" "+vm.slice(0,4)+" laden"; b.dataset.m=vm; } else b.style.display="none"; } };
+LADEN.TAB={vg:"Ladevorgänge", mo:"Monate"};
+LADEN.tab=function(){ var t=lsGet("ld_tab"); return LADEN.TAB[t]?t:"vg"; };
+LADEN.panel={
+  reset:function(){ LADEN._t=0; },
+  html:function(){ return ""; },
+  htmlTab:function(){ var sel=LADEN.tab(), anz=function(k){ return k===sel?"":' style="display:none"'; };
+    return '<div class="panel"><h2>☀️ PV-Anteil am Laden <span class="seg" id="ld-seg">'+
+      Object.keys(LADEN.TAB).map(function(k){ return '<button data-t="'+k+'"'+(k===sel?' class="active"':'')+'>'+LADEN.TAB[k]+'</button>'; }).join("")+'</span></h2>'+
+      '<div class="note" id="ld-sum" style="margin:0 0 8px">wird geladen…</div>'+
+      '<div id="ld-vg" class="tbl-wrap"'+anz("vg")+'></div><div id="ld-mo" class="tbl-wrap"'+anz("mo")+'></div>'+
+      '<div class="frei" style="margin:8px 0 0;padding:0;background:transparent;box-shadow:none"><button class="btn" id="ld-mehr" style="display:none"></button><span class="frei-msg" id="ld-msg"></span></div>'+
+      '<details class="note as-info"><summary>So wird gerechnet</summary>Einen Hauszähler gibt es nicht. Geschätzt wird wie in der Regelung der Wallbox: <b>PV-Überschuss</b> = PV-Leistung − Boiler − Reserve (Poti an der Wallbox, gesendet als Feld 3). '+
+      'Je Minute zählt vom Laden höchstens dieser Überschuss als PV, der Rest als Netzstrom. Ist die Reserve negativ gestellt (bewusst mit Netzstrom laden), zählt höchstens PV − Boiler. '+
+      'Die Grundlast des Hauses steckt nur so weit drin, wie die Reserve sie abdeckt. <b>Ladevorgang</b> = vom Einstecken bis zum Ausstecken. Tageswerte im Browser gemerkt; ältere Monate lädt der Knopf einmal von ThingSpeak.</details></div>'; },
+  bind:function(){ var g=function(id){ return document.getElementById(id); };
+    var seg=g("ld-seg"); if(seg) seg.addEventListener("click",function(ev){ var b=ev.target.closest("button"); if(!b||!b.dataset.t) return; lsSet("ld_tab", b.dataset.t);
+      Object.keys(LADEN.TAB).forEach(function(k){ var el=g("ld-"+k); if(el) el.style.display=(k===b.dataset.t)?"":"none"; var bb=document.querySelector('#ld-seg button[data-t="'+k+'"]'); if(bb) bb.className=(k===b.dataset.t)?"active":""; }); });
+    var b=g("ld-mehr"); if(b) b.addEventListener("click",function(){ var m=b.dataset.m, msg=g("ld-msg"); if(!m || LADEN._laeuft) return;
+      LADEN._laeuft=true; b.style.display="none"; if(msg){ msg.textContent="lädt "+LADEN.MONAT[+m.slice(5,7)-1]+" …"; msg.style.color=""; }
+      var ende=ymdLocal(new Date(+m.slice(0,4), +m.slice(5,7), 0));
+      LADEN.tage(m+"-01", ende).then(function(t){ LADEN._r.tage=t.concat(LADEN._r.tage.filter(function(x){ return x.ymd>ende; }));
+          var a=LADEN.geladen(); if(a.indexOf(m)<0) a.push(m); lsSet("lade_monate", JSON.stringify(a)); if(msg) msg.textContent=""; })
+        .catch(function(e){ console.error(e); if(msg){ msg.textContent="Nicht geladen – nochmals versuchen."; msg.style.color="var(--red)"; } })
+        .then(function(){ LADEN._laeuft=false; LADEN.zeichnen(); }); }); },
+  load:function(){ if(Date.now()-LADEN._t<600000) return; LADEN._t=Date.now();
+    // ab dem 1. des Vormonats, dazu die schon einmal geladenen frueheren Monate (aus dem Browser)
+    var von=LADEN.monatStart(1); LADEN.geladen().forEach(function(m){ if(m+"-01"<von) von=m+"-01"; });
+    LADEN.tage(von).then(function(t){ LADEN._r={tage:t}; LADEN.zeichnen(); })
+      .catch(function(e){ LADEN._t=0; console.error(e); var s=document.getElementById("ld-sum"); if(s){ s.textContent="Daten konnten nicht geladen werden."; s.style.color="var(--red)"; } }); }
+};
+
+var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox", extra:LADEN.panel,
   // Zwei Quellen getrennt: Wallbox live (Kanal 172228, Minutentakt) und Auto (ID.3 via
   // Tibber Data API, GitHub-Actions-Poller, Kanal 3514838) - mit eigener Aktualitaet.
   sections:[
