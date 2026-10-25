@@ -268,8 +268,10 @@ System.
 
 Der Bereich **☀️ PV-Anteil am Laden** im Tab *Wallbox* zeigt, wie viel der Ladeenergie fürs Auto vom Dach kam –
 umschaltbar zwischen **Ladevorgänge** (die letzten 12: Zeit vom Einstecken bis zum Ausstecken, PV-Anteil mit Balken,
-geladene kWh, davon PV, angeschlossene Dauer; ein Ladevorgang über Mitternacht zählt als einer) und **Monate**
-(geladen, davon PV, Anteil, Anzahl Ladevorgänge). Oben steht der laufende Monat und die letzten 30 Tage.
+geladene kWh, davon PV, angeschlossene Dauer; ein Ladevorgang über Mitternacht zählt als einer), **Monate** und **Jahre**.
+Monate und Jahre sind gestapelte Balken: unten **grün der PV-Teil**, oben **orange der Netz-Teil**, die Höhe = geladene kWh,
+darüber der PV-Anteil in % (auf dem Handy die letzten 12 Monate, breit 24; Tippen/Zeigen zeigt kWh, davon PV, Netz und die
+Anzahl Ladevorgänge). Ein Jahr mit * ist nicht ganz geladen. Oben steht der laufende Monat und die letzten 30 Tage.
 
 - **Rechnung:** Einen Hauszähler gibt es nicht. Geschätzt wird wie in der Regelung der Wallbox (Repo WallboxWeidmuller):
   **PV-Überschuss = PV-Leistung − Boiler − Reserve** (Poti an der Wallbox); die Wallbox sendet diesen Wert jede Minute in
@@ -278,7 +280,7 @@ geladene kWh, davon PV, angeschlossene Dauer; ein Ladevorgang über Mitternacht 
   Feld 1 und 502977 Feld 3). Integriert wie «Geladene Menge» (Trapez, Lücken unter 2 h). Die Grundlast des Hauses steckt nur
   so weit drin, wie die Reserve sie abdeckt.
 - **Daten:** automatisch ab dem 1. des Vormonats; der Knopf «‹Monat› laden» holt jeweils einen früheren Monat einmal
-  von ThingSpeak. Tageswerte im Browser (`lade_tag1_…`, geladene Monate in `lade_monate`, Auswahl des Umschalters in `ld_tab`);
+  von ThingSpeak, im Reiter *Jahre* «‹Jahr› laden» gleich alle fehlenden Monate bis zum Januar (monatsweise nacheinander). Tageswerte im Browser (`lade_tag1_…`, geladene Monate in `lade_monate`, Auswahl des Umschalters in `ld_tab`);
   Tage mit einer Fehlerantwort von ThingSpeak werden nicht gemerkt.
 
 ## PV-Morgenprognose (Val Town)

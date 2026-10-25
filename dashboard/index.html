@@ -620,16 +620,23 @@ function lineChart(holder, series, opts){
 function barChart(holder, bars, opts){
   opts=opts||{}; if(!bars.length){ holder.innerHTML='<div class="chart-empty">noch keine Daten</div>'; return; }
   var W=opts.autoW?Math.max(1000,Math.round(holder.clientWidth||0)):1000;   // autoW wie bei lineChart
+  // kompakt: auf schmalen Bildschirmen schmaleres Koordinatensystem, damit die Schrift lesbar bleibt (Handy ~500 statt 1000)
+  // und auf breiten nicht riesig (Schrift etwa wie in den anderen Grafiken)
+  if(opts.kompakt && holder.clientWidth) W=Math.max(500, Math.round(holder.clientWidth*1.4));
   var H=300,padL=58,padR=16,padT=28,padB=48,n=bars.length;
   // gestapelte Balken moeglich: b.v = unteres Segment, b.v2 = oberes Segment (color2).
   // Optional: b.lo/b.hi = feine Striche (z. B. Min/Max der Vorjahre), b.show = angezeigter
-  // Wert (Beschriftung + Tooltip) statt der Stapelsumme, b.tipExtra = 3. Tooltip-Zeile.
+  // Wert (Beschriftung + Tooltip) statt der Stapelsumme, b.tipExtra = 3. Tooltip-Zeile,
+  // b.labTxt = Text ueber dem Balken statt der Zahl (z. B. "90 %").
   function total(b){ return b.v+(b.v2||0); }
   // b.mark = blauer Strich in Balkenbreite (z. B. Morgenprognose des Tages)
   function top(b){ return Math.max(total(b), b.hi||0, b.mark||0); }
   var vMax=niceMax(Math.max.apply(null,bars.map(top)));
   function Y(v){ return padT+(H-padT-padB)*(1-v/vMax); }
   var slot=(W-padL-padR)/n, bw=slot*0.6, grid="",yl="";
+  if(opts.kompakt) bw=Math.min(bw, 150);   // wenige Balken (z. B. ein Jahr): nicht ueber die ganze Breite
+  // kompakt und eng (viele Balken auf dem Handy): kleinere Schrift, "%" und Jahr in der Achse weglassen
+  var eng=opts.kompakt && slot<75, fsB=opts.kompakt ? Math.max(13, Math.min(19, Math.round(slot*0.4))) : 19;
   [0,vMax/2,vMax].forEach(function(v){ var y=Y(v);
     grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';
     yl+='<text x="'+(padL-8)+'" y="'+(y+7)+'" text-anchor="end" font-size="21" fill="var(--muted)">'+ylab(v)+'</text>'; });
@@ -645,8 +652,8 @@ function barChart(holder, bars, opts){
     // Beschriftung direkt ueber dem Balken; nur wenn der Max-Strich bzw. der Prognose-Strich sie
     // ueberdecken wuerde (knapp darueber), weicht sie ueber den Strich aus.
     var yLab=yTop; [b.hi,b.mark].forEach(function(lv){ if(lv==null)return; var yh=Y(lv); if(yh<=yLab && yh>yLab-26) yLab=yh; });
-    if(!many) r+='<text x="'+(x+bw/2)+'" y="'+(yLab-6)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+fmt(b.show!=null?b.show:tp,opts.dec||0)+'</text>';
-    if(b.label) r+='<text x="'+(x+bw/2)+'" y="'+(H-22)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+b.label+'</text>'; });
+    if(!many) r+='<text x="'+(x+bw/2)+'" y="'+(yLab-6)+'" text-anchor="middle" font-size="'+fsB+'" fill="var(--muted)">'+(b.labTxt!=null?(eng?b.labTxt.replace(" %",""):b.labTxt):fmt(b.show!=null?b.show:tp,opts.dec||0))+'</text>';
+    if(b.label) r+='<text x="'+(x+bw/2)+'" y="'+(H-22)+'" text-anchor="middle" font-size="'+fsB+'" fill="var(--muted)">'+(eng?b.label.split(" ")[0]:b.label)+'</text>'; });
   var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
     '<text x="6" y="18" font-size="18" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
   var legHtml="";
@@ -1888,19 +1895,34 @@ LADEN.zeichnen=function(){ var r=LADEN._r, g=function(id){ return document.getEl
   var mo={}; tage.forEach(function(t){ if(!t.w) return; var m=t.ymd.slice(0,7); (mo[m]=mo[m]||{kwh:0, pv:0, tage:0}); mo[m].kwh+=t.w.kwh; mo[m].pv+=t.w.pv; mo[m].tage++; });
   var vgM={}; LADEN.vorgaenge(tage).forEach(function(v){ var m=ymdLocal(new Date(v.s)).slice(0,7); vgM[m]=(vgM[m]||0)+1; });
   var monate=Object.keys(mo).filter(function(m){ var d=new Date(+m.slice(0,4), +m.slice(5,7), 0).getDate(); return mo[m].tage>=d || m===heute.slice(0,7); }).sort().reverse();
-  var rowsM=monate.map(function(m){ var x=mo[m], pc=anteil(x.kwh, x.pv), name=LADEN.MONAT[+m.slice(5,7)-1]+" "+m.slice(0,4)+(m===heute.slice(0,7)?" (bis heute)":"");
-    return {akt:m===heute.slice(0,7), titel:name, gross:pctTxt(pc), pct:pc, farbe:pc===null?"":LADEN.farbe(pc),
-      zellen:[fmt(x.kwh,0)+" kWh", fmt(x.pv,0)+" kWh", String(vgM[m]||0)], klein:[fmt(x.kwh,0)+" kWh geladen", "davon "+fmt(x.pv,0)+" kWh PV", (vgM[m]||0)+" Ladevorgänge"]}; });
-  ASCHE.verlauf(g("ld-mo"), ["Monat","PV-Anteil","Geladen","davon PV","Ladevorgänge"], rowsM, "Noch keine Monatswerte.");
+  // Monate und Jahre als gestapelte Balken: unten gruen der PV-Teil, oben orange der Netz-Teil, darueber der PV-Anteil
+  var balken=function(x, label, tip, n){ var pc=anteil(x.kwh, x.pv);
+    return {v:x.pv, v2:Math.max(0, x.kwh-x.pv), color:"var(--green)", color2:"var(--amber)", show:x.kwh, labTxt:pc===null?"":fmt(pc,0)+" %", label:label, tip:tip,
+      tipExtra:"davon "+fmt(x.pv,0)+" kWh PV"+(pc===null?"":" ("+fmt(pc,0)+" %)")+" · "+fmt(Math.max(0,x.kwh-x.pv),0)+" kWh Netz · "+n+" Ladevorgänge"}; };
+  var LEG=[{color:"var(--green)", label:"aus PV"}, {color:"var(--amber)", label:"Netz"}, {color:"transparent", label:"Zahl über dem Balken = PV-Anteil in %"}], KURZ=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+  var mAuf=monate.slice().reverse();
+  var mZeig=mAuf.slice(-((g("ld-mo") && g("ld-mo").clientWidth && g("ld-mo").clientWidth<600) ? 12 : 24));   // Handy: die letzten 12 Monate, breit 24
+  if(g("ld-mo")){ if(!mAuf.length) g("ld-mo").innerHTML='<div class="note">Noch keine Monatswerte.</div>';
+    else barChart(g("ld-mo"), mZeig.map(function(m, i){ var mi=+m.slice(5,7)-1;
+      return balken(mo[m], KURZ[mi]+((i===0 || mi===0) ? " "+m.slice(2,4) : ""), LADEN.MONAT[mi]+" "+m.slice(0,4)+(m===heute.slice(0,7)?" (bis heute)":""), vgM[m]||0); }), {unit:"kWh", legend:LEG, kompakt:true}); }
+  // Jahre: Summe der ganz geladenen Monate; fehlen Monate am Jahresanfang, steht "ab <Monat>" im Tooltip und ein * am Jahr
+  var ja={}; mAuf.forEach(function(m){ var y=m.slice(0,4); (ja[y]=ja[y]||{kwh:0, pv:0, n:0, ab:m}); ja[y].kwh+=mo[m].kwh; ja[y].pv+=mo[m].pv; ja[y].n+=vgM[m]||0; });
+  var jahre=Object.keys(ja).sort();
+  if(g("ld-ja")){ if(!jahre.length) g("ld-ja").innerHTML='<div class="note">Noch keine Jahreswerte.</div>';
+    else barChart(g("ld-ja"), jahre.map(function(y){ var x=ja[y], teil=x.ab.slice(5,7)!=="01";
+      return balken(x, y+(teil?"*":""), y+(teil?" (ab "+LADEN.MONAT[+x.ab.slice(5,7)-1]+")":"")+(y===heute.slice(0,4)?" bis heute":""), x.n); }), {unit:"kWh", legend:LEG, kompakt:true});
+    var hj=g("ld-ja-note"); if(hj) hj.textContent=jahre.some(function(y){ return ja[y].ab.slice(5,7)!=="01"; }) ? "* Jahr nicht ganz geladen – «Jahr laden» holt die fehlenden Monate." : ""; }
   // Zusammenfassung: laufender Monat und letzte 30 Tage
   var sum=function(von){ var k=0, pv=0; tage.forEach(function(t){ if(t.w && t.ymd>=von){ k+=t.w.kwh; pv+=t.w.pv; } }); return {k:k, pv:pv}; };
   var mm=sum(heute.slice(0,7)+"-01"), d30=sum(ymdLocal(new Date(Date.now()-29*864e5)));
   var satz=function(n, s){ var pc=anteil(s.k, s.pv); return "<b>"+n+"</b>: "+fmt(s.k,0)+" kWh geladen"+(pc===null?"":", davon "+fmt(s.pv,0)+" kWh <b style=\"color:"+LADEN.farbe(pc)+"\">("+fmt(pc,0)+" %)</b> aus PV"); };
   if(g("ld-sum")) g("ld-sum").innerHTML=satz(LADEN.MONAT[new Date().getMonth()], mm)+" · "+satz("letzte 30 Tage", d30);
-  // Knopf fuer den naechstaelteren Monat
+  // Knopf fuer frueher: im Reiter "Jahre" bis zum Januar (des ersten Jahres bzw. des Vorjahres), sonst ein Monat
   var b=g("ld-mehr"); if(b){ var erster=tage.length?tage[0].ymd:heute, d=new Date(erster+"T12:00:00"), vm=ymdLocal(new Date(d.getFullYear(), d.getMonth()-1, 1)).slice(0,7);
-    if(vm>=LADEN.AB && !LADEN._laeuft){ b.style.display=""; b.textContent=LADEN.MONAT[+vm.slice(5,7)-1]+" "+vm.slice(0,4)+" laden"; b.dataset.m=vm; } else b.style.display="none"; } };
-LADEN.TAB={vg:"Ladevorgänge", mo:"Monate"};
+    var jahr=LADEN.tab()==="ja", ziel=jahr ? vm.slice(0,4)+"-01" : vm; if(ziel<LADEN.AB) ziel=LADEN.AB;
+    if(vm>=LADEN.AB && !LADEN._laeuft){ b.style.display=""; b.textContent=jahr ? (vm.slice(5,7)==="12" ? "Jahr "+vm.slice(0,4)+" laden" : vm.slice(0,4)+" ab Januar laden") : LADEN.MONAT[+vm.slice(5,7)-1]+" "+vm.slice(0,4)+" laden";
+      b.dataset.m=ziel; b.dataset.bis=vm; } else b.style.display="none"; } };
+LADEN.TAB={vg:"Ladevorgänge", mo:"Monate", ja:"Jahre"};
 LADEN.tab=function(){ var t=lsGet("ld_tab"); return LADEN.TAB[t]?t:"vg"; };
 LADEN.panel={
   reset:function(){ LADEN._t=0; },
@@ -1909,20 +1931,27 @@ LADEN.panel={
     return '<div class="panel"><h2>☀️ PV-Anteil am Laden <span class="seg" id="ld-seg">'+
       Object.keys(LADEN.TAB).map(function(k){ return '<button data-t="'+k+'"'+(k===sel?' class="active"':'')+'>'+LADEN.TAB[k]+'</button>'; }).join("")+'</span></h2>'+
       '<div class="note" id="ld-sum" style="margin:0 0 8px">wird geladen…</div>'+
-      '<div id="ld-vg" class="tbl-wrap"'+anz("vg")+'></div><div id="ld-mo" class="tbl-wrap"'+anz("mo")+'></div>'+
+      '<div id="ld-vg" class="tbl-wrap"'+anz("vg")+'></div><div id="ld-mo"'+anz("mo")+'></div><div id="ld-ja"'+anz("ja")+'></div>'+
+      '<div class="note" id="ld-ja-note"'+anz("ja")+'></div>'+
       '<div class="frei" style="margin:8px 0 0;padding:0;background:transparent;box-shadow:none"><button class="btn" id="ld-mehr" style="display:none"></button><span class="frei-msg" id="ld-msg"></span></div>'+
       '<details class="note as-info"><summary>So wird gerechnet</summary>Einen Hauszähler gibt es nicht. Geschätzt wird wie in der Regelung der Wallbox: <b>PV-Überschuss</b> = PV-Leistung − Boiler − Reserve (Poti an der Wallbox, gesendet als Feld 3). '+
       'Je Minute zählt vom Laden höchstens dieser Überschuss als PV, der Rest als Netzstrom. Ist die Reserve negativ gestellt (bewusst mit Netzstrom laden), zählt höchstens PV − Boiler. '+
       'Die Grundlast des Hauses steckt nur so weit drin, wie die Reserve sie abdeckt. <b>Ladevorgang</b> = vom Einstecken bis zum Ausstecken. Tageswerte im Browser gemerkt; ältere Monate lädt der Knopf einmal von ThingSpeak.</details></div>'; },
   bind:function(){ var g=function(id){ return document.getElementById(id); };
     var seg=g("ld-seg"); if(seg) seg.addEventListener("click",function(ev){ var b=ev.target.closest("button"); if(!b||!b.dataset.t) return; lsSet("ld_tab", b.dataset.t);
-      Object.keys(LADEN.TAB).forEach(function(k){ var el=g("ld-"+k); if(el) el.style.display=(k===b.dataset.t)?"":"none"; var bb=document.querySelector('#ld-seg button[data-t="'+k+'"]'); if(bb) bb.className=(k===b.dataset.t)?"active":""; }); });
-    var b=g("ld-mehr"); if(b) b.addEventListener("click",function(){ var m=b.dataset.m, msg=g("ld-msg"); if(!m || LADEN._laeuft) return;
-      LADEN._laeuft=true; b.style.display="none"; if(msg){ msg.textContent="lädt "+LADEN.MONAT[+m.slice(5,7)-1]+" …"; msg.style.color=""; }
-      var ende=ymdLocal(new Date(+m.slice(0,4), +m.slice(5,7), 0));
-      LADEN.tage(m+"-01", ende).then(function(t){ LADEN._r.tage=t.concat(LADEN._r.tage.filter(function(x){ return x.ymd>ende; }));
-          var a=LADEN.geladen(); if(a.indexOf(m)<0) a.push(m); lsSet("lade_monate", JSON.stringify(a)); if(msg) msg.textContent=""; })
-        .catch(function(e){ console.error(e); if(msg){ msg.textContent="Nicht geladen – nochmals versuchen."; msg.style.color="var(--red)"; } })
+      Object.keys(LADEN.TAB).forEach(function(k){ var el=g("ld-"+k); if(el) el.style.display=(k===b.dataset.t)?"":"none"; var bb=document.querySelector('#ld-seg button[data-t="'+k+'"]'); if(bb) bb.className=(k===b.dataset.t)?"active":""; });
+      var jn=g("ld-ja-note"); if(jn) jn.style.display=(b.dataset.t==="ja")?"":"none";
+      LADEN.zeichnen(); });   // Knopf "laden" passt sich dem Reiter an
+    // Monate von dataset.m bis dataset.bis nacheinander, neuester zuerst (jeder fertige Monat ist sofort gemerkt und sichtbar)
+    var b=g("ld-mehr"); if(b) b.addEventListener("click",function(){ var von=b.dataset.m, bis=b.dataset.bis, msg=g("ld-msg"); if(!von || !bis || LADEN._laeuft) return;
+      LADEN._laeuft=true; b.style.display="none";
+      var liste=[]; for(var m=bis; m>=von; m=ymdLocal(new Date(+m.slice(0,4), +m.slice(5,7)-2, 1)).slice(0,7)) liste.push(m);
+      liste.reduce(function(p, m){ return p.then(function(){ if(msg){ msg.textContent="lädt "+LADEN.MONAT[+m.slice(5,7)-1]+" "+m.slice(0,4)+" …"; msg.style.color=""; }
+          var ende=ymdLocal(new Date(+m.slice(0,4), +m.slice(5,7), 0));
+          return LADEN.tage(m+"-01", ende).then(function(t){ LADEN._r.tage=t.concat(LADEN._r.tage.filter(function(x){ return x.ymd>ende; }));
+            var a=LADEN.geladen(); if(a.indexOf(m)<0) a.push(m); lsSet("lade_monate", JSON.stringify(a)); LADEN.zeichnen(); }); }); }, Promise.resolve())
+        .then(function(){ if(msg) msg.textContent=""; })
+        .catch(function(e){ console.error(e); if(msg){ msg.textContent="Nicht ganz geladen – nochmals versuchen (fertige Monate sind gemerkt)."; msg.style.color="var(--red)"; } })
         .then(function(){ LADEN._laeuft=false; LADEN.zeichnen(); }); }); },
   load:function(){ if(Date.now()-LADEN._t<600000) return; LADEN._t=Date.now();
     // ab dem 1. des Vormonats, dazu die schon einmal geladenen frueheren Monate (aus dem Browser)
