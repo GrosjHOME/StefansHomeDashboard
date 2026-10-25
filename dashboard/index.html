@@ -1538,7 +1538,8 @@ function simpleView(cfg){
         var v=L(k.field,k.gueltig); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
         el.textContent = k.map ? (v===null?"–":k.map(v, k.field2?L(k.field2):null)) : fmt(v,k.dec||0);
 if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
-        if(k.color) el.style.color = (v===null) ? "" : k.color(v); });
+        if(k.color) el.style.color = (v===null) ? "" : k.color(v);
+        if(k.unter){ var ue=g("kpi_"+i+"_unter"); if(ue) ue.textContent=k.unter.text(f)||""; } });   // Zusatzzeile unter dem Wert (z. B. Min/Max)
       if(g("head-meta")&&last.created_at) aktNeu(f);
       secStand(cfg.channel, last.created_at);
       // Ampel-Faerbung: KPI-Wert nach aktueller PV-Leistung gegenueber der Schwelle
@@ -1740,7 +1741,8 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
       // KPI-Kacheln (Text-Werte kleiner). Mit cfg.sections in beschriftete Gruppen getrennt -
       // je Gruppe eine Quelle mit eigener Aktualitaet ("Stand vor ...", ggf. veraltet).
       function cards(filter){ return cfg.kpis.map(function(k,i){ return filter(k) ? kpiCard(k.label,"kpi_"+i,k.unit||"",k.map?"txt":"",
-        k.pruef ? '<span class="chk" id="kpi_'+i+'_chk" title="'+k.pruef.titel+'"></span>' : "") : ""; }).join(""); }
+        k.pruef ? '<span class="chk" id="kpi_'+i+'_chk" title="'+k.pruef.titel+'"></span>' :
+        k.unter ? '<span class="chk" id="kpi_'+i+'_unter"'+(k.unter.titel?' title="'+k.unter.titel+'"':'')+'></span>' : "") : ""; }).join(""); }
       // Breit (ab 1100 px) stehen die Gruppen nebeneinander, jede Kachel gleich breit und ohne
       // Umbruch: Gruppe = so viele Spalten wie Kacheln, mindestens 2 (Platz fuer Titel + "Stand").
       var nSec=function(s){ return Math.max(2, cfg.kpis.filter(function(k){ return k.sec===s.key; }).length); };
@@ -2354,7 +2356,13 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung", extra:ext
     {key:"zyk", title:"♨️ Brennbetrieb im Zeitraum", channel:172428, staleMin:60, season:[9,10,11,0,1,2,3]}
   ],
   kpis:[
-    {sec:"hz",field:"field1",label:"Kessel oben",unit:"°C",dec:1,gueltig:kesselOk},
+    // Darunter Min/Max von Kessel oben seit dem letzten Reset (Knopf an der Steuerung): der Logger sendet beide abwechselnd
+    // in Feld 5, um ein Feld zu sparen. Aus den letzten vier Werten ist der kleinste das Minimum, der groesste das Maximum
+    // (das Minimum sinkt nur, das Maximum steigt nur) - so stimmt es auch, wenn eine Meldung ausfaellt.
+    {sec:"hz",field:"field1",label:"Kessel oben",unit:"°C",dec:1,gueltig:kesselOk,
+      unter:{titel:"Minimum und Maximum von Kessel oben seit dem letzten Reset an der Steuerung (Feld 5, abwechselnd gesendet)",
+        text:function(f){ var w=[]; for(var i=f.length-1;i>=0 && w.length<4;i--){ var v=num(f[i].field5); if(v!==null && kesselOk(v)) w.push(v); }
+          return w.length>=2 ? "Min "+fmt(Math.min.apply(null,w),1)+" · Max "+fmt(Math.max.apply(null,w),1)+" °C" : ""; }}},
     {sec:"hz",field:"field2",label:"Kessel mitte",unit:"°C",dec:1,gueltig:kesselOk},
     {sec:"hz",field:"field8",label:"Abgas",unit:"°C",dec:0,gueltig:abgasOk},
     {sec:"hz",field:"field4",label:"Füllstand",unit:"%",dec:0},
