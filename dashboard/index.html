@@ -33,6 +33,8 @@
   /* Moderne Top-Navigation */
   .nav{position:sticky; top:0; z-index:10; background:var(--nav); border-bottom:1px solid var(--line);
     box-shadow:var(--shadow); display:flex; align-items:center; gap:14px; padding:10px 16px; flex-wrap:wrap;}
+  .offline-bar{position:sticky; top:0; z-index:9; background:var(--amber); color:#1b1b1b; font-size:.85rem; font-weight:600; text-align:center; padding:6px 12px;}
+  .offline-bar[hidden]{display:none;}
   .brand{font-weight:700; font-size:1.05rem; display:flex; align-items:center; gap:7px; white-space:nowrap;}
   .tabs{display:flex; gap:6px; flex-wrap:wrap; flex:1;}
   .tabs a{cursor:pointer; text-decoration:none; color:var(--muted); font-weight:600; font-size:.92rem;
@@ -309,6 +311,7 @@
       <button id="info-btn" class="theme-btn" title="Info &amp; Version">ℹ️</button>
     </div>
   </header>
+  <div id="offline-bar" class="offline-bar" hidden role="status"></div>
   <main id="view"></main>
 
   <!-- Info-Fenster (Knopf ℹ️ oben rechts): Version, Autor, Updates, Quellen -->
@@ -358,7 +361,41 @@
 })();
 
 /* ================= Helfer ================= */
-function j(u){ return fetch(u,{cache:"no-store"}).then(function(r){return r.json();}); }
+// Daten holen (JSON). Ohne Verbindung (oder wenn der Server nicht antwortet) kommt die zuletzt gespeicherte Antwort
+// derselben Abfrage aus dem Cache (OFFLINE) - die Anzeige zeigt dann die letzten Werte mit dem Hinweis oben.
+function j(u){ return fetch(u,{cache:"no-store"}).then(function(r){ if(r.ok) OFFLINE.merken(u, r.clone()); return r.json(); })
+  .then(function(d){ OFFLINE.ok(); return d; },
+        function(err){ return OFFLINE.holen(u).then(function(d){ if(d===undefined) throw err; return d; }); }); }
+/* ---- Offline: letzte Daten aus dem Cache ----
+   Jede erfolgreiche Datenabfrage (ThingSpeak, Open-Meteo, Val Town) wird im Cache Storage des Browsers gemerkt (je Abfrage
+   hoechstens alle 5 min neu, aelter als 3 Tage wird weggeraeumt). Schluessel = Adresse ohne Lese-Key und bei Bereichen (start=)
+   ohne "end" (das Ende "jetzt" aendert sich bei jedem Abruf). Antworten aus dem Cache tragen __offline: holeBereich zaehlt sie als Luecke, damit
+   die Tages-Caches (Aschebox, Bilanz, PV-Anteil) keinen halben Tag fest speichern. */
+var OFFLINE={ CACHE:"zuhause-daten-v1", MAX_MS:3*864e5, NEU_MS:300000, _gemerkt:{}, stand:null, zuletzt:0 };
+OFFLINE.da=function(){ try{ return !!window.caches; }catch(e){ return false; } };
+OFFLINE.schluessel=function(u){ try{ var x=new URL(u); if(x.searchParams.has("start")) x.searchParams.delete("end");   // "end" allein (z. B. Monatsende) bleibt Teil der Abfrage
+     x.searchParams.delete("api_key"); return x.origin+x.pathname+"?"+x.searchParams.toString(); }catch(e){ return u; } };
+OFFLINE.merken=function(u, r){ if(!OFFLINE.da()) return; var k=OFFLINE.schluessel(u), jetzt=Date.now();
+  if(jetzt-(OFFLINE._gemerkt[k]||0)<OFFLINE.NEU_MS) return; OFFLINE._gemerkt[k]=jetzt;
+  r.blob().then(function(b){ return caches.open(OFFLINE.CACHE).then(function(c){ return c.put(k, new Response(b, {headers:{"Content-Type":"application/json","X-Zeit":String(jetzt)}})); }); })
+    .catch(function(){ delete OFFLINE._gemerkt[k]; }); };
+// gespeicherte Antwort oder undefined
+OFFLINE.holen=function(u){ if(!OFFLINE.da()) return Promise.resolve(undefined);
+  return caches.open(OFFLINE.CACHE).then(function(c){ return c.match(OFFLINE.schluessel(u)); }).then(function(hit){ if(!hit) return undefined;
+    var zeit=+hit.headers.get("X-Zeit")||0;
+    return hit.json().then(function(d){ if(d && typeof d==="object") try{ Object.defineProperty(d,"__offline",{value:zeit}); }catch(e){}
+      OFFLINE.melden(zeit); return d; }); }).catch(function(){ return undefined; }); };
+OFFLINE.melden=function(zeit){ OFFLINE.zuletzt=Date.now(); if(zeit && (!OFFLINE.stand || zeit<OFFLINE.stand)) OFFLINE.stand=zeit;
+  var el=document.getElementById("offline-bar"); if(!el) return;
+  var d=new Date(OFFLINE.stand||Date.now()), p2=function(n){ return ("0"+n).slice(-2); }, heute=d.toDateString()===new Date().toDateString();
+  el.textContent="📴 Keine Verbindung – letzte gespeicherte Werte (Stand "+(heute?"":d.getDate()+"."+(d.getMonth()+1)+". ")+p2(d.getHours())+":"+p2(d.getMinutes())+")";
+  el.hidden=false; };
+// wieder eine Antwort aus dem Netz: Hinweis weg (erst, wenn 30 s keine Antwort mehr aus dem Cache kam - sonst flackert er bei halbem Ausfall)
+OFFLINE.ok=function(){ if(!OFFLINE.stand || Date.now()-OFFLINE.zuletzt<30000) return; OFFLINE.stand=null; var el=document.getElementById("offline-bar"); if(el) el.hidden=true; };
+OFFLINE.aufraeumen=function(){ if(!OFFLINE.da()) return; caches.open(OFFLINE.CACHE).then(function(c){ return c.keys().then(function(ks){
+  return Promise.all(ks.map(function(k){ return c.match(k).then(function(h){ if(!h || Date.now()-(+h.headers.get("X-Zeit")||0)>OFFLINE.MAX_MS) return c.delete(k); }); })); }); }).catch(function(){}); };
+setTimeout(OFFLINE.aufraeumen, 10000);
+window.addEventListener("online", function(){ OFFLINE.zuletzt=0; if(typeof laden==="function") laden(); });   // Verbindung zurueck: sofort frisch laden
 function num(x){ return (x===null||x===undefined||x==="")?null:parseFloat(x); }
 function fmt(v,d){ return v===null?"–":v.toLocaleString("de-CH",{minimumFractionDigits:d,maximumFractionDigits:d}); }
 // "Aktualisiert vor 9 s": bei wenig Platz (nur Icons) nur "↻ vor 9 s" (CSS .akt-lang / .akt-kurz)
@@ -736,7 +773,7 @@ function ladeToken(mode){ return state.ansichtNr+(mode==null?"":"|"+zeitSchluess
 function holeBereich(ch, von, bis, withKey, datei){ datei=datei||"feeds.json";
   var fenster=[]; for(var s=von; s<bis; s+=FREI_FENSTER_MS) fenster.push([s, Math.min(s+FREI_FENSTER_MS, bis)]);
   return Promise.all(fenster.map(function(w){ return j(api(ch, "/"+datei+"?start="+encodeURIComponent(tsStamp(w[0]))+"&end="+encodeURIComponent(tsStamp(w[1])), withKey)); }))
-    .then(function(rs){ var seen={}, feeds=[], luecke=false; rs.forEach(function(r){ if(!r||!r.feeds) luecke=true;   // Fenster ohne feeds = Fehlerantwort
+    .then(function(rs){ var seen={}, feeds=[], luecke=false; rs.forEach(function(r){ if(!r||!r.feeds||r.__offline) luecke=true;   // Fenster ohne feeds = Fehlerantwort; aus dem Offline-Cache = evtl. unvollstaendig
       ((r&&r.feeds)||[]).forEach(function(x){ if(!seen[x.entry_id]){ seen[x.entry_id]=1; feeds.push(x); } }); }); return {feeds:feeds, luecke:luecke}; }); }
 function holeZeitraum(ch, mode, withKey, datei){ datei=datei||"feeds.json";
   if(mode!=="frei") return j(api(ch, periodQuery(mode).replace("feeds.json",datei), withKey));
@@ -1308,7 +1345,7 @@ function pvMonthTotal(year,m0){
   if(!isCur){ var c=lsGet(key); if(c!==null && parseFloat(c)>=1) return Promise.resolve(parseFloat(c)); }
   var path = isCur ? "/feeds.json?results=1" : "/feeds.json?results=1&end="+encodeURIComponent(tsEnd(new Date(year,m0+1,0)));
   return pvEinmal(key, function(){ return j(api(PV.CH,path,true)).then(function(d){ var f=(d&&d.feeds)?d.feeds:[]; var v=f.length?num(f[f.length-1].field3):null;
-    if(v!==null && !isCur) lsSet(key,v); return v; }); });
+    if(v!==null && !isCur && !(d&&d.__offline)) lsSet(key,v); return v; }); });
 }
 // Jahressumme (kWh): Ist-Wert falls vorhanden, sonst laufendes Jahr live (Feld 4)
 function pvYearTotal(year){
@@ -1318,7 +1355,7 @@ function pvYearTotal(year){
   if(!isCur){ var c=lsGet(key); if(c!==null && parseFloat(c)>=1) return Promise.resolve(parseFloat(c)); }
   var path = isCur ? "/feeds.json?results=1" : "/feeds.json?results=1&end="+encodeURIComponent(tsEnd(new Date(year,11,31)));
   return pvEinmal(key, function(){ return j(api(PV.CH,path,true)).then(function(d){ var f=(d&&d.feeds)?d.feeds:[]; var v=f.length?num(f[f.length-1].field4):null;
-    if(v!==null && !isCur) lsSet(key,v); return v; }); });
+    if(v!==null && !isCur && !(d&&d.__offline)) lsSet(key,v); return v; }); });
 }
 
 // Laufender Monat/Jahr gegen die Vorjahre: Ist (orange) + hellgelb aufgestockt bis zum
@@ -1377,7 +1414,7 @@ function pvDayTotals(year, cal){
            "&timescale=60&timezone=Europe%2FZurich";
   return j(api(PV.CH,path,true)).then(function(d){
     var mx=pvTagesSegmente(d&&d.feeds, function(x){ return x.created_at.slice(0,10); });   // Zeitstempel in Zuercher Zeit (timezone)
-    miss.forEach(function(dt){ var k=ymdStr(dt); if(mx[k]){ out[k.slice(5)]=mx[k].v; lsSet("pv_d_"+k,mx[k].v); } });   // nur Vorhandenes cachen
+    miss.forEach(function(dt){ var k=ymdStr(dt); if(mx[k]){ out[k.slice(5)]=mx[k].v; if(!(d&&d.__offline)) lsSet("pv_d_"+k,mx[k].v); } });   // nur Vorhandenes cachen, nichts aus dem Offline-Cache
     return out; });
 }
 // Liefert eine Funktion range(t): Min/Max der Tagesertraege aller Vorjahre fuer "heute + t Tage"

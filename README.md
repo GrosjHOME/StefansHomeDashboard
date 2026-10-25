@@ -87,7 +87,7 @@ Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
 |---|---|
 | `dashboard/index.html` | Das Dashboard: Single-Page-App mit Tabs, Dark-Mode, eigene Charts direkt aus der ThingSpeak-API (keine iframes), Auto-Refresh im Takt des Loggers (meist 60 s) |
 | `dashboard/manifest.webmanifest` | PWA-Manifest: App-Name, Icons, Farben, Startadresse |
-| `dashboard/sw.js` | Service Worker: macht die Seite installierbar, startet auch ohne Netz |
+| `dashboard/sw.js` | Service Worker: macht die Seite installierbar, startet auch ohne Netz (die letzten Daten merkt sich die Seite selbst) |
 | `dashboard/icons/` | App-Icons (SVG-Quellen + PNGs 192/512, randlos für Android, Apple-Icon) |
 | `android-widget/` | Android-App mit 3×2-Widget (Live-Werte), gebaut von `.github/workflows/android-widget.yml` |
 | `index.html` | Weiterleitung auf `dashboard/` |
@@ -166,6 +166,14 @@ automatisch mit jedem Push nach `main`, kein Store nötig.
 | **Android** | Live-URL in **Chrome** öffnen → Menü ⋮ → **App installieren** (bzw. *Zum Startbildschirm hinzufügen* → *Installieren*). Die App „Zuhause" erscheint in der App-Liste. |
 | **Windows** | Live-URL in **Edge** öffnen → Menü … → **Apps** → **Diese Website als App installieren** (in Chrome: Installieren-Symbol in der Adressleiste). Danach im Startmenü und anheftbar an die Taskleiste. |
 | **iPhone/iPad** | Live-URL in **Safari** öffnen → Teilen → **Zum Home-Bildschirm**. |
+
+**Ohne Verbindung (offline):** Die App startet auch ohne Netz und zeigt die **letzten gespeicherten Werte** statt leerer
+Kacheln, mit dem orangen Hinweis „📴 Keine Verbindung – letzte gespeicherte Werte (Stand …)“ unter der Kopfzeile. Dazu
+merkt sich die Seite jede erfolgreiche Datenabfrage (ThingSpeak, Open-Meteo, Val Town) im Cache des Browsers
+(`zuhause-daten-v1`, je Abfrage höchstens alle 5 min neu, älter als 3 Tage wird weggeräumt). Das gilt auch, wenn nur
+ThingSpeak nicht antwortet. Sobald wieder Daten aus dem Netz kommen, verschwindet der Hinweis; kommt die Verbindung zurück,
+lädt die Seite sofort neu. Werte aus diesem Cache werden nie in die Tages-Caches (Aschebox, Saison-Bilanz, PV-Anteil,
+PV-Tageswerte) übernommen, damit kein halber Tag fest gespeichert bleibt.
 
 Technik: `manifest.webmanifest` (Name „Grosjeans Zuhause", Kurzname „Zuhause",
 Modus *standalone*) und `sw.js`. Der Service Worker lädt immer **zuerst aus dem

@@ -4,11 +4,12 @@
 // Strategie "Netzwerk zuerst": jede Anfrage geht zuerst ins Netz, damit immer die
 // neueste Version kommt (Updates wirken wie bisher sofort nach dem Push). Der Cache
 // ist nur Rueckfall ohne Verbindung. Live-Daten (ThingSpeak, Open-Meteo) laufen von
-// einem fremden Server und werden hier gar nicht angefasst.
+// einem fremden Server und werden hier gar nicht angefasst (die Seite merkt sich die letzten
+// Antworten selbst im Cache "zuhause-daten-v1", siehe OFFLINE in index.html).
 //
 // Bei Aenderungen an dieser Datei die Version hochzaehlen - dann raeumt "activate"
 // den alten Cache weg.
-const CACHE = "zuhause-v1";
+const CACHE = "zuhause-v2";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./favicon.svg",
                "./icons/icon-192.png", "./icons/icon-512.png"];
 
@@ -19,7 +20,8 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      // alte App-Caches weg; den Daten-Cache der Seite (zuhause-daten-…, letzte Werte fuer offline) behalten
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k.indexOf("zuhause-daten") !== 0).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
