@@ -2325,12 +2325,13 @@ ASCHE.panel={
    Den Bunker fuellt man von Hand (Weidemann) aus dem 80-m3-Lager auf.
    - Auffuellen eintragen: Datum, Uhrzeit und geschaetzter Rest vor dem Auffuellen (danach gilt der Bunker als voll).
    - Verbrauch = m3 je Minute Austragung: je Intervall zwischen zwei Auffuellungen 20 m3 x (100 % - Rest) / Austragung,
-     Median der Intervalle (wie die Asche). Ohne eigene Intervalle gilt als Startwert START_M3_H (1 m3 je Stunde Austragung).
+     Median der Intervalle (wie die Asche). Ohne eigene Intervalle gilt als Startwert START_M3_H (0.5 m3 je Stunde Austragung: ca. 70 m3 je Saison bei
+     130-150 h Austragung, Saison-Bilanz 2021-2026; mit 1 m3/h kaemen unmoegliche 150 m3 je Saison heraus).
    - Inhalt jetzt = 20 m3 - Verbrauch x Austragung seit dem letzten Auffuellen (die Uhrzeit teilt den Tag wie bei der Asche).
    - Prognose bis SCHWELLE (10 %): Austragung je Heizgradtag x Heizgradtage der 7-Tage-Prognose, danach deren Mittel.
    - Lager: "Lager gefuellt" setzt den Bestand (m3), jedes Auffuellen zieht 20 m3 x (100 % - Rest) ab.
    Gespeichert in heizung.ts (gleiche Adresse und gleicher Token wie die Asche), Blob "schnitzel_daten". */
-var SCHNITZEL={ BUNKER:20, LAGER:80, START_M3_H:1, SCHWELLE:10, _t:0 };
+var SCHNITZEL={ BUNKER:20, LAGER:80, START_M3_H:0.5, SAISON_MAX:90, SCHWELLE:10, _t:0 };   // SAISON_MAX: mehr als ~90 m3 je Saison nur mit zugekauften Schnitzeln
 // Eintraege je Tag (mehrere am selben Tag: der letzte gilt): {f:[{ymd,ts,z,rest}], l:[{ymd,ts,z,m3}]} aufsteigend
 SCHNITZEL.daten=function(s){ s=s||{};
   var jeTag=function(liste, werte, feld, std){ var o={}; (liste||[]).slice().sort().forEach(function(z){ var ts=Date.parse(z); if(isNaN(ts)) return;
@@ -2356,7 +2357,7 @@ SCHNITZEL.rechne=function(tage, d, temps, teile){
   var as=0, nT=0, asH=0, hs14=0, nH=0;
   tage.slice(-15,-1).forEach(function(t){ if(!t.w) return; as+=t.w.austr||0; nT++; var T=temps[t.ymd]; if(T!=null){ asH+=t.w.austr||0; hs14+=hgt(T); nH++; } });
   var mittelA=nT?as/nT:0, rateAH=(nH>=5 && hs14>=10 && asH>0) ? asH/hs14 : null;
-  // Verbrauch je Minute Austragung: aus den Auffuellungen, sonst Startwert 1 m3 je Stunde Austragung
+  // Verbrauch je Minute Austragung: aus den Auffuellungen, sonst Startwert 0.5 m3 je Stunde Austragung
   var k=median(raten), quelle=raten.length ? "auffuellungen" : null;
   if(!k && (rateAH || mittelA>0)){ k=SCHNITZEL.START_M3_H/60; quelle="schaetzung"; }   // k = m3 je Minute
   // Stand seit dem letzten Auffuellen
@@ -2547,11 +2548,13 @@ SAISON.htmlTab=function(){ return '<div class="note" id="sb-vgl" style="margin:0
   '<div class="frei" style="margin:8px 0 0;padding:0;background:transparent;box-shadow:none"><button class="btn" id="sb-mehr" style="display:none"></button><span class="frei-msg" id="sb-msg"></span></div>'+
   '<details class="note as-info"><summary>So wird gerechnet</summary><b>Saison</b> = 1. September bis 31. Mai. <b>Brennzeit</b> und <b>Austragung</b> wie bei Aschebox und Bunker (Brennphasen aus Abgas − Kessel, Laufzeit der Schnitzel-Austragung ohne Störungszeit). '+
   '<b>Heizgradtage</b> 20/12 aus dem Tagesmittel der Aussentemperatur (Open-Meteo-Archiv). <b>Brennzeit je Heizgradtag</b> zeigt, wie viel die Heizung für dieselbe Kälte brennt – kleiner ist besser, unabhängig davon, wie kalt der Winter war. '+
-  '<b>Schnitzel ≈</b> = Austragung × aktueller Verbrauch je Stunde Austragung (Bunker), darunter die eingetragenen Auffüllungen. '+
+  '<b>Schnitzel ≈</b> = Austragung × aktueller Verbrauch je Stunde Austragung (Bunker; solange kein Auffüll-Intervall gemessen ist, der Startwert '+SCHNITZEL.START_M3_H+' m³/h), darunter die eingetragenen Auffüllungen. Über '+SCHNITZEL.SAISON_MAX+' m³ je Saison (nur mit zugekauften Schnitzeln möglich) ist der Wert orange markiert. '+
   'Frühere Saisons lädt der Knopf einmal von ThingSpeak (alle Minutenwerte, ein grösserer Download – besser im WLAN); danach liegen die Tageswerte im Browser. «grob» = wenige Messungen je Tag (frühere Winter teils nur alle 30 min), die Brennzeit ist dann zu klein.</details>'; };
 SAISON.zeichnen=function(){ var r=SAISON._r, el=document.getElementById("sb-tab"); if(!r || !el) return;
   var k=SCHNITZEL._k || SCHNITZEL.START_M3_H/60, heute=ymdLocal(new Date()), cur=SAISON.aktuell(), kurz=function(ymd){ return (+ymd.slice(8))+"."+(+ymd.slice(5,7))+"."; };
-  var zeile=function(s, titel, akt){ var leerTxt=s.leer+" Leerung"+(s.leer===1?"":"en"), sz="≈\u00a0"+fmt(s.austr/60*k*60,0)+"\u00a0m³";
+  var zeile=function(s, titel, akt){ var leerTxt=s.leer+" Leerung"+(s.leer===1?"":"en"), m3=s.austr/60*k*60, sz="≈\u00a0"+fmt(m3,0)+"\u00a0m³";
+    // mehr als ~90 m3 je Saison gibt es nur mit zugekauften Schnitzeln - dann ist eher der Verbrauch je h zu hoch: orange markieren
+    if(m3>SCHNITZEL.SAISON_MAX) sz='<span style="color:var(--amber)" title="mehr als '+SCHNITZEL.SAISON_MAX+' m³ je Saison – nur mit zugekauften Schnitzeln möglich; Verbrauch je Stunde Austragung prüfen">'+sz+' ⚠</span>';
     if(!s.mess) return {akt:akt, titel:titel, gross:"keine Daten", pct:null, zellen:["–","–","–","–","–"], klein:["ThingSpeak hat für diese Saison keine Heizungsdaten"]};
     var hg=fmt(s.hgt,0)+(s.temps?" *":""), je=s.jeHgt===null?"–":fmt(s.jeHgt,1)+" min";
     return {akt:akt, titel:titel+(s.grob?" <small>(grob)</small>":""), gross:fmt(s.brenn/60,0)+" h", pct:null,

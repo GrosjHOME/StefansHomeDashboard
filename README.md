@@ -380,7 +380,7 @@ Füllstand und als zwei Spalten (auf dem Handy nacheinander):
 - **«Saison-Bilanz»** (vierter Knopf im Umschalter): je Heizsaison (1. September bis 31. Mai) Brennzeit, **Heizgradtage**
   (20/12, Tagesmittel aus dem Open-Meteo-Archiv), **Brennzeit je Heizgradtag** (wie viel die Heizung für dieselbe Kälte brennt –
   vergleichbar zwischen milden und kalten Wintern, kleiner ist besser), Austragung, Schnitzel (geschätzt = Austragung × aktueller
-  Verbrauch je Stunde Austragung, darunter die eingetragenen Auffüllungen) und Asche-Leerungen. Oben der Vergleich mit der
+  Verbrauch je Stunde Austragung bzw. dem Startwert 0.5 m³/h, darunter die eingetragenen Auffüllungen; über 90 m³ je Saison orange markiert, weil das nur mit zugekauften Schnitzeln vorkommt) und Asche-Leerungen. Oben der Vergleich mit der
   Vorsaison **bis zum gleichen Tag** (Heizgradtage, Brennzeit, Brennzeit je Heizgradtag in %).
   Die laufende Saison rechnet das Dashboard aus den Tageswerten, die die Aschebox ohnehin im Browser hat; geladen wird erst,
   wenn man auf «Saison» schaltet. **Frühere Saisons** lädt der Knopf «Saison … laden» einmal von ThingSpeak (alle Minutenwerte,
@@ -445,7 +445,7 @@ werden muss (bei **10 %**, ≈ 2 m³ Reserve).
   Störungszeit (der Logger sendet dann nur zu Testzwecken, z. B. 22.7.2026: ganzer Tag rot).
 - **Verbrauch je Stunde Austragung:** je Intervall zwischen zwei Auffüllungen 20 m³ × (100 % − Rest vor dem
   Auffüllen) ÷ Austragung im Intervall; Median der Intervalle. Die **Uhrzeit** teilt den Auffülltag wie bei der Asche.
-- **Startwert**, solange es noch kein ganzes Intervall gibt: **1 m³ je Stunde Austragung** (Erfahrungswert).
+- **Startwert**, solange es noch kein ganzes Intervall gibt: **0.5 m³ je Stunde Austragung** – aus der Saison-Bilanz: ein Winter hat 130–150 h Austragung bei normal ca. 70 m³ (höchstens ~90 m³, mehr nur mit zugekauften Schnitzeln). Der frühere Startwert 1 m³/h hätte 130–150 m³ je Saison ergeben.
 - **Inhalt jetzt** = 20 m³ − Verbrauch seit dem letzten Auffüllen (danach gilt der Bunker als voll).
 - **Prognose** bis 10 %: Austragung je Heizgradtag der letzten 14 Tage × Heizgradtage der 7-Tage-Prognose, danach
   deren Mittel.

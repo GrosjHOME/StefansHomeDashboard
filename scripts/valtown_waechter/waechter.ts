@@ -36,7 +36,7 @@ const KESSEL_MIN = 50;   // Grad C, Kessel oben darunter = Feuer aus / Stoerung
 const HEIZSAISON = [9, 10, 11, 0, 1, 2, 3];   // Okt-Apr (Monatsindex 0-11)
 
 // Schnitzel-Bunker (wie SCHNITZEL im Dashboard)
-const SZ = { BUNKER: 20, SCHWELLE: 10, START_M3_H: 1, LAT: 46.966, LON: 7.742, KANAL: 172428 };
+const SZ = { BUNKER: 20, SCHWELLE: 10, START_M3_H: 0.5, LAT: 46.966, LON: 7.742, KANAL: 172428 };
 const SCHNITZEL_VORLAUF = 2;   // Tage: so frueh vor dem Auffuellen kommt die Mail
 const SZ_TAGE_VERSION = 3;   // 2 = Stoerungszeit zaehlt nicht als Austragung, 3 = Mai bis August zaehlt nichts (Logger nur zu Testzwecken)
 const SZ_TAGE_KEY = "schnitzel_tage", SZ_MAX_TAGE = 150, SZ_MAX_ABRUFE = 25;   // je Lauf hoechstens so viele Tage nachholen
@@ -172,7 +172,7 @@ async function schnitzelPruefen(heute: string): Promise<string | null | undefine
   const voll = (a: string, b: string | null) => { let s = 0; for (const [y, m] of Object.entries(tage)) if (y > a && (b === null || y < b)) s += m; return s; };
   const vor = (F: { ymd: string; ts: number }) => teile[F.ts]?.va ?? tage[F.ymd] ?? 0;
   const nach = (F: { ts: number }) => teile[F.ts]?.na ?? 0;
-  // Verbrauch je Minute Austragung: Median der Intervalle, sonst Startwert 1 m3 je Stunde Austragung
+  // Verbrauch je Minute Austragung: Median der Intervalle, sonst Startwert 0.5 m3 je Stunde Austragung (ca. 70 m3 je Saison bei 130-150 h Austragung)
   const raten: number[] = [];
   for (let i = 1; i < f.length; i++) { const a = f[i - 1], b = f[i]; if (a.ymd < von) continue;
     const A = voll(a.ymd, b.ymd) + nach(a) + vor(b), m3 = SZ.BUNKER * (1 - b.rest / 100); if (A >= 60 && m3 > 0) raten.push(m3 / A); }
