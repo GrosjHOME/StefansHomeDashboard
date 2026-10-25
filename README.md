@@ -71,7 +71,7 @@ Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
 | `id3.ts` | Tibber (Data API); Blob `tibber_refresh_token` (beim ersten Start die Umgebungsvariable `TIBBER_REFRESH_TOKEN`) | ThingSpeak (ID.3-Kanal); Blob `tibber_refresh_token` (erneuerter Token) |
 | `prognose.ts` | ThingSpeak (PV-Kanal, mit Lese-Key); Open-Meteo (Einstrahlung); Blob `pv_prognose_<Datum>` | Blob `pv_prognose_<Datum>` (die Prognose des Tages) |
 | `morgens.ts` | – (ruft die Rechnung in `prognose.ts` auf) | – (gespeichert wird über `prognose.ts`) |
-| `waechter.ts` | ThingSpeak (alle überwachten Kanäle, das Pumpwerk mit Lese-Key aus `PUMPWERK_READ_KEY`); Open-Meteo (Temperaturprognose); Endpunkt `prognose.ts` (Kontrolle der 06:00-Prognose); Blobs `schnitzel_daten` (Auffüllungen und Lager aus `heizung.ts`), `schnitzel_tage`, `waechter_status` | Blobs `schnitzel_tage` (Austragung je Tag) und `waechter_status` (offene Meldungen); **E-Mail** an das Konto |
+| `waechter.ts` | ThingSpeak (alle überwachten Kanäle, das Pumpwerk mit Lese-Key aus `PUMPWERK_READ_KEY`); Open-Meteo (Temperaturprognose); Endpunkt `prognose.ts` (Kontrolle der 06:00-Prognose); Blobs `schnitzel_daten` (Auffüllungen und Lager aus `heizung.ts`), `asche_leerungen` (Leerungen aus `heizung.ts`), `schnitzel_tage`, `asche_tage`, `waechter_status` | Blobs `schnitzel_tage` (Austragung je Tag), `asche_tage` (Brennzeit je Tag) und `waechter_status` (offene Meldungen); **E-Mail** an das Konto |
 | `heizung.ts` | Blobs `asche_leerungen` und `schnitzel_daten` (Lesen für jeden, auch das Dashboard) | dieselben Blobs: Leerungen, Auffüllungen, Lager eintragen oder löschen (**nur mit Token** `ASCHE_TOKEN` im Header `X-Asche-Token`) |
 | `geraete.ts` | Blob `geraete` (öffentlich nur Zahlen, Einzelheiten mit Token) | Blob `geraete` (Meldung eines Geräts per POST; Entfernen nur mit Token) |
 
@@ -353,6 +353,12 @@ Füllstand und als zwei Spalten (auf dem Handy nacheinander):
   die **letzten Auffüllungen** des Bunkers (Füllstand vorher, eingefüllte Menge, Austragung im Intervall, Verbrauch je Stunde) oder die
   **Lager-Einträge** (Bestand danach, seither entnommen, Anzahl Auffüllungen); jeweils oben die laufende Periode.
 
+**E-Mail:** Der [Wächter](#wächter-val-town) rechnet gleich wie das Dashboard und meldet sich, wenn die Box in höchstens
+**2 Tagen** voll ist (nur in der Heizsaison Okt–Apr; Betreff „🪣 Zuhause: Aschebox leeren“, täglich als Erinnerung). Nach dem
+Eintragen der Leerung kommt „✅ Zuhause: Aschebox leeren erledigt“. Ohne eingetragene Leerung (noch keine Kapazität) meldet er nichts.
+Er speichert die Brennzeit je Tag und den Saisonstart im Blob `asche_tage` und holt je Lauf höchstens 15 fehlende Tage von
+ThingSpeak (beim ersten Mal ab dem 1. September also ein paar Läufe, bis die erste Prognose steht).
+
 | | |
 |---|---|
 | **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-sechs-dateien)) |
@@ -416,7 +422,7 @@ in `heizung.ts` (Blob `schnitzel_daten`: `auffuellungen` + `rest`, `lager` + `be
 Token `ASCHE_TOKEN` wie die Asche. Das Dashboard schreibt nur, wenn `heizung.ts` die Schnitzel-Daten kennt (sonst zeigt es einen Hinweis).
 
 **E-Mail:** Der Wächter meldet sich, wenn das Auffüllen in höchstens **2 Tagen** fällig ist (nur in der Heizsaison Okt–Apr; Betreff
-„🪵 Zuhause: Schnitzel-Bunker auffüllen“), und nach dem Eintragen des Auffüllens mit „wieder in Ordnung“. Er speichert
+„🪵 Zuhause: Schnitzel-Bunker auffüllen“), und nach dem Eintragen des Auffüllens mit „✅ Zuhause: Schnitzel-Bunker auffüllen erledigt“. Er speichert
 die Austragung je Tag im Blob `schnitzel_tage` und holt je Lauf höchstens 25 fehlende Tage von ThingSpeak.
 
 **Einrichtung:** Die Datei `heizung.ts` (früher `asche.ts`) und der aktuelle `waechter.ts` sind in Val Town eingespielt. Neue Umgebungsvariablen braucht es keine. Im Dashboard das letzte Auffüllen (Datum, Uhrzeit, geschätzter Rest) und den Lagerbestand eintragen.
@@ -469,20 +475,22 @@ eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
 | SD-Karte der PV-Steuerung | Feld 7 meldet Fehler |
 | PV-Morgenprognose | ab 07:00 keine Prognose von heute oder nicht um 06:00 erstellt |
 | Schnitzel-Bunker | in der Heizsaison: Auffüllen (Rest 10 %) in höchstens 2 Tagen fällig, siehe [Schnitzel-Prognose](#schnitzel-prognose-val-town) |
+| Aschebox | in der Heizsaison: Box in höchstens 2 Tagen voll, siehe [Asche-Prognose](#asche-prognose-val-town) |
 
 **Wann eine Mail kommt:**
 - **Neue Störung:** Eine Störung zählt erst, wenn sie zwei Läufe hintereinander
   besteht. Einzelne Aussetzer lösen keinen Alarm aus.
 - **Wieder in Ordnung:** Eine Mail meldet, was behoben ist.
 - **Erinnerung:** Einmal täglich, solange etwas gestört ist.
-- **Nur der Schnitzel-Bunker:** Ist nur das Auffüllen fällig, kommt statt der Störungsmail ein Hinweis (Betreff „🪵 Zuhause: Schnitzel-Bunker auffüllen“).
+- **Hinweise (Aschebox, Schnitzel-Bunker):** Sie sind keine Störung und stehen in der Mail unter «Hinweis». Ist nur ein Hinweis offen, lautet der Betreff „🪣 Zuhause: Aschebox leeren“ bzw. „🪵 Zuhause: Schnitzel-Bunker auffüllen“ (beide: „… Aschebox leeren und Schnitzel-Bunker auffüllen“), sonst „⚠ Zuhause: 1 Störung · Aschebox leeren“. Nach dem Eintragen im Dashboard kommt „✅ Zuhause: … erledigt“.
+- **Kann nicht gerechnet werden** (ThingSpeak oder Open-Meteo nicht erreichbar): Ein schon gemeldeter Hinweis bleibt stehen, es kommt keine falsche Entwarnung.
 
 | | |
 |---|---|
 | **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard**, Datei `waechter.ts` |
 | **Takt** | Cron-Trigger alle 30 Minuten |
 | **Quelltext** | `scripts/valtown_waechter/waechter.ts` |
-| **Speicher** | Blob `waechter_status` (gemeldete Störungen, Verdachtsfälle des letzten Laufs, Zeit der letzten Mail); Blob `schnitzel_tage` (Austragung je Tag, mit Versionsstempel) |
+| **Speicher** | Blob `waechter_status` (gemeldete Störungen, Verdachtsfälle des letzten Laufs, Zeit der letzten Mail); Blob `schnitzel_tage` (Austragung je Tag, mit Versionsstempel); Blob `asche_tage` (Brennzeit je Tag, Teilung der Leerungstage, Saisonstart) |
 
 <details>
 <summary><b>Einrichtung Schritt für Schritt</b></summary>
