@@ -2697,6 +2697,11 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung", extra:ext
           stufe:function(v){ return Math.abs(v-0.2)<0.02; }, fmt:function(v){ return v>0.5 ? "Störung" : ""; }}]}
   ]});
 
+// Status der PV-Abfrage des Boiler-Arduinos (Feld 5 des Boiler-Kanals, Boiler_A ThingSpeakLink): 200 = OK, 1 = PV-Wert veraltet,
+// sonst Fehlercode der ThingSpeak-Bibliothek bzw. HTTP (-301 Verbindung, -303 Antwort nicht lesbar, -304 Timeout, 4xx/5xx HTTP).
+function pvAbfrageText(v){ var c=Math.round(v);
+  var t=c===200?"OK":c===1?"Wert veraltet":c===-301?"Verbindung fehlgeschlagen":c===-303?"Antwort nicht lesbar":c===-304?"Timeout":c===429?"zu viele Anfragen":c>=400?"HTTP-Fehler":"Fehler";
+  return t+" ("+String(c).replace("-","−")+")"; }
 var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22" height="22" style="vertical-align:-4px"><rect x="5.5" y="4" width="13" height="17" rx="5" fill="#2b83c7"/><rect x="10.5" y="1.5" width="3" height="3" rx="1" fill="#7fb2dd"/><path d="M12 9.5c1.7 2.1 2.6 3.4 2.6 4.7a2.6 2.6 0 1 1-5.2 0c0-1.3 .9-2.6 2.6-4.7z" fill="#eaf4fb"/></svg>', title:"Boiler",
   kpis:[
     {field:"field1",label:"Temperatur mitte",unit:"°C",dec:1,gueltig:kesselOk,
@@ -2705,7 +2710,11 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
       color:function(v){ return bandColor([[35,"#8b5cf6"],[70,"#2fb344"],[90,"#f4a261"],[Infinity,"#e03131"]],v); }},
     {field:"field3",label:"Ladeleistung",unit:"W",dec:0,color:chargeColor},
     {field:"field4",label:"Einschaltschwelle",unit:"W",dec:0,colorPv:true},
-    {field:"field3",label:"Geladene Menge",unit:"kWh",dec:1,integrate:true}  // Integral field3 (W) ueber Zeitraum
+    {field:"field3",label:"Geladene Menge",unit:"kWh",dec:1,integrate:true},  // Integral field3 (W) ueber Zeitraum
+    // Status der PV-Abfrage des Boiler-Arduinos (Felder 5-7, ab der Boiler_A-Version mit robuster PV-Abfrage; vorher "–")
+    {field:"field5",label:"PV-Abfrage der Steuerung",map:pvAbfrageText,color:function(v){ return Math.round(v)===200 ? "var(--green)" : "var(--red)"; }},
+    {field:"field6",label:"Lesefehler seit Start",unit:"×",dec:0,color:function(v){ return v>0 ? "var(--amber)" : "var(--green)"; }},
+    {field:"field7",label:"PV-Wert der Steuerung",unit:"W",dec:0}
   ],
   charts:[
     // Schaltschwellen der Boiler-Steuerung (beziehen sich auf "Unten"), wie in Boiler_A boilerChargeOk():
@@ -2725,7 +2734,16 @@ var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22
     {title:"Temperatursteigung", unit:"°C/min", zero:false, zeroLine:true,
       lines:[{field:"field1",label:"Mitte",color:"var(--amber)",slope:10,dec:3,gueltig:kesselOk},{field:"field2",label:"Unten",color:"var(--blue)",slope:10,dec:3,gueltig:kesselOk}],
       note:"Temperaturänderung je Minute, über 20 min geglättet (Fühlerauflösung 0.06 K). Über 0: der Boiler wird aufgeheizt, unter 0: er kühlt aus oder es wurde Warmwasser entnommen (Kaltwasser strömt unten nach)."},
-    {title:"Ladeleistung &amp; Einschaltschwelle", unit:"W", yMax:7000, lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0,fill:true},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?10:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0},{field:"field4",label:"Einschaltschwelle",color:"var(--blue)",dec:0,dash:true}]}
+    {title:"Ladeleistung &amp; Einschaltschwelle", unit:"W", yMax:7000, lines:[{field:"field3",label:"Ladeleistung",color:"var(--green)",dec:0,fill:true},{field:"field3",label:"Laden verlangen, zu wenig PV-Überschuss",color:"var(--red)",width:4,derive:function(v){return (v>0 && v<11)?10:null;}},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",dec:0},{field:"field4",label:"Einschaltschwelle",color:"var(--blue)",dec:0,dash:true}]},
+    // Felder 5-7 schreibt der Boiler-Arduino (Boiler_A): Status der Abfrage der PV-Leistung aus ThingSpeak. Rot hinterlegt = Abfrage
+    // fehlgeschlagen oder Wert veraltet (die Steuerung rechnet dann mit dem letzten gueltigen Wert oder mit 0).
+    {title:"PV-Abfrage der Steuerung", unit:"W", yMin:0, unit2:"×", yMin2:0, y2Color:"var(--red)",
+      note:"Zeigt, ob der Boiler-Arduino die PV-Leistung aus ThingSpeak lesen konnte. Rot hinterlegt: Abfrage fehlgeschlagen oder Wert veraltet; den Statuscode zeigt die Kennzahl oben (200 = OK, −304 Timeout, −301 Verbindung, −303 Antwort nicht lesbar, 1 = Wert veraltet). Blau: PV-Wert, mit dem die Steuerung rechnet – weicht er von der PV-Leistung der Anlage (orange) ab, hat sie einen alten Wert verwendet oder 0. Rechte Achse: Lesefehler seit dem Start des Arduinos (springt bei einem Neustart auf 0).",
+      lines:[{field:"field5",label:"PV-Abfrage nicht OK",color:"var(--red)",fill:true,fillFlat:0.28,width:1,optional:true,
+        stufe:function(v){ return Math.round(v)!==200; }, fmt:function(v){ return v>0 ? "PV-Abfrage nicht OK" : "PV-Abfrage OK"; }},
+        {channel:172430,field:"field1",label:"PV-Leistung der Anlage",color:"var(--amber)",dec:0},
+        {field:"field7",label:"PV-Wert der Steuerung",color:"var(--blue)",dec:0,optional:true},
+        {field:"field6",label:"Lesefehler seit Start",color:"var(--red)",axis:"right",dec:0,dash:true,optional:true}]}
   ]});
 
 // Zaehler-Differenzen je Minutenmeldung: [{t, sec, n, min}] = Zunahme der Laufzeit (Zaehler fSec, mal scale),
