@@ -266,21 +266,24 @@ System.
 
 ## PV-Anteil am Laden
 
-Der Bereich **☀️ PV-Anteil am Laden** im Tab *Wallbox* zeigt, wie viel der Ladeenergie fürs Auto vom Dach kam –
-umschaltbar zwischen **Ladevorgänge** (die letzten 12: Zeit vom Einstecken bis zum Ausstecken, PV-Anteil mit Balken,
-geladene kWh, davon PV, angeschlossene Dauer; ein Ladevorgang über Mitternacht zählt als einer), **Monate** und **Jahre**.
-Monate und Jahre sind gestapelte Balken: unten **grün der PV-Teil**, oben **orange der Netz-Teil**, die Höhe = geladene kWh,
-darüber der PV-Anteil in % (auf dem Handy die letzten 12 Monate, breit 24; Tippen/Zeigen zeigt kWh, davon PV, Netz und die
-Anzahl Ladevorgänge). Ein Jahr mit * ist nicht ganz geladen. Oben steht der laufende Monat und die letzten 30 Tage.
+Der Bereich **☀️ PV-Anteil am Laden** im Tab *Wallbox* zeigt, wie viel der Ladeenergie fürs Auto vom Dach kam. Bedienung wie
+die Grafik **Energie** der PV-Anlage: Umschalter **Ladevorgänge / Monate / Jahre** (auf dem Handy «Ladungen»), bei *Monate*
+die Auswahl **Letzte 12 Monate** oder ein Jahr. Oben steht der laufende Monat und die letzten 30 Tage.
 
+- **Ladevorgänge:** die letzten 12, je vom Einstecken bis zum Ausstecken (über Mitternacht zählt als einer): PV-Anteil mit
+  Balken, geladene kWh, davon PV, angeschlossene Dauer.
+- **Monate / Jahre:** gestapelte Balken wie bei der PV-Energie – unten **grün der PV-Teil**, oben **orange der Netz-Teil**,
+  darüber die geladenen kWh, unten «Okt 26» bzw. das Jahr. Zeigen/Tippen: Zeitraum, kWh, davon PV mit Anteil in %, Netz und
+  Anzahl Ladevorgänge. Ein Jahr erscheint, sobald seine Monate geladen sind.
 - **Rechnung:** Einen Hauszähler gibt es nicht. Geschätzt wird wie in der Regelung der Wallbox (Repo WallboxWeidmuller):
   **PV-Überschuss = PV-Leistung − Boiler − Reserve** (Poti an der Wallbox); die Wallbox sendet diesen Wert jede Minute in
   Feld 3 von Kanal 172228. Je Minute zählt von der Ladeleistung (Feld 4) höchstens der Überschuss als PV, der Rest als
   Netzstrom. Ist die Reserve negativ gestellt (bewusst mit Netzstrom laden), zählt höchstens PV − Boiler (Kanäle 172430
   Feld 1 und 502977 Feld 3). Integriert wie «Geladene Menge» (Trapez, Lücken unter 2 h). Die Grundlast des Hauses steckt nur
   so weit drin, wie die Reserve sie abdeckt.
-- **Daten:** automatisch ab dem 1. des Vormonats; der Knopf «‹Monat› laden» holt jeweils einen früheren Monat einmal
-  von ThingSpeak, im Reiter *Jahre* «‹Jahr› laden» gleich alle fehlenden Monate bis zum Januar (monatsweise nacheinander). Tageswerte im Browser (`lade_tag1_…`, geladene Monate in `lade_monate`, Auswahl des Umschalters in `ld_tab`);
+- **Daten:** automatisch ab dem 1. des Vormonats. Was eine gewählte Ansicht zusätzlich braucht (letzte 12 Monate, ein Jahr,
+  bei *Jahre* alles ab Januar 2023), holt sie einmal von ThingSpeak, monatsweise nacheinander mit Anzeige «lädt …» – ein
+  grösserer Download, besser im WLAN. Bricht es ab, geht es beim nächsten Umschalten weiter. Tageswerte im Browser (`lade_tag1_…`, geladene Monate in `lade_monate`, Auswahl des Umschalters in `ld_tab`);
   Tage mit einer Fehlerantwort von ThingSpeak werden nicht gemerkt.
 
 ## PV-Morgenprognose (Val Town)
