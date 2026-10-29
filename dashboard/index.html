@@ -1689,7 +1689,8 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
             // Gleiche Werte in Folge auf Anfang/Ende reduzieren: Konstanten und Stufen bleiben scharf,
             // gleitende Abschnitte (z. B. Mitte + 2 K) bleiben vollstaendig erhalten.
             cp.forEach(function(p,i){ var a=cp[i-1], b=cp[i+1]; if(a && b && a.v===p.v && b.v===p.v) return; pts.push(p); });
-            return {color:ln.color, dash:ln.dash, width:ln.width, axis:ln.axis, dec:ln.dec, pts:pts};
+            // quer: im Tooltip gilt der letzte Punkt vor der Maus (Konstanten haben nur Anfang/Ende - sonst saesse der Punkt am Rand)
+            return {color:ln.color, dash:ln.dash, width:ln.width, axis:ln.axis, dec:ln.dec, fmt:ln.fmt, quer:true, pts:pts};
           }
           if(ln.laufJeLauf || ln.laeufeBand){   // Laeufe der Pumpe: zusammenhaengende Minuten mit Laufzeit (oder Start) = ein Lauf
             var lj=ln.laufJeLauf||ln.laeufeBand, dl=zaehlerDeltas(ff, lj.field, lj.starts, 1), bloecke=pumpBloecke(dl);
@@ -1990,7 +1991,10 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox", extra:LAD
   ],
   charts:[
     {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001,fill:true},{field:"field7",label:"PV-Ladevorgabe",color:"var(--blue)",scale:0.001,dash:true},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
-    {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"}]},
+    // Grenzen der Wallbox: unter 6 A laedt das Auto nicht (Mindeststrom nach IEC 61851), mehr als 16 A gibt die Wallbox nicht her
+    {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"},
+      {label:"Minimum 6 A",color:"var(--red)",width:1.5,dash:true,calc:function(){ return 6; },fmt:function(){ return "Minimum 6 A"; }},
+      {label:"Maximum 16 A",color:"var(--red)",width:1.5,dash:true,calc:function(){ return 16; },fmt:function(){ return "Maximum 16 A"; }}]},
     {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, yTicks:[{v:65,label:"Getrennt"},{v:66,label:"Lädt nicht"},{v:67,label:"Lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]},
     // Ladezustand + Ziel (%, links) und Reichweite (km, rechte Achse ab 0)
     {title:"ID.3 – Ladezustand &amp; Reichweite", unit:"%", yMax:100, unit2:"km", zero2:true,
