@@ -604,9 +604,10 @@ function lineChart(holder, series, opts){
       if(best){ var px=X(best.t.getTime()),py=YF(s)(best.v);
         if(s.step){ if(stepX===null) stepX=X(t); } else if(!s.quer){ if(anyX===null){ anyX=px; t0=best.t; } }
         var su=(s.axis==="right")?(opts.unit2||""):(opts.unit||""); var sd=(s.dec!=null)?s.dec:dec;
-        if(!s.step && !s.quer) dots+='<circle cx="'+px+'" cy="'+py+'" r="3.5" fill="'+s.color+'"/>';
+        var pc=s.segColor ? s.segColor(best.v,best) : s.color;   // segmentweise gefaerbt: Farbe dieses Abschnitts
+        if(!s.step && !s.quer) dots+='<circle cx="'+px+'" cy="'+py+'" r="3.5" fill="'+pc+'"/>';
         var txt=s.fmt ? s.fmt(best.v,best) : fmt(best.v,sd)+' '+su;
-        if(txt!=="") rows+='<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+s.color+';margin-right:5px"></span>'+txt+'</div>'; } });
+        if(txt!=="") rows+='<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+pc+';margin-right:5px"></span>'+txt+'</div>'; } });
     if(anyX===null) anyX=stepX;   // nur Stufen: Linie an der Maus
     if(anyX===null && rows) anyX=X(t);   // nur waagrechte Linien: ebenfalls an der Maus
     if(anyX===null){ ov.style.display="none"; tip.style.opacity=0; return; }
@@ -1984,7 +1985,7 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox", extra:LAD
   kpis:[
     {sec:"wb",field:"field4",label:"Aktuelle Ladeleistung",unit:"kW",dec:1,scale:0.000001},
     {sec:"wb",field:"field7",label:"PV-Ladevorgabe",unit:"kW",dec:1,scale:0.001},
-    {sec:"wb",field:"field6",label:"Ladestrom-Begrenzung",unit:"A",dec:1},
+    {sec:"wb",field:"field6",label:"Ladestrom-Vorgabe",unit:"A",dec:1},
     // Phasenzahl aus Ladestrom und geglaetteter Leistung (siehe wbPhasen)
     {sec:"wb",field:"field6",field2:"field7",label:"Phasen",map:function(a,f7){ var ph=wbPhasen(a,f7); return ph ? ph+"\u2011phasig" : "–"; },   // geschuetzter Bindestrich: nicht umbrechen
       color:function(a,f7){ return WB_PHASE_FARBE[wbPhasen(a,f7)] || ""; }},
@@ -2005,11 +2006,11 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox", extra:LAD
     {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001,fill:true},{field:"field7",label:"PV-Ladevorgabe",color:"var(--blue)",scale:0.001,dash:true},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
     // Grenzen der Wallbox: unter 6 A laedt das Auto nicht (Mindeststrom nach IEC 61851), mehr als 16 A gibt die Wallbox nicht her
     // Linie nach Phasenzahl gefaerbt: orange 1-phasig, blau 3-phasig
-    {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)",
+    {title:"Ladestrom-Vorgabe", unit:"A", lines:[{field:"field6",label:"Vorgabe",color:"var(--amber)",
         info:function(x){ return wbPhasen(num(x.field6), num(x.field7)); },
         segColor:function(v,p){ return WB_PHASE_FARBE[p && p.info] || "var(--amber)"; },
         fmt:function(v,p){ return fmt(v,1)+" A"+(p && p.info ? " · "+p.info+"-phasig" : ""); },
-        legende:[{color:WB_PHASE_FARBE[1], label:"Begrenzung 1-phasig"}, {color:WB_PHASE_FARBE[3], label:"Begrenzung 3-phasig"}]},
+        legende:[{color:WB_PHASE_FARBE[1], label:"Vorgabe 1-phasig"}, {color:WB_PHASE_FARBE[3], label:"Vorgabe 3-phasig"}]},
       {label:"Minimum 6 A",color:"var(--red)",width:1.5,dash:true,calc:function(){ return 6; },fmt:function(){ return "Minimum 6 A"; }},
       {label:"Maximum 16 A",color:"var(--red)",width:1.5,dash:true,calc:function(){ return 16; },fmt:function(){ return "Maximum 16 A"; }}]},
     {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, yTicks:[{v:65,label:"Getrennt"},{v:66,label:"Lädt nicht"},{v:67,label:"Lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]},
