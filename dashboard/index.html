@@ -597,12 +597,12 @@ function lineChart(holder, series, opts){
     // duerfen aber weder die Linie noch einen Punkt an den Rand der Grafik setzen.
     var t=tMin+(mx-padL)/(W-padL-padR)*(tMax-tMin), dots="", rows="", anyX=null, stepX=null, t0=null;
     series.forEach(function(s){ if(!s.pts.length||s.bandFrac!=null||s.noTip)return; var best=null,bd=Infinity;
-      if(s.step || s.quer){   // Stufenreihe bzw. waagrechte Linie: Wert gilt ab seinem Zeitpunkt bis zum naechsten (letzter Punkt <= Maus)
+      if(s.step || s.quer || s.halten){   // Stufen/waagrechte/gehaltene Linie: Wert gilt ab seinem Zeitpunkt bis zum naechsten (letzter Punkt <= Maus)
         s.pts.forEach(function(p){ if(p.v!=null && p.t.getTime()<=t) best=p; });
-        if(!best) best=s.pts[0];
+        if(!best){ if(!s.step) return; best=s.pts[0]; }   // links vom Anfang der Hilfslinie: dort ist sie nicht gezeichnet, also kein Wert
       } else s.pts.forEach(function(p){ if(p.v==null)return; var dd=Math.abs(p.t.getTime()-t); if(dd<bd){bd=dd;best=p;} });
-      if(best){ var px=X(best.t.getTime()),py=YF(s)(best.v);
-        if(s.step){ if(stepX===null) stepX=X(t); } else if(!s.quer){ if(anyX===null){ anyX=px; t0=best.t; } }
+      if(best){ var px=s.halten ? X(t) : X(best.t.getTime()), py=YF(s)(best.v);   // halten: Punkt an der Maus, der Wert gilt dort
+        if(s.step){ if(stepX===null) stepX=X(t); } else if(!s.quer && !s.halten){ if(anyX===null){ anyX=px; t0=best.t; } }
         var su=(s.axis==="right")?(opts.unit2||""):(opts.unit||""); var sd=(s.dec!=null)?s.dec:dec;
         var pc=s.segColor ? s.segColor(best.v,best) : s.color;   // segmentweise gefaerbt: Farbe dieses Abschnitts
         if(!s.step && !s.quer) dots+='<circle cx="'+px+'" cy="'+py+'" r="3.5" fill="'+pc+'"/>';
@@ -706,6 +706,13 @@ function groupedBarChart(holder, groups, opts){
 }
 function parseStatus(s){ var o={},re=/([UI])([56])=([\d.]+)\/([\d.]+)\/([\d.]+)/g,m; while((m=re.exec(s))){ o[m[1]+m[2]]=[parseFloat(m[3]),parseFloat(m[4]),parseFloat(m[5])]; } return o; }
 function downsample(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)), out=[]; for(var i=0;i<arr.length;i+=st) out.push(arr[i]); if(arr.length && out[out.length-1]!==arr[arr.length-1]) out.push(arr[arr.length-1]); return out; }
+// Wie downsample, behaelt aber jeden Wechsel von p.info (z. B. Phasenzahl der Wallbox) mit dem Punkt davor - sonst
+// verschwaenden kurze Abschnitte zwischen zwei behaltenen Punkten, und ein behaltener Punkt faerbte einen langen Abschnitt.
+function downsampleWechsel(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)); if(st===1) return arr;
+  var out=[], last=-1;
+  for(var i=0;i<arr.length;i++){ var wechsel=i>0 && arr[i].info!==arr[i-1].info, naechster=i+1<arr.length && arr[i+1].info!==arr[i].info;
+    if(i%st===0 || i===arr.length-1 || wechsel || naechster){ if(i!==last){ out.push(arr[i]); last=i; } } }
+  return out; }
 // Wie downsample, aber je Block gemittelt (Zeit und Wert) - fuer abgeleitete Werte wie die Steigung,
 // bei denen einzelne Stichproben sonst Spitzen verschlucken wuerden.
 function downsampleAvg(arr,max){ var st=Math.max(1,Math.ceil(arr.length/max)); if(st===1) return arr; var out=[];
@@ -1690,8 +1697,11 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
             // Gleiche Werte in Folge auf Anfang/Ende reduzieren: Konstanten und Stufen bleiben scharf,
             // gleitende Abschnitte (z. B. Mitte + 2 K) bleiben vollstaendig erhalten.
             cp.forEach(function(p,i){ var a=cp[i-1], b=cp[i+1]; if(a && b && a.v===p.v && b.v===p.v) return; pts.push(p); });
-            // quer: im Tooltip gilt der letzte Punkt vor der Maus (Konstanten haben nur Anfang/Ende - sonst saesse der Punkt am Rand)
-            return {color:ln.color, dash:ln.dash, width:ln.width, axis:ln.axis, dec:ln.dec, fmt:ln.fmt, quer:true, pts:pts};
+            // Im Tooltip gilt der letzte Punkt vor der Maus (die Reihe ist auf Anfang/Ende gleicher Werte reduziert - die naechste
+            // Stuetzstelle laege oft weit weg). Konstante (quer): wie Schwellen, ohne Punkt; veraenderliche (halten, z. B. 58/63 °C):
+            // Punkt auf der Linie an der Maus
+            var konst=pts.every(function(q){ return q.v===pts[0].v; });
+            return {color:ln.color, dash:ln.dash, width:ln.width, axis:ln.axis, dec:ln.dec, fmt:ln.fmt, quer:konst, halten:!konst, pts:pts};
           }
           if(ln.laufJeLauf || ln.laeufeBand){   // Laeufe der Pumpe: zusammenhaengende Minuten mit Laufzeit (oder Start) = ein Lauf
             var lj=ln.laufJeLauf||ln.laeufeBand, dl=zaehlerDeltas(ff, lj.field, lj.starts, 1), bloecke=pumpBloecke(dl);
@@ -1741,8 +1751,10 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
             // ln.gueltig(v): Messwert verwerfen, z. B. Fuehler-Lesefehler (0.0 beim Kessel, -127)
             if(raw!==null && ln.gueltig && !ln.gueltig(raw)) return;
             var v = ln.derive ? ln.derive(raw) : (ln.scale? raw*ln.scale : raw);
-            pts.push({t:new Date(x.created_at), v:v, info: ln.info ? ln.info(x) : undefined}); });   // ln.info(Eintrag): Zusatz je Punkt, z. B. fuer segColor/fmt
-          return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, fmt:ln.fmt, bandFrac:ln.bandFrac, axis:ln.axis, dec:ln.dec, fill:ln.fill, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
+            // ln.info(Eintrag): Zusatz je Punkt fuer segColor/fmt (z. B. Phasenzahl), nur bei Linien, die ihn haben. Er wird fuer
+            // jeden Eintrag gerechnet (nicht erst nach dem Ausduennen): downsampleWechsel muss jeden Wechsel sehen
+            var pt={t:new Date(x.created_at), v:v}; if(ln.info) pt.info=ln.info(x); pts.push(pt); });
+          return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, fmt:ln.fmt, bandFrac:ln.bandFrac, axis:ln.axis, dec:ln.dec, fill:ln.fill, pts: ln.derive? pts : (ln.info ? downsampleWechsel(pts,300) : downsample(pts,300))}; }).filter(function(s){return s.pts.length>1;});
         if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null && (!c.minmaxGueltig || c.minmaxGueltig(v))){ vv.push(v); ct.push(new Date(x.created_at)); } });
           if(vv.length>1){ var mn=Math.min.apply(null,vv), mx=Math.max.apply(null,vv), t0=ct[0], t1=ct[ct.length-1];
             series.push({color:"var(--muted)",dash:true,quer:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
@@ -1799,7 +1811,8 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
         var it=function(color, dash, label){ return '<span class="it"><span class="sw" style="border-color:'+color+(dash?';border-top-style:dashed':'')+'"></span>'+(label||'')+'</span>'; };
         var items=[]; (c.lines||[]).forEach(function(ln){ if(ln.legende) ln.legende.forEach(function(e){ items.push(it(e.color, e.dash, e.label)); }); else items.push(it(ln.color, ln.dash, ln.label)); });
         if(c.minmaxField) items.push('<span class="it"><span class="sw" style="border-color:var(--muted);border-top-style:dashed"></span>Min/Max</span>');
-        var leg = (c.lines && (c.lines.length>1 || c.minmaxField)) ? '<div class="legend">'+items.join("")+'</div>' : "";
+        // Legende ab zwei Eintraegen - auch bei einer einzigen Linie mit eigener Legende (ln.legende, z. B. Farben je Phasenzahl)
+        var leg = items.length>1 ? '<div class="legend">'+items.join("")+'</div>' : "";
         return '<div class="panel"><h2>'+c.title+' <span class="tag" id="ct_'+i+'"></span></h2>'+leg+'<div id="chart_'+i+'"><div class="chart-empty">wird geladen…</div></div>'+(c.note?'<div class="note">'+c.note+'</div>':'')+'</div>';
       }).join("");
       main.innerHTML='<div class="wrap wide"><div class="view-head"><h1><span id="stat_ico">'+cfg.icon+'</span> '+cfg.title+'</h1>'+
@@ -1967,14 +1980,29 @@ LADEN.panel={
       .catch(function(e){ LADEN._t=0; console.error(e); var s=document.getElementById("ld-sum"); if(s){ s.textContent="Daten konnten nicht geladen werden."; s.style.color="var(--red)"; } }); }
 };
 
-// Laedt die Wallbox mit 1 oder 3 Phasen? Die Wallbox meldet es nicht, aber ihre Regelung (Repo WallboxWeidmuller,
-// Ladesteuerung) rechnet den Ladestrom (field6) aus der geglaetteten Leistung (field7) je nach Phasenzahl verschieden:
-// 1-phasig f7 / 230 V, 3-phasig f7 / (400 V x 1.73), mindestens 6 A. 3-phasig ist sie nur ueber 3500 W (Hysterese 4200 W
-// -700/+800 W). Welche der beiden Rechnungen field6 trifft, ist die Phasenzahl. null = nicht bestimmbar.
-function wbPhasen(f6, f7){ if(f6===null || f7===null || isNaN(f6) || isNaN(f7)) return null;
-  if(f7<=3500) return 1;
-  return Math.abs(f6-Math.max(6, f7/(400*1.73))) < Math.abs(f6-f7/230) ? 3 : 1; }
-var WB_PHASE_FARBE={1:"var(--amber)", 3:"var(--blue)"};
+// Laedt die Wallbox mit 1 oder 3 Phasen? x = ein Eintrag des Kanals 172228.
+// 1. Meldet die Steuerung die Phasenzahl in Feld 2 (1 oder 3), gilt diese (vorgesehen, siehe README "Phasen").
+// 2. Sonst hergeleitet: Die Regelung (Repo WallboxWeidmuller, Ladesteuerung.cpp) rechnet den Ladestrom (field6) aus der
+//    geglaetteten Leistung (field7) je nach Phasenzahl verschieden (Werte in WB_REGEL, gleich wie dort in Config.h);
+//    welche der beiden Rechnungen field6 trifft, ist die Phasenzahl. Was das Auto tatsaechlich zieht, geht vor.
+// null = nicht bestimmbar: Werte fehlen, oder es wird gar nicht geladen (Status nicht 67 "laedt" oder keine Ladeleistung) -
+// dann gibt es keine Phasen, auch wenn die Regelung rechnerisch "1-phasig" waere (nachts, Auto ausgesteckt).
+// Aendert sich die Regelung in Config.h, hier WB_REGEL nachfuehren (README "Phasen" verweist nur hierher).
+var WB_REGEL={ U1:230, U3:400*1.73,        // SPANNUNG_1_PHASIG_V, SPANNUNG_3_PHASIG_V
+  I_MIN:6, I_MAX:16,                       // LADESTROM_MIN_A (nur 3-phasig erzwungen); 16 A gibt die Wallbox hoechstens
+  P3_AB:4200-700,                          // SCHWELLE_3_PHASIG_W + HYSTERESE_RUNTER_W: darunter immer 1-phasig
+  P_LAEDT:100,                             // W: darunter laedt nichts
+  P1_MAX:4000 };                           // W: mehr geht 1-phasig nicht (I_MAX x U1 = 3680 W, mit Reserve)
+function wbPhasen(x){ var f6=num(x.field6), f7=num(x.field7), st=num(x.field8), p=num(x.field4), R=WB_REGEL;
+  if(st===null || Math.round(st)!==67 || p===null || p/1000<R.P_LAEDT) return null;   // field4 in mW
+  var gem=num(x.field2); if(gem===1 || gem===3) return gem;                           // von der Steuerung gemeldet
+  if(f6===null || f7===null || isNaN(f6) || isNaN(f7)) return null;
+  if(p/1000>R.P1_MAX) return 3;                                                       // z. B. volle Leistung bei kleiner PV-Vorgabe
+  if(f7<=R.P3_AB) return 1;
+  return Math.abs(f6-Math.max(R.I_MIN, f7/R.U3)) < Math.abs(f6-f7/R.U1) ? 3 : 1; }
+// Text und Farbe zur Phasenzahl - eine Stelle fuer Kachel, Tooltip, Linie und Legende (ph = 1, 3 oder null)
+var WB_PHASE={ text:function(ph){ return ph ? ph+"\u2011phasig" : "lädt nicht"; },   // geschuetzter Bindestrich: nicht umbrechen
+  farbe:function(ph){ return ph===3 ? "var(--blue)" : ph===1 ? "var(--amber)" : "var(--muted)"; } };
 var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox", extra:LADEN.panel,
   // Zwei Quellen getrennt: Wallbox live (Kanal 172228, Minutentakt) und Auto (ID.3 via
   // Tibber Data API, GitHub-Actions-Poller, Kanal 3514838) - mit eigener Aktualitaet.
@@ -1987,8 +2015,9 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox", extra:LAD
     {sec:"wb",field:"field7",label:"PV-Ladevorgabe",unit:"kW",dec:1,scale:0.001},
     {sec:"wb",field:"field6",label:"Ladestrom-Vorgabe",unit:"A",dec:1},
     // Phasenzahl aus Ladestrom und geglaetteter Leistung (siehe wbPhasen)
-    {sec:"wb",field:"field6",field2:"field7",label:"Phasen",map:function(a,f7){ var ph=wbPhasen(a,f7); return ph ? ph+"\u2011phasig" : "–"; },   // geschuetzter Bindestrich: nicht umbrechen
-      color:function(a,f7){ return WB_PHASE_FARBE[wbPhasen(a,f7)] || ""; }},
+    // aus dem neuesten Eintrag mit Ladestrom (das stuendliche field1-Eintraeglein der HSH-Auslastung hat keinen)
+    {sec:"wb",field:"field6",label:"Phasen",ausLetzten:function(f){ var x=null; for(var i=f.length-1;i>=0 && !x;i--) if(num(f[i].field6)!==null) x=f[i];
+      var ph=x ? wbPhasen(x) : null; return {text: ph ? WB_PHASE.text(ph) : "–", color: ph ? WB_PHASE.farbe(ph) : ""}; }},
     {sec:"wb",field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"Lädt":s===66?"Lädt nicht":s===65?"Getrennt":("Status "+s);}},
     {sec:"wb",field:"field4",label:"Geladene Menge",unit:"kWh",dec:1,integrate:true,intScale:0.000001},  // Integral field4 (µW) ueber Zeitraum
     // Auto-Werte gelten auch beim Laden auswaerts (daher Stecker/Ladestatus trotz Wallbox-"Verbindung")
@@ -2007,12 +2036,12 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox", extra:LAD
     // Grenzen der Wallbox: unter 6 A laedt das Auto nicht (Mindeststrom nach IEC 61851), mehr als 16 A gibt die Wallbox nicht her
     // Linie nach Phasenzahl gefaerbt: orange 1-phasig, blau 3-phasig
     {title:"Ladestrom-Vorgabe", unit:"A", lines:[{field:"field6",label:"Vorgabe",color:"var(--amber)",
-        info:function(x){ return wbPhasen(num(x.field6), num(x.field7)); },
-        segColor:function(v,p){ return WB_PHASE_FARBE[p && p.info] || "var(--amber)"; },
-        fmt:function(v,p){ return fmt(v,1)+" A"+(p && p.info ? " · "+p.info+"-phasig" : ""); },
-        legende:[{color:WB_PHASE_FARBE[1], label:"Vorgabe 1-phasig"}, {color:WB_PHASE_FARBE[3], label:"Vorgabe 3-phasig"}]},
-      {label:"Minimum 6 A",color:"var(--red)",width:1.5,dash:true,calc:function(){ return 6; },fmt:function(){ return "Minimum 6 A"; }},
-      {label:"Maximum 16 A",color:"var(--red)",width:1.5,dash:true,calc:function(){ return 16; },fmt:function(){ return "Maximum 16 A"; }}]},
+        info:function(x){ return wbPhasen(x); },
+        segColor:function(v,p){ return WB_PHASE.farbe(p ? p.info : null); },
+        fmt:function(v,p){ return fmt(v,1)+" A · "+WB_PHASE.text(p ? p.info : null); },
+        legende:[1,3,null].map(function(ph){ return {color:WB_PHASE.farbe(ph), label:ph ? "Vorgabe "+WB_PHASE.text(ph) : WB_PHASE.text(ph)}; })},
+      {label:"Minimum "+WB_REGEL.I_MIN+" A",color:"var(--red)",width:1.5,dash:true,calc:function(){ return WB_REGEL.I_MIN; },fmt:function(){ return "Minimum "+WB_REGEL.I_MIN+" A"; }},
+      {label:"Maximum "+WB_REGEL.I_MAX+" A",color:"var(--red)",width:1.5,dash:true,calc:function(){ return WB_REGEL.I_MAX; },fmt:function(){ return "Maximum "+WB_REGEL.I_MAX+" A"; }}]},
     {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, yTicks:[{v:65,label:"Getrennt"},{v:66,label:"Lädt nicht"},{v:67,label:"Lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]},
     // Ladezustand + Ziel (%, links) und Reichweite (km, rechte Achse ab 0)
     {title:"ID.3 – Ladezustand &amp; Reichweite", unit:"%", yMax:100, unit2:"km", zero2:true,
