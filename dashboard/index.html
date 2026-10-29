@@ -538,7 +538,7 @@ function lineChart(holder, series, opts){
     if(s.pts.length<2)return; var YS=YF(s);
     if(s.segColor){ // segmentweise Faerbung nach Wert
       for(var q=0;q<s.pts.length-1;q++){ var p0=s.pts[q],p1=s.pts[q+1]; if(p0.v==null||p1.v==null)continue;
-        paths+='<path d="M '+X(p0.t.getTime())+' '+YS(p0.v)+' L '+X(p1.t.getTime())+' '+YS(p1.v)+'" fill="none" stroke="'+s.segColor(p0.v)+'" stroke-width="2" stroke-linejoin="round"/>'; }
+        paths+='<path d="M '+X(p0.t.getTime())+' '+YS(p0.v)+' L '+X(p1.t.getTime())+' '+YS(p1.v)+'" fill="none" stroke="'+s.segColor(p0.v,p0)+'" stroke-width="2" stroke-linejoin="round"/>'; }
     } else { var yb = s.bandFrac!=null ? (padT+(H-padT-padB)*(1-s.bandFrac)) : null;
       var d="", pen=false; s.pts.forEach(function(p){ if(p.v==null){ pen=false; return; } d+=(pen?" L ":"M ")+X(p.t.getTime())+" "+(yb!=null?yb:YS(p.v)); pen=true; });
       paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="'+(s.width||2)+'" stroke-linejoin="round" stroke-linecap="round"'+(s.dash?' stroke-dasharray="5 4"':'')+'/>'; } });
@@ -1579,7 +1579,7 @@ function simpleView(cfg){
         var v=L(k.field,k.gueltig); if(v!==null&&k.scale)v=v*k.scale; var el=g("kpi_"+i); if(!el)return;
         el.textContent = k.map ? (v===null?"–":k.map(v, k.field2?L(k.field2):null)) : fmt(v,k.dec||0);
 if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
-        if(k.color) el.style.color = (v===null) ? "" : k.color(v);
+        if(k.color) el.style.color = (v===null) ? "" : k.color(v, k.field2?L(k.field2):null);   // color(v, v2) wie map
         if(k.unter){ var ue=g("kpi_"+i+"_unter"); if(ue) ue.textContent=k.unter.text(f)||""; } });   // Zusatzzeile unter dem Wert (z. B. Min/Max)
       if(g("head-meta")&&last.created_at) aktNeu(f);
       secStand(cfg.channel, last.created_at);
@@ -1740,8 +1740,8 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
             // ln.gueltig(v): Messwert verwerfen, z. B. Fuehler-Lesefehler (0.0 beim Kessel, -127)
             if(raw!==null && ln.gueltig && !ln.gueltig(raw)) return;
             var v = ln.derive ? ln.derive(raw) : (ln.scale? raw*ln.scale : raw);
-            pts.push({t:new Date(x.created_at), v:v}); });
-          return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, bandFrac:ln.bandFrac, axis:ln.axis, dec:ln.dec, fill:ln.fill, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
+            pts.push({t:new Date(x.created_at), v:v, info: ln.info ? ln.info(x) : undefined}); });   // ln.info(Eintrag): Zusatz je Punkt, z. B. fuer segColor/fmt
+          return {color:ln.color, dash:ln.dash, width:ln.width, segColor:ln.segColor, fmt:ln.fmt, bandFrac:ln.bandFrac, axis:ln.axis, dec:ln.dec, fill:ln.fill, pts: ln.derive? pts : downsample(pts,300)}; }).filter(function(s){return s.pts.length>1;});
         if(c.minmaxField){ var vv=[],ct=[]; f.forEach(function(x){ var v=num(x[c.minmaxField]); if(v!==null && (!c.minmaxGueltig || c.minmaxGueltig(v))){ vv.push(v); ct.push(new Date(x.created_at)); } });
           if(vv.length>1){ var mn=Math.min.apply(null,vv), mx=Math.max.apply(null,vv), t0=ct[0], t1=ct[ct.length-1];
             series.push({color:"var(--muted)",dash:true,quer:true,pts:[{t:t0,v:mn},{t:t1,v:mn}]});
@@ -1795,7 +1795,8 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
             '<div class="kpis" style="--n:'+nSec(s)+'">'+cards(function(k){ return k.sec===s.key; })+'</div></div>'; }).join("")+'</div>'
         : '<div class="kpis">'+cards(function(){ return true; })+'</div>';
       var charts=cfg.charts.map(function(c,i){
-        var items=(c.lines||[]).map(function(ln){ return '<span class="it"><span class="sw" style="border-color:'+ln.color+(ln.dash?';border-top-style:dashed':'')+'"></span>'+(ln.label||'')+'</span>'; });
+        var it=function(color, dash, label){ return '<span class="it"><span class="sw" style="border-color:'+color+(dash?';border-top-style:dashed':'')+'"></span>'+(label||'')+'</span>'; };
+        var items=[]; (c.lines||[]).forEach(function(ln){ if(ln.legende) ln.legende.forEach(function(e){ items.push(it(e.color, e.dash, e.label)); }); else items.push(it(ln.color, ln.dash, ln.label)); });
         if(c.minmaxField) items.push('<span class="it"><span class="sw" style="border-color:var(--muted);border-top-style:dashed"></span>Min/Max</span>');
         var leg = (c.lines && (c.lines.length>1 || c.minmaxField)) ? '<div class="legend">'+items.join("")+'</div>' : "";
         return '<div class="panel"><h2>'+c.title+' <span class="tag" id="ct_'+i+'"></span></h2>'+leg+'<div id="chart_'+i+'"><div class="chart-empty">wird geladen…</div></div>'+(c.note?'<div class="note">'+c.note+'</div>':'')+'</div>';
@@ -1965,6 +1966,14 @@ LADEN.panel={
       .catch(function(e){ LADEN._t=0; console.error(e); var s=document.getElementById("ld-sum"); if(s){ s.textContent="Daten konnten nicht geladen werden."; s.style.color="var(--red)"; } }); }
 };
 
+// Laedt die Wallbox mit 1 oder 3 Phasen? Die Wallbox meldet es nicht, aber ihre Regelung (Repo WallboxWeidmuller,
+// Ladesteuerung) rechnet den Ladestrom (field6) aus der geglaetteten Leistung (field7) je nach Phasenzahl verschieden:
+// 1-phasig f7 / 230 V, 3-phasig f7 / (400 V x 1.73), mindestens 6 A. 3-phasig ist sie nur ueber 3500 W (Hysterese 4200 W
+// -700/+800 W). Welche der beiden Rechnungen field6 trifft, ist die Phasenzahl. null = nicht bestimmbar.
+function wbPhasen(f6, f7){ if(f6===null || f7===null || isNaN(f6) || isNaN(f7)) return null;
+  if(f7<=3500) return 1;
+  return Math.abs(f6-Math.max(6, f7/(400*1.73))) < Math.abs(f6-f7/230) ? 3 : 1; }
+var WB_PHASE_FARBE={1:"var(--amber)", 3:"var(--blue)"};
 var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox", extra:LADEN.panel,
   // Zwei Quellen getrennt: Wallbox live (Kanal 172228, Minutentakt) und Auto (ID.3 via
   // Tibber Data API, GitHub-Actions-Poller, Kanal 3514838) - mit eigener Aktualitaet.
@@ -1976,6 +1985,9 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox", extra:LAD
     {sec:"wb",field:"field4",label:"Aktuelle Ladeleistung",unit:"kW",dec:1,scale:0.000001},
     {sec:"wb",field:"field7",label:"PV-Ladevorgabe",unit:"kW",dec:1,scale:0.001},
     {sec:"wb",field:"field6",label:"Ladestrom-Begrenzung",unit:"A",dec:1},
+    // Phasenzahl aus Ladestrom und geglaetteter Leistung (siehe wbPhasen)
+    {sec:"wb",field:"field6",field2:"field7",label:"Phasen",map:function(a,f7){ var ph=wbPhasen(a,f7); return ph ? ph+"\u2011phasig" : "–"; },   // geschuetzter Bindestrich: nicht umbrechen
+      color:function(a,f7){ return WB_PHASE_FARBE[wbPhasen(a,f7)] || ""; }},
     {sec:"wb",field:"field8",label:"Verbindung",map:function(v){var s=Math.round(v); return s===67?"Lädt":s===66?"Lädt nicht":s===65?"Getrennt":("Status "+s);}},
     {sec:"wb",field:"field4",label:"Geladene Menge",unit:"kWh",dec:1,integrate:true,intScale:0.000001},  // Integral field4 (µW) ueber Zeitraum
     // Auto-Werte gelten auch beim Laden auswaerts (daher Stecker/Ladestatus trotz Wallbox-"Verbindung")
@@ -1992,7 +2004,12 @@ var WALLBOX=simpleView({ channel:172228, icon:"🚗", title:"Wallbox", extra:LAD
   charts:[
     {title:"Ladeleistung", unit:"kW", yMax:15, lines:[{field:"field4",label:"Aktuell",color:"var(--green)",scale:0.000001,fill:true},{field:"field7",label:"PV-Ladevorgabe",color:"var(--blue)",scale:0.001,dash:true},{channel:172430,field:"field1",label:"PV-Leistung",color:"var(--amber)",scale:0.001}]},
     // Grenzen der Wallbox: unter 6 A laedt das Auto nicht (Mindeststrom nach IEC 61851), mehr als 16 A gibt die Wallbox nicht her
-    {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)"},
+    // Linie nach Phasenzahl gefaerbt: orange 1-phasig, blau 3-phasig
+    {title:"Ladestrom-Begrenzung", unit:"A", lines:[{field:"field6",label:"Begrenzung",color:"var(--amber)",
+        info:function(x){ return wbPhasen(num(x.field6), num(x.field7)); },
+        segColor:function(v,p){ return WB_PHASE_FARBE[p && p.info] || "var(--amber)"; },
+        fmt:function(v,p){ return fmt(v,1)+" A"+(p && p.info ? " · "+p.info+"-phasig" : ""); },
+        legende:[{color:WB_PHASE_FARBE[1], label:"Begrenzung 1-phasig"}, {color:WB_PHASE_FARBE[3], label:"Begrenzung 3-phasig"}]},
       {label:"Minimum 6 A",color:"var(--red)",width:1.5,dash:true,calc:function(){ return 6; },fmt:function(){ return "Minimum 6 A"; }},
       {label:"Maximum 16 A",color:"var(--red)",width:1.5,dash:true,calc:function(){ return 16; },fmt:function(){ return "Maximum 16 A"; }}]},
     {title:"Verbindungsstatus", zero:false, yMin:65, yMax:67, yTicks:[{v:65,label:"Getrennt"},{v:66,label:"Lädt nicht"},{v:67,label:"Lädt"}], lines:[{field:"field8",label:"Status",color:"var(--blue)"}]},
