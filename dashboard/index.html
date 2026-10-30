@@ -2304,13 +2304,15 @@ ASCHE.verlaufAnwenden=function(t){ var g=function(id){ return document.getElemen
 ASCHE.verlauf=function(el, kopf, rows, leer){ if(!el) return;
   if(!rows.length){ el.innerHTML='<div class="note">'+leer+'</div>'; return; }
   var balken=function(r){ return (r.pct==null) ? "" : '<div class="bar as-minibar"><span style="width:'+ASCHE.breite(r.pct)+';background:'+r.farbe+'"></span></div>'; };
-  var farb=function(r){ return (r.pct==null) ? "" : ' style="color:'+r.farbe+'"'; };
+  // r.grossNeutral: grosse Zahl nicht einfaerben (der Balken zeigt etwas anderes); r.balkenIn: Tabelle - Balken unter dieser Zelle
+  var farb=function(r){ return (r.pct==null || r.grossNeutral) ? "" : ' style="color:'+r.farbe+'"'; };
   var liste=rows.map(function(r){
     return '<div class="as-it'+(r.akt?' akt':'')+'"><div class="as-z1"><span class="as-t">'+r.titel+'</span><span class="as-p"'+farb(r)+'>'+r.gross+'</span></div>'+
       balken(r)+'<div class="as-z2">'+r.klein.join(" · ")+'</div></div>'; }).join("");
   var tab=rows.map(function(r){
-    return '<tr'+(r.akt?' class="akt"':'')+'><td>'+r.titel+'</td><td><span'+farb(r)+'>'+r.gross+'</span>'+balken(r)+'</td>'+
-      r.zellen.map(function(z){ return '<td>'+z+'</td>'; }).join("")+'</tr>'; }).join("");
+    var inZelle=r.balkenIn!=null;
+    return '<tr'+(r.akt?' class="akt"':'')+'><td>'+r.titel+'</td><td><span'+farb(r)+'>'+r.gross+'</span>'+(inZelle?"":balken(r))+'</td>'+
+      r.zellen.map(function(z,zi){ return '<td>'+z+(inZelle && zi===r.balkenIn ? balken(r) : "")+'</td>'; }).join("")+'</tr>'; }).join("");
   var rest=Math.round(54/(kopf.length-2)), cols='<col style="width:27%"><col style="width:19%">'+kopf.slice(2).map(function(){ return '<col style="width:'+rest+'%">'; }).join("");
   el.innerHTML='<div class="as-liste">'+liste+'</div><table class="tbl as-tbl"><colgroup>'+cols+'</colgroup><thead><tr>'+
     kopf.map(function(k){ return '<th>'+k+'</th>'; }).join("")+'</tr></thead><tbody>'+tab+'</tbody></table>'; };
@@ -2485,11 +2487,14 @@ SCHNITZEL.tabellen=function(e, leer){
       zellen:[fmt(ein,1)+" m³", au, ra], klein:["Rest vorher "+F.rest+" %", fmt(ein,1)+" m³ eingefüllt"].concat(h?["Austr. "+au, ra]:["erstes Auffüllen"])}); });
   ASCHE.verlauf(document.getElementById("sz-tab"), ["Auffüllung","Füllstand","Eingefüllt","Austragung","je h"], sz,
     leer.s ? "Noch kein Auffüllen eingetragen – die Liste füllt sich mit jedem Eintrag." : "Val Town: alte asche.ts ohne Schnitzel – bitte durch heizung.ts ersetzen.");
-  if(e.lagerTs && e.lager!==null && e.lagerSeit) lg.push({akt:true, titel:"Seit "+zeit(e.lagerTs), gross:"~"+fmt(e.lager,0)+" m³", pct:null,
+  // Balken wie bei Asche und Bunker: Bestand im Verhaeltnis zum Lager (80 m³ = voll), rot erst, wenn das Lager leer ist
+  // leer: kurzer roter Ansatz statt eines leeren Balkens, damit das Rot sichtbar ist
+  var lgPct=function(m3){ return m3<=0.5 ? 3 : m3/SCHNITZEL.LAGER*100; }, lgFarbe=function(m3){ return m3<=0.5 ? "var(--red)" : "var(--green)"; };
+  if(e.lagerTs && e.lager!==null && e.lagerSeit) lg.push({akt:true, titel:"Seit "+zeit(e.lagerTs), gross:"~"+fmt(e.lager,0)+" m³", pct:lgPct(e.lager), farbe:lgFarbe(e.lager),
     zellen:[fmt(e.lagerSeit.ent,1)+" m³", e.lagerSeit.n+" ×"], klein:["Bestand jetzt ~"+fmt(e.lager,0)+" m³", fmt(e.lagerSeit.ent,1)+" m³ entnommen", e.lagerSeit.n+" Auffüllung"+(e.lagerSeit.n===1?"":"en")]});
   e.lagerHist.slice().reverse().slice(0,10).forEach(function(L){
     var ent=L.entnommen===null?"–":fmt(L.entnommen,1)+" m³", n=L.entnommen===null?"–":L.n+" ×";
-    lg.push({akt:false, titel:"Gefüllt "+zeit(L.ts), gross:fmt(L.m3,0)+" m³", pct:null, zellen:[ent, n],
+    lg.push({akt:false, titel:"Gefüllt "+zeit(L.ts), gross:fmt(L.m3,0)+" m³", pct:lgPct(L.m3), farbe:lgFarbe(L.m3), zellen:[ent, n],
       klein:["Bestand danach "+fmt(L.m3,0)+" m³", L.entnommen===null?"erster Eintrag":ent+" bis zum Eintrag", L.entnommen===null?"":L.n+" Auffüllung"+(L.n===1?"":"en")].filter(function(x){ return x; })}); });
   ASCHE.verlauf(document.getElementById("lg-tab"), ["Lager","Bestand","Entnommen","Auffüllungen"], lg,
     "Noch kein Lager-Eintrag – «Lager gefüllt» im Bereich Schnitzel-Bunker trägt ihn ein.");
@@ -2630,6 +2635,7 @@ SAISON.summe=function(jahr, bisYmd, leer){ var D=SAISON._d[jahr]; if(!D) return 
   return s; };
 SAISON.htmlTab=function(){ return '<div class="note" id="sb-vgl" style="margin:0 0 8px"></div><div id="sb-tab" class="tbl-wrap"></div>'+
   '<div class="frei" style="margin:8px 0 0;padding:0;background:transparent;box-shadow:none"><button class="btn" id="sb-mehr" style="display:none"></button><span class="frei-msg" id="sb-msg"></span></div>'+
+  '<div class="note" style="margin:6px 0 0">Balken: Schnitzel der Saison (≈ m³), '+SCHNITZEL.SAISON_MAX+' m³ = voll – orange darüber, rot ohne Daten.</div>'+
   '<details class="note as-info"><summary>So wird gerechnet</summary><b>Saison</b> = 1. September bis 31. Mai. <b>Brennzeit</b> und <b>Austragung</b> wie bei Aschebox und Bunker (Brennphasen aus Abgas − Kessel, Laufzeit der Schnitzel-Austragung ohne Störungszeit). '+
   '<b>Heizgradtage</b> 20/12 aus dem Tagesmittel der Aussentemperatur (Open-Meteo-Archiv). <b>Brennzeit je Heizgradtag</b> zeigt, wie viel die Heizung für dieselbe Kälte brennt – kleiner ist besser, unabhängig davon, wie kalt der Winter war. '+
   '<b>Schnitzel ≈</b> = Austragung × aktueller Verbrauch je Stunde Austragung (Bunker; solange kein Auffüll-Intervall gemessen ist, der Startwert '+SCHNITZEL.START_M3_H+' m³/h), darunter die eingetragenen Auffüllungen. Über '+SCHNITZEL.SAISON_MAX+' m³ je Saison (nur mit zugekauften Schnitzeln möglich) ist der Wert orange markiert. '+
@@ -2639,9 +2645,11 @@ SAISON.zeichnen=function(){ var r=SAISON._r, el=document.getElementById("sb-tab"
   var zeile=function(s, titel, akt){ var leerTxt=s.leer+" Leerung"+(s.leer===1?"":"en"), m3=s.austr/60*k*60, sz="≈\u00a0"+fmt(m3,0)+"\u00a0m³";
     // mehr als ~90 m3 je Saison gibt es nur mit zugekauften Schnitzeln - dann ist eher der Verbrauch je h zu hoch: orange markieren
     if(m3>SCHNITZEL.SAISON_MAX) sz='<span style="color:var(--amber)" title="mehr als '+SCHNITZEL.SAISON_MAX+' m³ je Saison – nur mit zugekauften Schnitzeln möglich; Verbrauch je Stunde Austragung prüfen">'+sz+' ⚠</span>';
-    if(!s.mess) return {akt:akt, titel:titel, gross:"keine Daten", pct:null, zellen:["–","–","–","–","–"], klein:["ThingSpeak hat für diese Saison keine Heizungsdaten"]};
-    var hg=fmt(s.hgt,0)+(s.temps?" *":""), je=s.jeHgt===null?"–":fmt(s.jeHgt,1)+" min";
-    return {akt:akt, titel:titel+(s.grob?" <small>(grob)</small>":""), gross:fmt(s.brenn/60,0)+" h", pct:null,
+    // Balken = Schnitzel der Saison, SAISON_MAX (90 m³) = voll: gruen, darueber orange, ohne Daten/Verbrauch rot (kurzer Ansatz)
+    var bal=function(m){ return m<=0.5 ? {pct:3, farbe:"var(--red)"} : {pct:m/SCHNITZEL.SAISON_MAX*100, farbe:m>SCHNITZEL.SAISON_MAX?"var(--amber)":"var(--green)"}; };
+    if(!s.mess) return {akt:akt, titel:titel, gross:"keine Daten", pct:3, farbe:"var(--red)", grossNeutral:true, balkenIn:3, zellen:["–","–","–","–","–"], klein:["ThingSpeak hat für diese Saison keine Heizungsdaten"]};
+    var hg=fmt(s.hgt,0)+(s.temps?" *":""), je=s.jeHgt===null?"–":fmt(s.jeHgt,1)+" min", b=bal(m3);
+    return {akt:akt, titel:titel+(s.grob?" <small>(grob)</small>":""), gross:fmt(s.brenn/60,0)+" h", pct:b.pct, farbe:b.farbe, grossNeutral:true, balkenIn:3,
       zellen:[hg, je, fmt(s.austr/60,0)+" h", sz+(s.ein>0?"<br><small>"+fmt(s.ein,0)+" m³ eingefüllt</small>":""), String(s.leer)],
       klein:["Heizgradtage "+hg, je+" je Heizgradtag", "Austr. "+fmt(s.austr/60,0)+" h", sz+" Schnitzel"].concat(s.ein>0?[fmt(s.ein,0)+" m³ eingefüllt"]:[]).concat([leerTxt])}; };
   var rows=[], jetzt=SAISON.summe(cur, null, r.leer), vj=SAISON._d[cur-1] ? SAISON.summe(cur-1, SAISON.vorjahrTag(heute), r.leer) : null;

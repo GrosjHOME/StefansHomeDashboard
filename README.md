@@ -381,11 +381,11 @@ Füllstand und als zwei Spalten (auf dem Handy nacheinander):
 - **«Aschebox – letzte Leerungen»:** Je Leerung der Füllstand beim Leeren (gross, mit farbigem Balken wie der Füllstand oben), die Tage seit der vorherigen (bzw. dem Saisonstart), die Brennzeit und die Austragung im Intervall und die Brennzeit auf 100 % hochgerechnet (die letzten 10), oben die laufende Periode. Auf dem Handy als kompakte Liste (je Leerung zwei Zeilen), ab 1100 Pixeln Breite als Tabelle. Die Leerungen stehen im Val-Town-Blob `asche_leerungen` (Zeitpunkte und Füllstand je Leerung); Tage und Brennzeiten werden daraus im Browser gerechnet, die Tageswerte je Tag liegen im `localStorage` (`hz_tag3_…`).
   Mit dem **Umschalter** im Kopf des Bereichs (**Asche / Schnitzel-Bunker / Lager**, Auswahl im Browser gemerkt, `hz_verlauf`) zeigt derselbe Platz stattdessen
   die **letzten Auffüllungen** des Bunkers (Füllstand vorher, eingefüllte Menge, Austragung im Intervall, Verbrauch je Stunde) oder die
-  **Lager-Einträge** (Bestand danach, seither entnommen, Anzahl Auffüllungen); jeweils oben die laufende Periode.
+  **Lager-Einträge** (Bestand danach mit grünem Balken, 80 m³ = voll, rot erst bei leerem Lager; seither entnommen, Anzahl Auffüllungen); jeweils oben die laufende Periode.
 - **«Saison-Bilanz»** (vierter Knopf im Umschalter): je Heizsaison (1. September bis 31. Mai) Brennzeit, **Heizgradtage**
   (20/12, Tagesmittel aus dem Open-Meteo-Archiv), **Brennzeit je Heizgradtag** (wie viel die Heizung für dieselbe Kälte brennt –
   vergleichbar zwischen milden und kalten Wintern, kleiner ist besser), Austragung, Schnitzel (geschätzt = Austragung × aktueller
-  Verbrauch je Stunde Austragung bzw. dem Startwert 0.5 m³/h, darunter die eingetragenen Auffüllungen; über 90 m³ je Saison orange markiert, weil das nur mit zugekauften Schnitzeln vorkommt) und Asche-Leerungen. Oben der Vergleich mit der
+  Verbrauch je Stunde Austragung bzw. dem Startwert 0.5 m³/h, darunter die eingetragenen Auffüllungen; über 90 m³ je Saison orange markiert, weil das nur mit zugekauften Schnitzeln vorkommt; dazu ein Balken wie bei Asche und Bunker: 90 m³ = voll, grün, darüber orange, rot ohne Daten) und Asche-Leerungen. Oben der Vergleich mit der
   Vorsaison **bis zum gleichen Tag** (Heizgradtage, Brennzeit, Brennzeit je Heizgradtag in %).
   Die laufende Saison rechnet das Dashboard aus den Tageswerten, die die Aschebox ohnehin im Browser hat; geladen wird erst,
   wenn man auf «Saison» schaltet. **Frühere Saisons** lädt der Knopf «Saison … laden» einmal von ThingSpeak (alle Minutenwerte,
