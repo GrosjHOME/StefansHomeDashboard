@@ -995,32 +995,39 @@ PV.loadTrackers=function(){
    einem klaren Tag bringt. Der klare Tag kommt aus den eigenen Daten: das hoechste Viertelstunden-Mittel je Viertelstunde
    der letzten SONNE.TAGE Tage bis zum Ende des Zeitraums - Jahreszeit, Neigung und Verschattung im Tal stecken so schon
    drin. Mittel statt Spitzenwert, damit kurze Ueberhoehungen am Wolkenrand den Bezug nicht anheben. Unter SONNE.MIN_W
-   (Morgen-/Abenddaemmerung, Schatten der Berge) zaehlt nichts. Viertelstunden-Mittel je Tag im Browser (pv_q15_<Tag>). */
-var SONNE={ ANTEIL:0.6, TAGE:21, MIN_W:1000 };
+   (Morgen-/Abenddaemmerung, Schatten der Berge) zaehlt nichts. Viertelstunden-Mittel je Tag im Browser (pv_q15u_<Tag>).
+   Viertelstunde nach UTC, nicht nach Zuercher Uhrzeit: Die Sonne richtet sich nach der Sonnenzeit - nach der Umstellung
+   auf Winterzeit stand sie zur gleichen Uhrzeit eine Stunde "spaeter", und Sommerzeit-Tage im Bezug machten ihn am
+   Nachmittag viel zu hoch (echte Sonne zaehlte nicht). */
+var SONNE={ ANTEIL:0.6, TAGE:21, MIN_W:1000, STUECK:5 };   // STUECK: Tage je Abfrage (ThingSpeak mittelt hoechstens 8000 Rohwerte, ~480 je Tag)
+SONNE.q=function(ms){ var d=new Date(ms); return d.getUTCHours()*4+Math.floor(d.getUTCMinutes()/15); };   // Viertelstunde 0-95 (UTC)
 SONNE.folgetag=function(ymd){ var d=new Date(ymd+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+1); return d.toISOString().slice(0,10); };
 SONNE.minusTage=function(ymd, n){ var d=new Date(ymd+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()-n); return d.toISOString().slice(0,10); };
-// Viertelstunden-Mittel (W) je Zuercher Tag {ymd: [96]} von vonYmd bis bisYmd; fehlende Tage in einer Abfrage (average=15)
+// Viertelstunden-Mittel (W) je Zuercher Tag {ymd: [96, Index = UTC-Viertelstunde]} von vonYmd bis bisYmd; fehlende Tage
+// in Abfragen zu hoechstens STUECK Tagen (average=15)
 SONNE.tage=function(vonYmd, bisYmd){ var heute=zurichZeit().ymd, out={}, fehlt=[];
-  for(var y=vonYmd; y<=bisYmd; y=SONNE.folgetag(y)){ var c=y<heute ? lsGet("pv_q15_"+y) : null, w=null;
+  try{ if(!SONNE._alt){ SONNE._alt=1; Object.keys(localStorage).forEach(function(k){ if(/^pv_q15_/.test(k)) localStorage.removeItem(k); }); } }catch(e){}   // alte Tage (nach Uhrzeit) weg
+  for(var y=vonYmd; y<=bisYmd; y=SONNE.folgetag(y)){ var c=y<heute ? lsGet("pv_q15u_"+y) : null, w=null;
     if(c){ try{ w=JSON.parse(c); }catch(e){ w=null; } } if(w) out[y]=w; else fehlt.push(y); }
   if(!fehlt.length) return Promise.resolve(out);
-  var a=fehlt[0], b=fehlt[fehlt.length-1];
-  return j(api(PV.CH,"/feeds.json?start="+encodeURIComponent(a+" 00:00:00")+"&end="+encodeURIComponent(b+" 23:59:59")+"&average=15&results=8000&timezone=Europe%2FZurich",true))
-    .then(function(d){ var neu={};
-      ((d&&d.feeds)||[]).forEach(function(x){ var v=num(x.field1); if(v===null) return; var z=zurichZeit(Date.parse(x.created_at)), q=z.h*4+Math.floor(z.min/15);
-        (neu[z.ymd]=neu[z.ymd]||[])[q]=Math.round(v); });
-      var vorgestern=SONNE.minusTage(heute, 2);
-      fehlt.forEach(function(y){ var w=neu[y]||[]; out[y]=w;
-        // abgeschlossene Tage merken (leere erst, wenn sicher vorbei); nichts aus dem Offline-Cache
-        if(y<heute && !(d && d.__offline) && (w.length || y<vorgestern)) lsSet("pv_q15_"+y, JSON.stringify(w)); });
-      return out; }); };
+  var stuecke=[], cur=null; fehlt.forEach(function(y){ if(cur && SONNE.folgetag(cur.bis)===y && cur.n<SONNE.STUECK){ cur.bis=y; cur.n++; } else { cur={von:y, bis:y, n:1}; stuecke.push(cur); } });
+  var vorgestern=SONNE.minusTage(heute, 2);
+  return Promise.all(stuecke.map(function(st){
+    return j(api(PV.CH,"/feeds.json?start="+encodeURIComponent(st.von+" 00:00:00")+"&end="+encodeURIComponent(st.bis+" 23:59:59")+"&average=15&results=8000&timezone=Europe%2FZurich",true))
+      .then(function(d){ var neu={};
+        ((d&&d.feeds)||[]).forEach(function(x){ var v=num(x.field1); if(v===null) return; var t=Date.parse(x.created_at);
+          (neu[zurichZeit(t).ymd]=neu[zurichZeit(t).ymd]||[])[SONNE.q(t)]=Math.round(v); });
+        for(var y=st.von; y<=st.bis; y=SONNE.folgetag(y)){ var w=neu[y]||[]; out[y]=w;
+          // abgeschlossene Tage merken (leere erst, wenn sicher vorbei); nichts aus dem Offline-Cache, keine Fehlerantwort
+          if(y<heute && d && d.feeds && !d.__offline && (w.length || y<vorgestern)) lsSet("pv_q15u_"+y, JSON.stringify(w)); } }); }))
+    .then(function(){ return out; }); };
 // Bezug "klarer Tag" je Viertelstunde (0-95) fuer einen Zeitraum, der am Tag bisYmd endet
 SONNE.bezug=function(bisYmd){ return SONNE.tage(SONNE.minusTage(bisYmd, SONNE.TAGE-1), bisYmd).then(function(t){ var ref=[];
   Object.keys(t).forEach(function(y){ (t[y]||[]).forEach(function(v,q){ if(v!=null && (ref[q]==null || v>ref[q])) ref[q]=v; }); });
   return ref; }); };
 // Sonnenstunden (h) aus Rohwerten [{t, v}] und dem Bezug; jede Messung gilt bis zur naechsten (hoechstens 30 min)
 SONNE.stunden=function(pts, ref){ var ms=0;
-  for(var i=0;i<pts.length-1;i++){ var z=zurichZeit(pts[i].t), r=ref[z.h*4+Math.floor(z.min/15)];
+  for(var i=0;i<pts.length-1;i++){ var r=ref[SONNE.q(pts[i].t)];
     if(r==null || r<SONNE.MIN_W || pts[i].v<SONNE.ANTEIL*r) continue;
     var dt=pts[i+1].t-pts[i].t; if(dt>0 && dt<1800000) ms+=dt; }
   return ms/3600000; };
