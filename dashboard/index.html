@@ -884,7 +884,7 @@ PV.render=function(main){
     '<div class="kpis a-kpi">'+
       kpiCard("Heute","e-today","kWh")+kpiCard("Gestern","e-yesterday","kWh")+kpiCard("Aktueller Monat","e-month","kWh")+
       kpiCard("Letzter Monat","e-lastmonth","kWh")+kpiCard("Dieses Jahr","e-year","kWh")+kpiCard("Ø DC-Spannung","dc-mean","V")+
-      kpiCard("Peak","e-peak","kW")+kpiCard("Sonnenstunden","e-sun","h")+'</div>'+
+      kpiCard("Peak","e-peak","kW")+kpiCard("Sonnenstunden","e-sun","h","",'<span class="chk" id="e-sun-om" title="Zum Vergleich: Sonnenscheindauer von Open-Meteo (Modell, WMO-Definition: direkte Sonne ab 120 W/m²)"></span>')+'</div>'+
     '<div class="panel a-leist"><h2>Leistung <span class="tag" id="power-tag"></span></h2><div id="chart-power"><div class="chart-empty">wird geladen…</div></div></div>'+
     '<div class="panel a-energ"><h2>Energie <span class="head-ctl"><select id="energy-year" style="display:none;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px">'+yearOpts+'</select><span class="seg" id="seg-energy"><button data-m="tage" class="active">Tage</button><button data-m="monate">Monate</button><button data-m="jahre">Jahre</button></span></span></h2><div id="chart-days"><div class="chart-empty">wird geladen…</div></div></div>'+
     '<div class="panel a-jahr"><h2>PV-Arbeit je Jahr <span class="seg" id="seg-cmp"><button data-m="kumuliert" class="active">Kumuliert</button><button data-m="alle">Alle Monate</button><button data-m="gruppiert">Monate aller Jahre</button></span></h2><div id="chart-cumyear"><div class="chart-empty">wird geladen…</div></div>'+
@@ -989,6 +989,49 @@ PV.loadTrackers=function(){
     ["chart-strom","chart-spannung","tracker-holder"].forEach(function(id){ var e=g(id); if(e) e.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; }); }));
 };
 
+/* ---- Sonnenstunden ----
+   Frueher zaehlte jede Minute ueber 500 W - das schafft bei rund 30 kWp schon das diffuse Licht bei Nebel und Regen.
+   Jetzt: sonnig, wenn die PV mindestens SONNE.ANTEIL (60 %) dessen liefert, was die Anlage zu dieser Viertelstunde an
+   einem klaren Tag bringt. Der klare Tag kommt aus den eigenen Daten: das hoechste Viertelstunden-Mittel je Viertelstunde
+   der letzten SONNE.TAGE Tage bis zum Ende des Zeitraums - Jahreszeit, Neigung und Verschattung im Tal stecken so schon
+   drin. Mittel statt Spitzenwert, damit kurze Ueberhoehungen am Wolkenrand den Bezug nicht anheben. Unter SONNE.MIN_W
+   (Morgen-/Abenddaemmerung, Schatten der Berge) zaehlt nichts. Viertelstunden-Mittel je Tag im Browser (pv_q15_<Tag>). */
+var SONNE={ ANTEIL:0.6, TAGE:21, MIN_W:1000 };
+SONNE.folgetag=function(ymd){ var d=new Date(ymd+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+1); return d.toISOString().slice(0,10); };
+SONNE.minusTage=function(ymd, n){ var d=new Date(ymd+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()-n); return d.toISOString().slice(0,10); };
+// Viertelstunden-Mittel (W) je Zuercher Tag {ymd: [96]} von vonYmd bis bisYmd; fehlende Tage in einer Abfrage (average=15)
+SONNE.tage=function(vonYmd, bisYmd){ var heute=zurichZeit().ymd, out={}, fehlt=[];
+  for(var y=vonYmd; y<=bisYmd; y=SONNE.folgetag(y)){ var c=y<heute ? lsGet("pv_q15_"+y) : null, w=null;
+    if(c){ try{ w=JSON.parse(c); }catch(e){ w=null; } } if(w) out[y]=w; else fehlt.push(y); }
+  if(!fehlt.length) return Promise.resolve(out);
+  var a=fehlt[0], b=fehlt[fehlt.length-1];
+  return j(api(PV.CH,"/feeds.json?start="+encodeURIComponent(a+" 00:00:00")+"&end="+encodeURIComponent(b+" 23:59:59")+"&average=15&results=8000&timezone=Europe%2FZurich",true))
+    .then(function(d){ var neu={};
+      ((d&&d.feeds)||[]).forEach(function(x){ var v=num(x.field1); if(v===null) return; var z=zurichZeit(Date.parse(x.created_at)), q=z.h*4+Math.floor(z.min/15);
+        (neu[z.ymd]=neu[z.ymd]||[])[q]=Math.round(v); });
+      var vorgestern=SONNE.minusTage(heute, 2);
+      fehlt.forEach(function(y){ var w=neu[y]||[]; out[y]=w;
+        // abgeschlossene Tage merken (leere erst, wenn sicher vorbei); nichts aus dem Offline-Cache
+        if(y<heute && !(d && d.__offline) && (w.length || y<vorgestern)) lsSet("pv_q15_"+y, JSON.stringify(w)); });
+      return out; }); };
+// Bezug "klarer Tag" je Viertelstunde (0-95) fuer einen Zeitraum, der am Tag bisYmd endet
+SONNE.bezug=function(bisYmd){ return SONNE.tage(SONNE.minusTage(bisYmd, SONNE.TAGE-1), bisYmd).then(function(t){ var ref=[];
+  Object.keys(t).forEach(function(y){ (t[y]||[]).forEach(function(v,q){ if(v!=null && (ref[q]==null || v>ref[q])) ref[q]=v; }); });
+  return ref; }); };
+// Sonnenstunden (h) aus Rohwerten [{t, v}] und dem Bezug; jede Messung gilt bis zur naechsten (hoechstens 30 min)
+SONNE.stunden=function(pts, ref){ var ms=0;
+  for(var i=0;i<pts.length-1;i++){ var z=zurichZeit(pts[i].t), r=ref[z.h*4+Math.floor(z.min/15)];
+    if(r==null || r<SONNE.MIN_W || pts[i].v<SONNE.ANTEIL*r) continue;
+    var dt=pts[i+1].t-pts[i].t; if(dt>0 && dt<1800000) ms+=dt; }
+  return ms/3600000; };
+// Vergleich: Sonnenscheindauer von Open-Meteo (Stundenwert = Sekunden Sonne der vorangehenden Stunde), anteilig im Zeitraum
+SONNE.openMeteo=function(von, bis){ var tage=Math.ceil((Date.now()-von)/864e5)+1; if(tage>92) return Promise.resolve(null);
+  return j("https://api.open-meteo.com/v1/forecast?latitude="+PLANNER.LAT+"&longitude="+PLANNER.LON+"&hourly=sunshine_duration&past_days="+tage+"&forecast_days=1&timezone=GMT")
+    .then(function(r){ var h=r&&r.hourly; if(!h || !h.time) return null; var s=0;
+      h.time.forEach(function(t,i){ var v=h.sunshine_duration[i]; if(v==null) return; var e=Date.parse(t+":00Z"), a=e-3600000;
+        var ueber=Math.max(0, Math.min(e,bis)-Math.max(a,von)); s+=v*ueber/3600000; });
+      return s/3600; }).catch(function(){ return null; }); };
+
 // Peak-Leistung + Sonnenstunden fuer den globalen Zeitraum
 PV.loadPeakSun=function(){
   function g(id){ return document.getElementById(id); }
@@ -998,12 +1041,15 @@ PV.loadPeakSun=function(){
     var f=(d&&d.feeds)?d.feeds:[], pts=[], peak=0;
     f.forEach(function(x){ var v=num(x.field1); if(v===null)return; if(v>peak)peak=v; pts.push({t:new Date(x.created_at).getTime(),v:v}); });
     pts.sort(function(a,b){return a.t-b.t;});
-    var sunMs=0; for(var i=0;i<pts.length-1;i++){ if(pts[i].v>500){ var dt=pts[i+1].t-pts[i].t; if(dt>0&&dt<1800000) sunMs+=dt; } }
     if(g("e-peak")) g("e-peak").textContent=fmt(peak/1000,1);
-    if(g("e-sun")) g("e-sun").textContent=fmt(sunMs/3600000,1);
     PV._stand.peak=tok;
+    // Sonnenstunden gegen den klaren Tag (siehe SONNE); Bezug bis zum Ende des Zeitraums
+    var z=zeitraumMs(PV.period);
+    return Promise.all([SONNE.bezug(zurichZeit(z.bis).ymd).catch(function(){ return null; }), SONNE.openMeteo(z.von, z.bis)]).then(function(r){ if(ladeToken(PV.period)!==tok) return;
+      if(g("e-sun")) g("e-sun").textContent = r[0] ? fmt(SONNE.stunden(pts, r[0]),1) : "–";   // ohne Bezug keine Aussage
+      if(g("e-sun-om")) g("e-sun-om").textContent = r[1]==null ? "" : "(Open-Meteo "+fmt(r[1],1)+"\u00a0h)"; });
   }).catch(pvFehler("peak", tok, function(){   // "–" statt der Werte eines frueheren Zeitraums
-    ["e-peak","e-sun"].forEach(function(id){ var e=g(id); if(e) e.textContent="–"; }); }));
+    ["e-peak","e-sun"].forEach(function(id){ var e=g(id); if(e) e.textContent="–"; }); var o=g("e-sun-om"); if(o) o.textContent=""; }));
 };
 
 // PV-Arbeit je Jahr (Jahresvergleich), drei Ansichten aus denselben Monatssummen:
