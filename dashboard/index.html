@@ -754,7 +754,8 @@ var KURZ_MENU=["10m","1h","3h","6h","12h","3tage"], FEST_MENU=[["heute","Heute"]
    "heute" = ab lokaler Mitternacht (ThingSpeak start-Param, in UTC = korrekter Zeitpunkt),
    "3h" = letzte 3 Stunden, "24h" = rollierende letzte 24 h, "7tage" = letzte 7 Tage. */
 function midnightStartUTC(){ var d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,19).replace('T',' '); }
-function periodQuery(mode){ if(KURZ[mode]) return "/feeds.json?minutes="+KURZ[mode];  if(mode==="7tage") return "/feeds.json?days=7"; if(mode==="24h") return "/feeds.json?days=1";
+// "7tage" hat keine Einzelabfrage: siehe holeZeitraum / holeTagesFenster (mit days=7 kamen bei minuetlichen Kanaelen nur ~5.5 Tage)
+function periodQuery(mode){ if(KURZ[mode]) return "/feeds.json?minutes="+KURZ[mode]; if(mode==="24h") return "/feeds.json?days=1";
   if(mode==="frei"){ var z=zeitraumMs("frei"); return "/feeds.json?start="+encodeURIComponent(tsStamp(z.von))+"&end="+encodeURIComponent(tsStamp(z.bis)); }
   return "/feeds.json?start="+encodeURIComponent(midnightStartUTC()); }
 
@@ -786,7 +787,29 @@ function holeBereich(ch, von, bis, withKey, datei){ datei=datei||"feeds.json";
   return Promise.all(fenster.map(function(w){ return j(api(ch, "/"+datei+"?start="+encodeURIComponent(tsStamp(w[0]))+"&end="+encodeURIComponent(tsStamp(w[1])), withKey)); }))
     .then(function(rs){ var seen={}, feeds=[], luecke=false; rs.forEach(function(r){ if(!r||!r.feeds||r.__offline) luecke=true;   // Fenster ohne feeds = Fehlerantwort; aus dem Offline-Cache = evtl. unvollstaendig
       ((r&&r.feeds)||[]).forEach(function(x){ if(!seen[x.entry_id]){ seen[x.entry_id]=1; feeds.push(x); } }); }); return {feeds:feeds, luecke:luecke}; }); }
+// Fester Zeitraum "7 Tage": ThingSpeak liefert je Abfrage hoechstens 8000 Eintraege (die neuesten) - mit days=7 kamen bei
+// minuetlichen Kanaelen (Pumpwerk, Heizung, Wallbox, Boiler) nur die letzten ~5.5 Tage. Darum in Tagesfenstern geholt
+// (an UTC-Mitternacht ausgerichtet, damit sie von Abruf zu Abruf gleich bleiben). Abgeschlossene Fenster bleiben im Speicher;
+// beim Aktualisieren jede Minute wird nur das laufende neu geholt. Ergebnis wie holeBereich: {feeds, luecke}, nur von..bis.
+var _tagFenster={};
+function holeTagesFenster(ch, von, bis, withKey, datei){ var T=864e5, fenster=[];
+  for(var s=Math.floor(von/T)*T; s<bis; s+=T) fenster.push([s, s+T]);
+  if(Object.keys(_tagFenster).length>150) _tagFenster={};   // nicht endlos wachsen (Kanaele x Tage)
+  return Promise.all(fenster.map(function(w){ var key=ch+"|"+datei+"|"+w[0], fertig=w[1]<Date.now()-300000;
+      if(fertig && _tagFenster[key]) return _tagFenster[key];
+      var p=j(api(ch, "/"+datei+"?start="+encodeURIComponent(tsStamp(w[0]))+"&end="+encodeURIComponent(tsStamp(Math.min(w[1], Date.now()))), withKey));
+      if(fertig){ _tagFenster[key]=p;
+        // Fehler, Fehlerantwort oder Antwort aus dem Offline-Cache nicht behalten - beim naechsten Laden neu versuchen
+        var weg=function(){ if(_tagFenster[key]===p) delete _tagFenster[key]; };
+        p.then(function(r){ if(!r || !r.feeds || r.__offline) weg(); }, weg); }
+      return p; }))
+    .then(function(rs){ var seen={}, feeds=[], luecke=false;
+      rs.forEach(function(r){ if(!r || !r.feeds || r.__offline) luecke=true;
+        r && r.feeds && r.feeds.forEach(function(x){ var t=Date.parse(x.created_at);
+          if(t<von || t>bis || seen[x.entry_id]) return; seen[x.entry_id]=1; feeds.push(x); }); });
+      return {feeds:feeds, luecke:luecke}; }); }
 function holeZeitraum(ch, mode, withKey, datei){ datei=datei||"feeds.json";
+  if(mode==="7tage"){ var z7=zeitraumMs(mode); return holeTagesFenster(ch, z7.von, z7.bis, withKey, datei); }
   if(mode!=="frei") return j(api(ch, periodQuery(mode).replace("feeds.json",datei), withKey));
   var z=zeitraumMs("frei"), key=ch+"|"+datei+"|"+z.von+"|"+z.bis, fertig=z.bis<Date.now()-300000;
   if(fertig && _freiCache[key]) return _freiCache[key];
@@ -1674,7 +1697,7 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
     });
   }
 
-  // Charts gemaess Zeitraum (Heute: days=1 / 7 Tage: days=7)
+  // Charts gemaess Zeitraum (siehe holeZeitraum)
   function loadCharts(){
     // Alle Kanaele sammeln, die von Chart-Linien gebraucht werden (Standard: cfg.channel).
     var chans={}; chans[String(cfg.channel)]=cfg.channel;
@@ -1698,28 +1721,19 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
         var lo=0, hi=s.ts.length-1, r=-1; while(lo<=hi){ var m=(lo+hi)>>1; if(s.ts[m]<=t){ r=m; lo=m+1; } else hi=m-1; }
         return r<0 ? (s.vs.length?s.vs[0]:null) : s.vs[r]; }
       var lastTs = f.length ? new Date(f[f.length-1].created_at) : null;
-      // Integral-KPIs (z. B. "Geladene Menge"): Leistung (W) ueber den Zeitraum
-      // aufintegrieren -> kWh. Heute/24h aus den vorhandenen Chart-Feeds; fuer 7 Tage
-      // die vollen 7 Tage in 2 Fenstern nachladen (ThingSpeak roh ~8000 Punkte ≈ 6.5 Tage).
-      // Ebenso Zeitraum-KPIs mit eigener Rechnung (k.ausFeeds(feeds) -> Zahl), z. B. Heizzyklen.
-      var sieben={};   // 7-Tage-Feeds je Kanal, einmal geladen fuer alle KPIs
-      function siebenTage(ch){ if(!sieben[ch]){ var withKey=(String(ch)==="172430"), now=Date.now(), mid=now-3.5*864e5;
-          var u1=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(now-7*864e5))+"&end="+encodeURIComponent(tsStamp(mid)),withKey);
-          var u2=api(ch,"/feeds.json?start="+encodeURIComponent(tsStamp(mid))+"&end="+encodeURIComponent(tsStamp(now)),withKey);
-          sieben[ch]=Promise.all([j(u1),j(u2)]).then(function(rr){ return ((rr[0]&&rr[0].feeds)||[]).concat((rr[1]&&rr[1].feeds)||[]); }); }
-        return sieben[ch]; }
+      // Integral-KPIs (z. B. "Geladene Menge"): Leistung (W) ueber den Zeitraum aufintegrieren -> kWh; ebenso Zeitraum-KPIs
+      // mit eigener Rechnung (k.ausFeeds(feeds) -> Zahl), z. B. Heizzyklen. Aus denselben Feeds wie die Grafiken - auch fuer
+      // 7 Tage, die holeZeitraum vollstaendig liefert (frueher eigener Abruf in 2 Fenstern, weil days=7 nur ~5.5 Tage brachte).
       // Zeitraum fuer Rechnungen, die den Anteil an der Gesamtdauer brauchen (k.ausFeeds(feeds, {von, bis}))
       var ctx=zeitraumMs(mode);   // {von, bis} in ms - auch fuer den freien Zeitraum
       cfg.kpis.forEach(function(k,ki){ if(!k.integrate && !k.ausFeeds)return; var el=g("kpi_"+ki); if(!el)return;
         var ch=k.channel||cfg.channel, dec=(k.dec!=null?k.dec:1), toKw=k.intScale;
         var wert=function(ff){ return k.ausFeeds ? k.ausFeeds(ff,ctx) : integKwh(ff,k.field,toKw); };
         // Hauptwert: aus den Feeds des Kanals dieser Kennzahl
-        (mode==="7tage" ? siebenTage(ch) : Promise.resolve(byChan[String(ch)]||[])).then(function(ff){ if(ladeToken(mode)!==tok)return;  // Zeitraum oder Tab inzwischen gewechselt
-          el.textContent = fmt(wert(ff), dec); }).catch(function(){});
+        try{ el.textContent = fmt(wert(byChan[String(ch)]||[]), dec); }catch(e){ console.error(e); }   // eine fehlerhafte Kennzahl haelt die Grafiken nicht auf
         // Pruefwert in Klammern (k.pruef): zweite Rechnung aus einem anderen Kanal, nur zum Gegenpruefen
         if(k.pruef){ var ce=g("kpi_"+ki+"_chk");
-          (mode==="7tage" ? siebenTage(k.pruef.channel) : Promise.resolve(byChan[String(k.pruef.channel)]||[])).then(function(ff){ if(ladeToken(mode)!==tok||!ce)return;
-            var pv=k.pruef.rechne(ff); ce.textContent = pv===null ? "" : "("+k.pruef.label+" "+fmt(pv,dec)+" "+(k.unit||"")+")"; }).catch(function(){}); }
+          if(ce) try{ var pv=k.pruef.rechne(byChan[String(k.pruef.channel)]||[]); ce.textContent = pv===null ? "" : "("+k.pruef.label+" "+fmt(pv,dec)+" "+(k.unit||"")+")"; }catch(e){ console.error(e); } }
       });
       cfg.charts.forEach(function(c,i){ var holder=g("chart_"+i); if(!holder)return;
         var series=c.lines.map(function(ln){ var pts=[]; var ff=byChan[String(ln.channel||cfg.channel)]||[];
