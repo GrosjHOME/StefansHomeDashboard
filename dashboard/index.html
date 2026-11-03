@@ -1664,7 +1664,7 @@ function simpleView(cfg){
         el.textContent = k.map ? (v===null?"–":k.map(v, k.field2?L(k.field2):null)) : fmt(v,k.dec||0);
 if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)" : "";
         if(k.color) el.style.color = (v===null) ? "" : k.color(v, k.field2?L(k.field2):null);   // color(v, v2) wie map
-        if(k.unter){ var ue=g("kpi_"+i+"_unter"); if(ue) ue.textContent=k.unter.text(f)||""; } });   // Zusatzzeile unter dem Wert (z. B. Min/Max)
+        if(k.unter && k.unter.text){ var ue=g("kpi_"+i+"_unter"); if(ue) ue.textContent=k.unter.text(f)||""; } });   // Zusatzzeile unter dem Wert (z. B. Min/Max); unter.ausFeeds: im Zeitraum, siehe loadCharts
       if(g("head-meta")&&last.created_at) aktNeu(f);
       secStand(cfg.channel, last.created_at);
       // Ampel-Faerbung: KPI-Wert nach aktueller PV-Leistung gegenueber der Schwelle
@@ -1731,6 +1731,8 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
         var wert=function(ff){ return k.ausFeeds ? k.ausFeeds(ff,ctx) : integKwh(ff,k.field,toKw); };
         // Hauptwert: aus den Feeds des Kanals dieser Kennzahl
         try{ el.textContent = fmt(wert(byChan[String(ch)]||[]), dec); }catch(e){ console.error(e); }   // eine fehlerhafte Kennzahl haelt die Grafiken nicht auf
+        // Zusatzzeile aus dem Zeitraum (k.unter.ausFeeds(feeds, ctx) -> Text), z. B. kuerzeste Pause unter "Ø Heizzyklus"
+        if(k.unter && k.unter.ausFeeds){ var uz=g("kpi_"+ki+"_unter"); if(uz) try{ uz.textContent=k.unter.ausFeeds(byChan[String(ch)]||[], ctx)||""; }catch(e){ console.error(e); } }
         // Pruefwert in Klammern (k.pruef): zweite Rechnung aus einem anderen Kanal, nur zum Gegenpruefen
         if(k.pruef){ var ce=g("kpi_"+ki+"_chk");
           if(ce) try{ var pv=k.pruef.rechne(byChan[String(k.pruef.channel)]||[]); ce.textContent = pv===null ? "" : "("+k.pruef.label+" "+fmt(pv,dec)+" "+(k.unit||"")+")"; }catch(e){ console.error(e); } }
@@ -2786,7 +2788,13 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung", extra:ext
     {sec:"zyk",label:"Brennzeit",unit:"h",dec:1,ausFeeds:function(ff){ return heizPhasen(ff).reduce(function(s,p){ return s+p.min; },0)/60; }},
     {sec:"zyk",label:"Austragung",unit:"h",dec:1,ausFeeds:function(ff){ return ASCHE.austrFlags(ff).filter(function(c){ return c===1; }).length/60; }},
     {sec:"zyk",label:"Störungszeit Austragung",unit:"min",dec:0,ausFeeds:function(ff){ return ASCHE.austrFlags(ff).filter(function(c){ return c===2; }).length; }},
-    {sec:"zyk",label:"Ø Heizzyklus",unit:"min",dec:0,ausFeeds:function(ff){ var v=heizVoll(ff); return v.length ? v.reduce(function(s,p){ return s+p.min; },0)/v.length : null; }},
+    // darunter die kuerzeste Pause zwischen zwei Heizzyklen im Zeitraum: Ende eines Zyklus bis Beginn des naechsten
+    // (Glutstoesse dazwischen zaehlen nicht als Zyklus); erst ab zwei Zyklen
+    {sec:"zyk",label:"Ø Heizzyklus",unit:"min",dec:0,ausFeeds:function(ff){ var v=heizVoll(ff); return v.length ? v.reduce(function(s,p){ return s+p.min; },0)/v.length : null; },
+      unter:{titel:"Kürzeste Pause zwischen zwei Heizzyklen im Zeitraum (Ende eines Zyklus bis Beginn des nächsten; Glutstösse zählen nicht)",
+        ausFeeds:function(ff){ var v=heizVoll(ff).slice().sort(function(a,b){ return a.s-b.s; }), m=null;
+          for(var i=1;i<v.length;i++){ var p=(v[i].s-v[i-1].e)/60000; if(p>=0 && (m===null || p<m)) m=p; }
+          return m===null ? "" : "kürzeste Pause\u00a0"+fmt(m,0)+"\u00a0min"; }}},   // Zahl und Einheit nicht trennen
     // Auslastung = Anteil des gewaehlten Zeitraums, in dem die Heizung gebrannt hat (Brennzeit / Zeitraum),
     // direkt aus den Heizungsdaten gerechnet (gleiche Zaehlung wie Heizzyklen/Brennzeit). In Klammern
     // zum Gegenpruefen der Wert des ThingSpeak-Skripts (HSH-Auslastung, Wallbox-Kanal 172228 field1):
