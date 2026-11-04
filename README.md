@@ -518,13 +518,15 @@ eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
 | PV-Morgenprognose | ab 07:00 keine Prognose von heute oder nicht um 06:00 erstellt |
 | Schnitzel-Bunker | in der Heizsaison: Auffüllen (Rest 10 %) in höchstens 2 Tagen fällig, siehe [Schnitzel-Prognose](#schnitzel-prognose-val-town) |
 | Aschebox | in der Heizsaison: Box in höchstens 2 Tagen voll, siehe [Asche-Prognose](#asche-prognose-val-town) |
+| Pumpwerk: Leck-Verdacht (Hinweis) | ab 05:00: letzte Nacht (0–5 Uhr) mindestens 3× so viele Starts oder 3× so viel Laufzeit wie der Median der 14 Nächte davor, und mindestens 8 Starts bzw. 15 min (Betreff „💧 Zuhause: Pumpwerk prüfen (Leck-Verdacht)“); Nächte im Blob `pumpe_naechte`, braucht `PUMPWERK_READ_KEY` |
+| Pumpwerk: Dauerlauf | die Pumpe läuft seit rund 60 min ohne Pause (Leck, offener Hahn oder Trockenlauf); mit der Bestätigung über zwei Läufe kommt die Mail nach etwa 90 min, längeres Giessen löst also nicht sofort aus |
 
 **Wann eine Mail kommt:**
 - **Neue Störung:** Eine Störung zählt erst, wenn sie zwei Läufe hintereinander
   besteht. Einzelne Aussetzer lösen keinen Alarm aus.
 - **Wieder in Ordnung:** Eine Mail meldet, was behoben ist.
 - **Erinnerung:** Einmal täglich, solange etwas gestört ist.
-- **Hinweise (Aschebox, Schnitzel-Bunker):** Sie sind keine Störung und stehen in der Mail unter «Hinweis». Ist nur ein Hinweis offen, lautet der Betreff „🪣 Zuhause: Aschebox leeren“ bzw. „🪵 Zuhause: Schnitzel-Bunker auffüllen“ (beide: „… Aschebox leeren und Schnitzel-Bunker auffüllen“), sonst „⚠ Zuhause: 1 Störung · Aschebox leeren“. Nach dem Eintragen im Dashboard kommt „✅ Zuhause: … erledigt“.
+- **Hinweise (Aschebox, Schnitzel-Bunker, Leck-Verdacht Pumpwerk):** Sie sind keine Störung und stehen in der Mail unter «Hinweis». Ist nur ein Hinweis offen, lautet der Betreff „🪣 Zuhause: Aschebox leeren“ bzw. „🪵 Zuhause: Schnitzel-Bunker auffüllen“ (beide: „… Aschebox leeren und Schnitzel-Bunker auffüllen“), sonst „⚠ Zuhause: 1 Störung · Aschebox leeren“. Nach dem Eintragen im Dashboard kommt „✅ Zuhause: … erledigt“.
 - **Kann nicht gerechnet werden** (ThingSpeak oder Open-Meteo nicht erreichbar): Ein schon gemeldeter Hinweis bleibt stehen, es kommt keine falsche Entwarnung.
 
 | | |

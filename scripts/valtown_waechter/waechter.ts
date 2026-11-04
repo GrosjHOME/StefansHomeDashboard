@@ -17,6 +17,9 @@
 //  - ist die Aschebox in den naechsten ASCHE_VORLAUF Tagen voll? Gleiche Rechnung wie im Dashboard (Heizung -> Aschebox):
 //    Leerungen aus dem Blob "asche_leerungen" (heizung.ts), Brennzeit je Tag (Brennphasen aus Abgas/Kessel) aus Kanal 172428,
 //    im Blob "asche_tage" gemerkt. Nur in der Heizsaison. Nach dem Eintragen der Leerung kommt die Entwarnung.
+//  - Pumpwerk, Leck-Verdacht: lief die Pumpe letzte Nacht (0-5 Uhr) viel oefter oder laenger als in den Naechten davor
+//    (mindestens PW.FAKTOR-mal der Median der letzten PW.NAECHTE Naechte)? Hinweis ab 05:00 fuer den Tag. Naechte im Blob
+//    "pumpe_naechte". Dazu als Stoerung: Dauerlauf - die Pumpe laeuft seit PW.DAUER_MIN Minuten ohne Pause.
 //
 // E-Mail: bei einer neuen Stoerung, wenn alles wieder in Ordnung ist, und taeglich als Erinnerung,
 // solange etwas gestoert ist. Eine Stoerung zaehlt erst, wenn sie zwei Laeufe hintereinander
@@ -46,16 +49,19 @@ const ASCHE_VORLAUF = 2;   // Tage: so frueh vor "Box voll" kommt die Mail
 const AS_TAGE_VERSION = 1, AS_TAGE_KEY = "asche_tage", AS_MAX_TAGE = 150, AS_MAX_ABRUFE = 15;   // mit den Schnitzel-Abrufen je Lauf hoechstens ~40 Tage
 const GLUT_SPRUNG_K = 30, GLUT_ABKLING_K = 15, GLUT_MAX_MIN = 5;   // Glutstoss ueber den Abgas-Sprung (wie im Dashboard)
 // Hinweise sind keine Stoerungen der Anlage: eigener Betreff, eigene Liste in der Mail
-const HINWEISE: Record<string, string> = { asche: "🪣 Aschebox leeren", schnitzel: "🪵 Schnitzel-Bunker auffüllen" };
+const HINWEISE: Record<string, string> = { asche: "🪣 Aschebox leeren", schnitzel: "🪵 Schnitzel-Bunker auffüllen", pumpeLeck: "💧 Pumpwerk prüfen (Leck-Verdacht)" };
+// Pumpwerk (Kanal 3484334): Tageszaehler field2 = Einschaltungen heute, field3 = Laufzeit heute [s], beide um Mitternacht auf 0
+const PW = { KANAL: 3484334, NAECHTE: 14, MIN_NAECHTE: 7, BIS_H: 5, FAKTOR: 3, MIN_STARTS: 8, MIN_SEC: 15 * 60, DAUER_MIN: 60, MIN_WERTE: 250 };
+const PW_KEY = "pumpe_naechte", PW_VERSION = 1, PW_MAX_ABRUFE = 8;   // je Lauf hoechstens so viele Naechte nachholen
 
 const PUMPWERK_READ_KEY = (Deno.env.get("PUMPWERK_READ_KEY") || "").trim() || undefined;   // privater Kanal, Key nur als Umgebungsvariable
 
 // Alle Kanaele senden auch nachts (PV ~3 min, Wallbox/Boiler/Pumpwerk minuetlich, ID.3 alle 15 min)
-const KANAELE: { id: string; name: string; kanal: number; key?: string; maxMin: number; saison?: number[] }[] = [
+const KANAELE: { id: string; name: string; kanal: number; key?: string; maxMin: number; saison?: number[]; results?: number }[] = [
   { id: "pv", name: "PV-Anlage", kanal: 172430, key: PV_READ_KEY, maxMin: 45 },
   { id: "wallbox", name: "Wallbox", kanal: 172228, maxMin: 45 },
   { id: "boiler", name: "Boiler", kanal: 502977, maxMin: 45 },
-  { id: "pumpwerk", name: "Pumpwerk (Logger)", kanal: 3484334, key: PUMPWERK_READ_KEY, maxMin: 20 },
+  { id: "pumpwerk", name: "Pumpwerk (Logger)", kanal: 3484334, key: PUMPWERK_READ_KEY, maxMin: 20, results: PW.DAUER_MIN + 15 },   // genug fuer den Dauerlauf
   { id: "id3", name: "ID.3 (Tibber-Poller id3.ts)", kanal: 3514838, maxMin: 90 },
   { id: "heizung", name: "Heizung", kanal: 172428, maxMin: 120, saison: HEIZSAISON },
 ];
@@ -72,8 +78,8 @@ const lokal = (ms: number) => {
   return { datum: s.slice(0, 10), h: +s.slice(11, 13), monat: +s.slice(5, 7) - 1 };
 };
 
-async function feeds(kanal: number, key?: string): Promise<any[]> {
-  const r = await fetch(`https://api.thingspeak.com/channels/${kanal}/feeds.json?results=3` + (key ? `&api_key=${key}` : ""));
+async function feeds(kanal: number, key?: string, results = 3): Promise<any[]> {
+  const r = await fetch(`https://api.thingspeak.com/channels/${kanal}/feeds.json?results=${results}` + (key ? `&api_key=${key}` : ""));
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return (await r.json()).feeds ?? [];
 }
@@ -315,6 +321,54 @@ async function aschePruefen(heute: string): Promise<string | null | undefined> {
   return `Aschebox: ca. ${Math.min(999, pct).toFixed(0)} % – ${tageBis === 0 ? "jetzt leeren" : "voll " + wann} (Brennzeit pro Leerung ${(kap / 60).toFixed(0)} h aus ${quelle})`;
 }
 
+// ---- Pumpwerk: Leck-Verdacht und Dauerlauf ----
+// Starts und Laufsekunden aus den Tageszaehlern: nur steigende Differenzen (der Reset um Mitternacht zaehlt nicht), wie
+// zaehlerDeltas im Dashboard
+function pwSumme(f: any[]) { let starts = 0, sec = 0, prev: { a: number; b: number } | null = null;
+  for (const x of f) { const a = parseFloat(x.field3), b = parseFloat(x.field2); if (!isFinite(a)) continue;
+    if (prev && a >= prev.a && (!isFinite(b) || !isFinite(prev.b) || b >= prev.b)) { sec += a - prev.a; if (isFinite(b) && isFinite(prev.b)) starts += b - prev.b; }
+    prev = { a, b }; }
+  return { starts, sec, n: f.length }; }
+// Dauerlauf: in den letzten DAUER_MIN Minuten (mind. 80 % der Minutenwerte vorhanden) fast ununterbrochen gelaufen
+function pwDauerlauf(f: any[], jetzt: number): string | null {
+  const fenster = f.filter((x) => jetzt - Date.parse(x.created_at) <= PW.DAUER_MIN * 60000);
+  if (fenster.length < PW.DAUER_MIN * 0.8) return null;
+  const s = pwSumme(fenster), dauer = (Date.parse(fenster[fenster.length - 1].created_at) - Date.parse(fenster[0].created_at)) / 1000;
+  if (dauer < (PW.DAUER_MIN - 5) * 60 || s.sec < dauer * 0.95) return null;
+  return `Pumpwerk: läuft seit rund ${PW.DAUER_MIN} min ohne Pause – Leck, offener Hahn oder Trockenlauf? (Kanal ${PW.KANAL})`;
+}
+// Starts/Laufzeit einer Nacht (Tag ymd, 00:00-BIS_H Uhr Zuercher Zeit)
+async function pwNacht(ymd: string) {
+  const von = tagBeginn(ymd), bis = von + PW.BIS_H * 3600_000;
+  const r = await fetch(`https://api.thingspeak.com/channels/${PW.KANAL}/feeds.json?results=8000&api_key=${PUMPWERK_READ_KEY}&start=${encodeURIComponent(tsStempel(von))}&end=${encodeURIComponent(tsStempel(bis))}`);
+  if (!r.ok) throw new Error(`ThingSpeak HTTP ${r.status}`);
+  return pwSumme(((await r.json()).feeds ?? []) as any[]);
+}
+// Ergebnis: Text = Leck-Verdacht, null = unauffaellig, undefined = (noch) nicht berechenbar
+async function pumpeNacht(heute: { datum: string; h: number }): Promise<string | null | undefined> {
+  if (!PUMPWERK_READ_KEY) return undefined;
+  const nacht = heute.h >= PW.BIS_H ? heute.datum : plusTage(heute.datum, -1);   // vor 05:00 gilt noch die Nacht von gestern
+  let cache = ((await blob.getJSON(PW_KEY).catch(() => null)) as any) ?? {};
+  if (cache.v !== PW_VERSION) cache = { v: PW_VERSION, n: {} };
+  let abrufe = 0, fehlt = false; const werte: Record<string, { starts: number; sec: number; n: number }> = {};
+  for (let i = PW.NAECHTE; i >= 0; i--) { const y = plusTage(nacht, -i);
+    if (cache.n[y]) { werte[y] = cache.n[y]; continue; }
+    if (abrufe >= PW_MAX_ABRUFE) { fehlt = true; continue; }
+    abrufe++; const w = await pwNacht(y); werte[y] = w;
+    if (tagBeginn(y) + PW.BIS_H * 3600_000 < Date.now()) cache.n[y] = w;   // nur fertige Naechte merken
+  }
+  for (const k of Object.keys(cache.n)) if (k < plusTage(nacht, -PW.NAECHTE - 5)) delete cache.n[k];
+  await blob.setJSON(PW_KEY, cache);
+  if (fehlt) { console.log(`Pumpwerk: ${abrufe} Nächte nachgeholt, Rest beim nächsten Lauf`); return undefined; }
+  const jetzt = werte[nacht], ref = Object.keys(werte).filter((y) => y < nacht && werte[y].n >= PW.MIN_WERTE).map((y) => werte[y]);
+  if (!jetzt || jetzt.n < PW.MIN_WERTE || ref.length < PW.MIN_NAECHTE) { console.log(`Pumpwerk: zu wenig Daten (Nacht ${jetzt?.n ?? 0} Werte, ${ref.length} Vergleichsnächte)`); return undefined; }
+  const mS = median(ref.map((w) => w.starts))!, mSec = median(ref.map((w) => w.sec))!;
+  const grenzeS = Math.max(PW.MIN_STARTS, PW.FAKTOR * mS), grenzeSec = Math.max(PW.MIN_SEC, PW.FAKTOR * mSec);
+  console.log(`Pumpwerk: Nacht ${nacht} ${jetzt.starts} Starts / ${Math.round(jetzt.sec / 60)} min, üblich ${mS} / ${Math.round(mSec / 60)} min (${ref.length} Nächte)`);
+  if (jetzt.starts < grenzeS && jetzt.sec < grenzeSec) return null;
+  return `Pumpwerk: letzte Nacht (0–${PW.BIS_H} Uhr) ${jetzt.starts} Starts und ${Math.round(jetzt.sec / 60)} min Laufzeit – üblich ${mS} Starts und ${Math.round(mSec / 60)} min (Median ${ref.length} Nächte). Leck oder tropfender Hahn?`;
+}
+
 // Aktuelle Probleme: id -> Beschreibung (alt: Stand des letzten Laufs, fuer Pruefungen, die einmal nicht rechnen koennen)
 async function pruefen(alt: Status): Promise<Record<string, string>> {
   const p: Record<string, string> = {};
@@ -322,7 +376,7 @@ async function pruefen(alt: Status): Promise<Record<string, string>> {
   for (const k of KANAELE) {
     if (k.saison && !k.saison.includes(heute.monat)) continue;   // ausserhalb der Saison nicht pruefen
     try {
-      const f = await feeds(k.kanal, k.key);
+      const f = await feeds(k.kanal, k.key, k.results);
       const t = f.length ? Date.parse(f[f.length - 1].created_at) : NaN;
       const alter = (jetzt - t) / 60000;
       if (!isFinite(t)) p[k.id] = `${k.name}: Kanal ${k.kanal} liefert keine Daten`;
@@ -341,6 +395,8 @@ async function pruefen(alt: Status): Promise<Record<string, string>> {
         let st: number | null = null;
         for (const x of f) { const v = parseFloat(x.field6); if (isFinite(v)) st = v; }
         if (st !== null && st >= 0.5) p.pumpwerkStoerung = "Pumpwerk: Störung gemeldet (Kontakt offen, Kanal 3484334, Feld 6)";
+        const d = pwDauerlauf(f, jetzt);
+        if (d) p.pumpeDauer = d;
       }
     } catch (e) {
       p[k.id] = `${k.name}: Kanal ${k.kanal} nicht abrufbar (${e})`;
@@ -361,16 +417,17 @@ async function pruefen(alt: Status): Promise<Record<string, string>> {
   }
   // Schnitzel-Bunker: nur in der Heizsaison; ein Fehler hier ist keine Stoerung der Anlage (nur Log). Kann einmal nicht
   // gerechnet werden, bleibt ein schon gemeldeter Hinweis stehen (sonst kaeme faelschlich "wieder in Ordnung")
-  // Gleiches fuer die Aschebox
+  // Gleiches fuer die Aschebox und den Leck-Verdacht beim Pumpwerk (dieser das ganze Jahr)
+  const hinweis = async (id: string, name: string, f: () => Promise<string | null | undefined>) => {
+    let t: string | null | undefined;
+    try { t = await f(); } catch (e) { console.log(`${name}: nicht berechnet (${e})`); t = undefined; }
+    if (t) p[id] = t; else if (t === undefined && alt.probleme[id]) p[id] = alt.probleme[id];
+  };
   if (HEIZSAISON.includes(heute.monat)) {
-    const hinweis = async (id: string, name: string, f: (h: string) => Promise<string | null | undefined>) => {
-      let t: string | null | undefined;
-      try { t = await f(heute.datum); } catch (e) { console.log(`${name}: nicht berechnet (${e})`); t = undefined; }
-      if (t) p[id] = t; else if (t === undefined && alt.probleme[id]) p[id] = alt.probleme[id];
-    };
-    await hinweis("schnitzel", "Schnitzel", schnitzelPruefen);
-    await hinweis("asche", "Asche", aschePruefen);
+    await hinweis("schnitzel", "Schnitzel", () => schnitzelPruefen(heute.datum));
+    await hinweis("asche", "Asche", () => aschePruefen(heute.datum));
   }
+  await hinweis("pumpeLeck", "Pumpwerk", () => pumpeNacht(heute));
   return p;
 }
 
