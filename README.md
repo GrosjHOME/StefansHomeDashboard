@@ -271,7 +271,7 @@ die Grafik **Energie** der PV-Anlage: Umschalter **Ladevorgänge / Monate / Jahr
 die Auswahl **Letzte 12 Monate** oder ein Jahr. Oben steht der laufende Monat und die letzten 30 Tage.
 
 - **Ladevorgänge:** die letzten 12, je vom Einstecken bis zum Ausstecken (über Mitternacht zählt als einer): PV-Anteil mit
-  Balken, geladene kWh, davon PV, angeschlossene Dauer.
+  Balken (ab 70 % grün, ab 30 % orange, darunter rot), geladene kWh, davon PV, angeschlossene Dauer.
 - **Monate / Jahre:** gestapelte Balken wie bei der PV-Energie – unten **grün der PV-Teil**, oben **orange der Netz-Teil**,
   darüber die geladenen kWh, unten «Okt 26» bzw. das Jahr. Zeigen/Tippen: Zeitraum, kWh, davon PV mit Anteil in %, Netz und
   Anzahl Ladevorgänge. Ein Jahr erscheint, sobald seine Monate geladen sind.

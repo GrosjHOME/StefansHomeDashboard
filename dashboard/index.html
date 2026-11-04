@@ -1959,7 +1959,7 @@ LADEN.geladen=function(){ var a=[]; try{ a=JSON.parse(lsGet("lade_monate")||"[]"
 LADEN.monatStart=function(n){ var d=new Date(); d=new Date(d.getFullYear(), d.getMonth()-n, 1); return ymdLocal(d); };   // 1. des Monats vor n Monaten
 LADEN.MONAT=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 LADEN.KURZ=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
-LADEN.farbe=function(pct){ return pct>=70?"var(--green)":(pct>=30?"var(--amber)":"var(--muted)"); };   // wenig PV ist kein Fehler (z. B. nachts bewusst geladen)
+LADEN.farbe=function(pct){ return pct>=70?"var(--green)":(pct>=30?"var(--amber)":"var(--red)"); };   // PV-Anteil: ab 70 % gruen, ab 30 % orange, darunter rot
 // Wie die Energie-Grafik der PV-Anlage: Umschalter Ladevorgaenge / Monate / Jahre, bei Monate die Auswahl "Letzte 12 Monate"
 // bzw. ein Jahr. Fehlende Monate werden dafuer automatisch geholt (einmalig, danach im Browser gemerkt).
 LADEN.TAB={vg:'<span class="ld-lang">Ladevorgänge</span><span class="ld-kurz">Ladungen</span>', mo:"Monate", ja:"Jahre"};   // Handy: kurz, damit der Umschalter auf eine Zeile passt
