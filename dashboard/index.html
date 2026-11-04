@@ -2976,7 +2976,119 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung", extra:ext
 function pvAbfrageText(v){ var c=Math.round(v);
   var t=c===200?"OK":c===1?"Wert veraltet":c===-301?"Verbindung fehlgeschlagen":c===-303?"Antwort nicht lesbar":c===-304?"Timeout":c===429?"zu viele Anfragen":c>=400?"HTTP-Fehler":"Fehler";
   return t+" ("+String(c).replace("-","−")+")"; }
-var BOILER=simpleView({ channel:502977, icon:'<svg viewBox="0 0 24 24" width="22" height="22" style="vertical-align:-4px"><rect x="5.5" y="4" width="13" height="17" rx="5" fill="#2b83c7"/><rect x="10.5" y="1.5" width="3" height="3" rx="1" fill="#7fb2dd"/><path d="M12 9.5c1.7 2.1 2.6 3.4 2.6 4.7a2.6 2.6 0 1 1-5.2 0c0-1.3 .9-2.6 2.6-4.7z" fill="#eaf4fb"/></svg>', title:"Boiler",
+/* ================= PV-Anteil Boiler (Boiler) =================
+   Wie viel der Energie fuer das Warmwasser kam vom Dach? Gleiche Schaetzung wie beim Laden (LADEN): Einen Hauszaehler gibt es
+   nicht. Der Boiler hat Vorrang vor der Wallbox; vom PV-Strom geht zuerst die Hausreserve ab, die an der Wallbox eingestellt ist
+   (Poti; aus Feld 3 der Wallbox: Reserve = PV - Boiler - Ueberschuss, nur wenn positiv). Je Minute zaehlt vom Boiler hoechstens
+   PV - Reserve als PV, der Rest als Netz. Integriert wie "Geladene Menge" (Trapez, Luecken unter 2 h).
+   Umschalter Tage / Monate / Jahre wie Pumpwerk und PV-Anteil; Tage je Tag, Monate und Jahre als Summe (kWh wie die PV-Energie).
+   Tageswerte im Browser (boi_tag1_YYYY-MM-DD), nie vor dem Anlegen des Boiler-Kanals; bis AUTO fehlende Tage holt die Ansicht selbst. */
+var BOILERPV={ BO:502977, PV:172430, WB:172228, TAGE:30, AUTO:70, _t:0, _laeuft:false, _tage:{}, _ab:null, _abYmd:null, jahr:null };
+BOILERPV.MODI={tage:"Tage", monate:"Monate", jahre:"Jahre"};
+BOILERPV.modus=function(){ var m=lsGet("boi_modus"); return BOILERPV.MODI[m]?m:"tage"; };
+BOILERPV.ab=function(){ if(BOILERPV._ab) return BOILERPV._ab;
+  BOILERPV._ab=j(api(BOILERPV.BO,"/feeds.json?results=1",false)).then(function(d){ var c=d&&d.channel&&d.channel.created_at; return c ? ymdLocal(new Date(c)) : "2020-01-01"; })
+    .catch(function(){ BOILERPV._ab=null; return "2020-01-01"; });
+  return BOILERPV._ab; };
+// Werte eines Tages aus den Feeds von Boiler, PV und Wallbox: {kwh, pv, min (Minuten mit Laden), n}
+BOILERPV.tagWerte=function(bo, pv, wb){ var ip=0, iw=0, lastPv=null, lastWb=null, prev=null, e=0, epv=0, lm=0;
+  bo.forEach(function(x){ var t=Date.parse(x.created_at), c=num(x.field3); if(c===null) return; c=Math.max(0,c)/1000;   // kW
+    while(ip<pv.length && Date.parse(pv[ip].created_at)<=t){ var v=num(pv[ip].field1); if(v!==null) lastPv={t:Date.parse(pv[ip].created_at), v:v}; ip++; }
+    while(iw<wb.length && Date.parse(wb[iw].created_at)<=t){ var f3=num(wb[iw].field3); if(f3!==null) lastWb={t:Date.parse(wb[iw].created_at), v:f3}; iw++; }
+    var pvW=(lastPv && t-lastPv.t<15*60000) ? lastPv.v : 0, res=0;
+    if(lastWb && t-lastWb.t<15*60000) res=Math.max(0, pvW-c*1000-lastWb.v);                     // Reserve (Poti) aus dem Wallbox-Ueberschuss
+    var p={t:t, c:c, pvc:Math.min(c, Math.max(0, pvW-res)/1000)};
+    if(prev){ var dt=(t-prev.t)/36e5; if(dt>0 && dt<2){ e+=(prev.c+p.c)/2*dt; epv+=(prev.pvc+p.pvc)/2*dt; if(prev.c>0.05) lm+=dt*60; } }
+    prev=p; });
+  var r3=function(v){ return Math.round(v*1000)/1000; };
+  return {kwh:r3(e), pv:r3(epv), min:Math.round(lm), n:bo.length}; };
+// Tageswerte von vonYmd bis bisYmd: gemerkte Tage, fehlende bereichsweise aus den drei Kanaelen
+BOILERPV.tageHolen=function(vonYmd, bisYmd){ var heute=ymdLocal(new Date()), vorgestern=ymdLocal(new Date(Date.now()-2*864e5)), out=[], fehlt=[];
+  var ende=(bisYmd && bisYmd<heute) ? bisYmd : heute;
+  for(var k=vonYmd; k<=ende; k=ASCHE.folgetag(k)){ var c=k<heute ? lsGet("boi_tag1_"+k) : null, w=null; if(c){ try{ w=JSON.parse(c); }catch(e){ w=null; } }
+    if(!w) fehlt.push(k); out.push({ymd:k, w:w}); }
+  if(!fehlt.length) return Promise.resolve(out);
+  var bereiche=[], cur=null; fehlt.forEach(function(k){ if(cur && ASCHE.folgetag(cur.bis)===k) cur.bis=k; else { cur={von:k, bis:k}; bereiche.push(cur); } });
+  return Promise.all(bereiche.map(function(b){ var von=new Date(b.von+"T00:00:00").getTime(), bis=Math.min(new Date(ASCHE.folgetag(b.bis)+"T00:00:00").getTime(), Date.now());
+      return Promise.all([holeBereich(BOILERPV.BO, von, bis, false), holeBereich(BOILERPV.PV, von, bis, true), holeBereich(BOILERPV.WB, von, bis, false)]).then(function(r){
+        var jeTag=function(f){ var o={}; ((f&&f.feeds)||[]).forEach(function(x){ var k=ymdLocal(new Date(x.created_at)); (o[k]=o[k]||[]).push(x); }); return o; };
+        var bo=jeTag(r[0]), pv=jeTag(r[1]), wb=jeTag(r[2]), luecke=r.some(function(x){ return !x || x.luecke; });
+        var zeit=function(a){ return (a||[]).sort(function(x,y){ return Date.parse(x.created_at)-Date.parse(y.created_at); }); };
+        for(var y=b.von; y<=b.bis; y=ASCHE.folgetag(y)){ var w=BOILERPV.tagWerte(zeit(bo[y]), zeit(pv[y]), zeit(wb[y]));
+          out.forEach(function(o){ if(o.ymd===y) o.w=w; });
+          if(y<heute && !luecke && (w.n>0 || y<vorgestern)) lsSet("boi_tag1_"+y, JSON.stringify(w)); } }); }))
+    .then(function(){ return out; }); };
+BOILERPV.fehlend=function(vonYmd, bisYmd){ var heute=ymdLocal(new Date()), n=0; for(var y=vonYmd; y<=bisYmd && y<heute; y=ASCHE.folgetag(y)) if(!lsGet("boi_tag1_"+y)) n++; return n; };
+BOILERPV.summe=function(von, bis){ var s={kwh:0, pv:0, min:0, tage:0}; Object.keys(BOILERPV._tage).forEach(function(y){ var w=BOILERPV._tage[y]; if(y<von || y>bis || !w || !(w.n>0)) return; s.kwh+=w.kwh; s.pv+=w.pv; s.min+=w.min; s.tage++; }); return s; };
+BOILERPV.zeichnen=function(){ var el=document.getElementById("boi-chart"), nt=document.getElementById("boi-note"), mb=document.getElementById("boi-mehr"); if(!el) return;
+  var heute=ymdLocal(new Date()), m=BOILERPV.modus(), cy=new Date().getFullYear(), kurz=function(ymd){ return (+ymd.slice(8))+"."+(+ymd.slice(5,7))+"."; };
+  var LEG=[{color:"var(--green)", label:"aus PV"}, {color:"var(--amber)", label:"Netz"}];
+  var leer=function(t){ el.innerHTML='<div class="chart-empty">'+t+'</div>'; };
+  var knopf=function(txt, von, bis){ if(!mb) return; if(!txt || BOILERPV._laeuft){ mb.style.display="none"; return; } mb.style.display=""; mb.textContent=txt; mb.dataset.von=von; mb.dataset.bis=bis; };
+  var anteil=function(s){ return s.kwh>0.05 ? s.pv/s.kwh*100 : null; };
+  var balken=function(s, label, tip){ var pc=anteil(s), netz=Math.max(0, s.kwh-s.pv);
+    return {v:s.pv, v2:netz, color:"var(--green)", color2:"var(--amber)", show:s.kwh, label:label, tip:tip,
+      tipExtra:"davon "+fmt(s.pv,s.pv>=100?0:1)+" kWh PV"+(pc===null?"":" ("+fmt(pc,0)+" %)")+" · "+fmt(netz,netz>=100?0:1)+" kWh Netz<br>"+
+        (s.min<120 ? s.min+" min" : fmt(s.min/60, s.min<600?1:0)+" h")+" geladen"+(s.tage>1?" in "+s.tage+" Tagen":"")}; };
+  var satz=function(n, s){ var pc=anteil(s); return "<b>"+n+"</b>: "+fmt(s.kwh,0)+" kWh"+(pc===null?"":", davon "+fmt(s.pv,0)+" kWh <b style=\"color:"+LADEN.farbe(pc)+"\">("+fmt(pc,0)+" %)</b> aus PV"); };
+  if(nt){ var mm=BOILERPV.summe(heute.slice(0,7)+"-01", heute), d30=BOILERPV.summe(ymdLocal(new Date(Date.now()-29*864e5)), heute);
+    nt.innerHTML=(mm.tage||d30.tage) ? satz(LADEN.MONAT[new Date().getMonth()], mm)+" · "+satz("letzte 30 Tage", d30)+(d30.tage?" · Ø "+fmt(d30.kwh/d30.tage,1)+" kWh je Tag":"") : ""; }
+  if(m==="tage"){ knopf(null); var bars=[];
+    for(var i=BOILERPV.TAGE-1;i>=0;i--){ var y=ymdLocal(new Date(Date.now()-i*864e5)), w=BOILERPV._tage[y]; if(!w) continue;
+      var s1={kwh:w.kwh, pv:w.pv, min:w.min, tage:1}; bars.push(balken(s1, (i%5===0) ? kurz(y) : "", ASCHE.fmtTag(y)+(y===heute?" (bis jetzt)":""))); }
+    if(!bars.length) leer(BOILERPV._laeuft?"wird geladen…":"–"); else barChart(el, bars, {unit:"kWh", dec:1, autoW:true, legend:LEG});
+    return; }
+  if(m==="monate"){ var jahr=BOILERPV.jahr||cy, von=jahr+"-01-01", bis=jahr===cy?heute:jahr+"-12-31", bm=[];
+    for(var mi=0; mi<12; mi++){ var mv=jahr+"-"+("0"+(mi+1)).slice(-2), su=BOILERPV.summe(mv+"-01", mv+"-31"); if(!su.tage) continue;
+      bm.push(balken(su, LADEN.KURZ[mi]+" "+String(jahr).slice(2), LADEN.MONAT[mi]+" "+jahr+(mv===heute.slice(0,7)?" (bis heute)":""))); }
+    var v0=BOILERPV._abYmd && BOILERPV._abYmd>von ? BOILERPV._abYmd : von, fe=BOILERPV.fehlend(v0, bis);
+    knopf(fe>0 ? "Jahr "+jahr+" laden" : null, v0, bis);
+    if(!bm.length) leer(BOILERPV._laeuft?"wird geladen…":"keine Daten für "+jahr); else barChart(el, bm, {unit:"kWh", autoW:true, legend:LEG});
+    return; }
+  var jahre={}; Object.keys(BOILERPV._tage).forEach(function(y){ jahre[y.slice(0,4)]=1; });
+  var bj=Object.keys(jahre).sort().map(function(y){ var su=BOILERPV.summe(y+"-01-01", y+"-12-31"); return su.tage ? balken(su, y, y+(+y===cy?" (bis heute)":"")) : null; }).filter(Boolean);
+  var ab=BOILERPV._abYmd||(cy+"-01-01"), lo=null; for(var yy=cy; yy>=+ab.slice(0,4); yy--){ var a0=yy+"-01-01"<ab?ab:yy+"-01-01"; if(BOILERPV.fehlend(a0, yy===cy?heute:yy+"-12-31")>0){ lo=yy; break; } }
+  knopf(lo!==null ? "Jahr "+lo+" laden" : null, lo!==null && lo+"-01-01"<ab ? ab : lo+"-01-01", lo===cy?heute:lo+"-12-31");
+  if(!bj.length) leer(BOILERPV._laeuft?"wird geladen…":"noch keine Daten"); else barChart(el, bj, {unit:"kWh", autoW:true, legend:LEG});
+};
+BOILERPV.holen=function(von, bis){ var msg=document.getElementById("boi-msg"); BOILERPV._laeuft=true; BOILERPV.zeichnen();
+  return BOILERPV.ab().then(function(ab){ BOILERPV._abYmd=ab; if(von<ab) von=ab; var monate=[], v=von;
+      while(v<=bis){ var d=new Date(v+"T12:00:00"), e=ymdLocal(new Date(d.getFullYear(), d.getMonth()+1, 0)); if(e>bis) e=bis; monate.push([v,e]); v=ASCHE.folgetag(e); }
+      return monate.reverse().reduce(function(p,mm){ return p.then(function(){ if(msg){ msg.textContent="lädt "+LADEN.KURZ[+mm[0].slice(5,7)-1]+" "+mm[0].slice(0,4)+" …"; msg.style.color=""; }
+        return BOILERPV.tageHolen(mm[0], mm[1]).then(function(t){ t.forEach(function(o){ if(o.w) BOILERPV._tage[o.ymd]=o.w; }); BOILERPV.zeichnen(); }); }); }, Promise.resolve()); })
+    .then(function(){ if(msg) msg.textContent=""; })
+    .catch(function(e){ console.error(e); if(msg){ msg.textContent="Nicht vollständig geladen – nochmals versuchen (fertige Monate sind gemerkt)."; msg.style.color="var(--red)"; } })
+    .then(function(){ BOILERPV._laeuft=false; BOILERPV.zeichnen(); }); };
+BOILERPV.ausBrowser=function(){ try{ Object.keys(localStorage).forEach(function(k){ if(/^boi_tag1_/.test(k)){ var w=JSON.parse(localStorage.getItem(k)); if(w) BOILERPV._tage[k.slice(9)]=w; } }); }catch(e){} };
+BOILERPV.sichern=function(){ if(BOILERPV._laeuft || BOILERPV.modus()!=="monate") return; var cy=new Date().getFullYear(), j=BOILERPV.jahr||cy, heute=ymdLocal(new Date());
+  var von=j+"-01-01", bis=j===cy?heute:j+"-12-31"; if(BOILERPV._abYmd && von<BOILERPV._abYmd) von=BOILERPV._abYmd;
+  var fe=BOILERPV.fehlend(von, bis); if(fe>0 && fe<=BOILERPV.AUTO) BOILERPV.holen(von, bis); };
+BOILERPV.panel={
+  reset:function(){ BOILERPV._t=0; },
+  html:function(){ return ""; },
+  htmlTab:function(){ var m=BOILERPV.modus(), cy=new Date().getFullYear(), opts="";
+    for(var y=cy; y>=cy-5; y--) opts+='<option value="'+y+'"'+((BOILERPV.jahr||cy)===y?' selected':'')+'>'+y+'</option>';
+    return '<div class="panel"><h2>☀️ PV-Anteil Boiler <span class="head-ctl ld-ctl"><select id="boi-jahr" class="ld-sel"'+(m==="monate"?'':' style="display:none"')+'>'+opts+'</select>'+
+      '<span class="seg" id="boi-seg">'+Object.keys(BOILERPV.MODI).map(function(k){ return '<button data-t="'+k+'"'+(k===m?' class="active"':'')+'>'+BOILERPV.MODI[k]+'</button>'; }).join("")+'</span></span></h2>'+
+      '<div class="note" id="boi-note" style="margin:0 0 8px">wird geladen…</div><div id="boi-chart"><div class="chart-empty">wird geladen…</div></div>'+
+      '<div class="frei" style="margin:8px 0 0;padding:0;background:transparent;box-shadow:none"><button class="btn" id="boi-mehr" style="display:none"></button><span class="frei-msg" id="boi-msg"></span></div>'+
+      '<details class="note as-info"><summary>So wird gerechnet</summary>Einen Hauszähler gibt es nicht. Der Boiler hat Vorrang vor der Wallbox; vom PV-Strom geht zuerst die Hausreserve ab, die an der Wallbox eingestellt ist (Poti). '+
+      'Je Minute zählt vom Boiler höchstens PV − Reserve als PV, der Rest als Netz. Tageswerte im Browser gemerkt; ältere Monate holt die Ansicht einmal von ThingSpeak, ein ganzes Jahr der Knopf.</details></div>'; },
+  bind:function(){ var g=function(id){ return document.getElementById(id); };
+    var seg=g("boi-seg"); if(seg) seg.addEventListener("click",function(ev){ var b=ev.target.closest("button"); if(!b||!b.dataset.t) return; lsSet("boi_modus", b.dataset.t);
+      [].forEach.call(seg.querySelectorAll("button"), function(x){ x.className=(x===b)?"active":""; });
+      var sj=g("boi-jahr"); if(sj) sj.style.display=(b.dataset.t==="monate")?"":"none";
+      BOILERPV.zeichnen(); BOILERPV.sichern(); });
+    var sj=g("boi-jahr"); if(sj) sj.addEventListener("change",function(){ BOILERPV.jahr=parseInt(this.value,10)||null; BOILERPV.zeichnen(); BOILERPV.sichern(); });
+    var mb=g("boi-mehr"); if(mb) mb.addEventListener("click",function(){ if(BOILERPV._laeuft) return;
+      if(!confirm("Die fehlenden Tage einmal von ThingSpeak laden (Boiler, PV und Wallbox, alle Minutenwerte – grösserer Download, besser im WLAN)? Danach im Browser gemerkt.")) return;
+      BOILERPV.holen(mb.dataset.von, mb.dataset.bis); }); },
+  load:function(){ if(Date.now()-BOILERPV._t<600000) return; BOILERPV._t=Date.now();
+    BOILERPV.ausBrowser();
+    BOILERPV.ab().then(function(ab){ BOILERPV._abYmd=ab; BOILERPV.zeichnen();
+      return BOILERPV.holen(ymdLocal(new Date(Date.now()-(BOILERPV.TAGE-1)*864e5)), ymdLocal(new Date())); }).then(function(){ BOILERPV.sichern(); }); }
+};
+var BOILER=simpleView({ channel:502977, extra:BOILERPV.panel, icon:'<svg viewBox="0 0 24 24" width="22" height="22" style="vertical-align:-4px"><rect x="5.5" y="4" width="13" height="17" rx="5" fill="#2b83c7"/><rect x="10.5" y="1.5" width="3" height="3" rx="1" fill="#7fb2dd"/><path d="M12 9.5c1.7 2.1 2.6 3.4 2.6 4.7a2.6 2.6 0 1 1-5.2 0c0-1.3 .9-2.6 2.6-4.7z" fill="#eaf4fb"/></svg>', title:"Boiler",
   kpis:[
     {field:"field1",label:"Temperatur mitte",unit:"°C",dec:1,gueltig:kesselOk,
       color:function(v){ return bandColor([[25,"#3b5bdb"],[45,"#d4c21a"],[70,"#2fb344"],[90,"#f08c00"],[Infinity,"#e03131"]],v); }},
