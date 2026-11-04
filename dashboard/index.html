@@ -3135,7 +3135,124 @@ function pumpDauer(s){ s=Math.round(s); if(s<60) return s+" s"; var m=Math.floor
 function pumpeSvg(farbe){ return '<svg viewBox="0 0 24 24" width="1.2em" height="1.2em" style="vertical-align:-.25em" aria-hidden="true"><g fill="'+farbe+'"><rect x="8.6" y="2.2" width="12.4" height="3.6" rx="1.3"/><rect x="8.6" y="2.2" width="3.8" height="8.6" rx="1.4"/><rect x="19.6" y="1" width="3" height="6" rx="1"/><rect x="13.2" y="0.4" width="3.2" height="1.8" rx="0.8"/><ellipse cx="10.5" cy="13.4" rx="1" ry="1.5"/><path d="M4.6 16 H16.4 L15.2 22.6 H5.8 Z"/></g><path d="M16.2 17.4 H17.4 A2.4 2.4 0 0 1 17.4 22 H15.6" fill="none" stroke="'+farbe+'" stroke-width="1.6" stroke-linecap="round"/></svg>'; }
 var PUMPE_SVG=pumpeSvg("#2b83c7");
 (function(){ var e=document.getElementById("ico-pumpe"); if(e) e.innerHTML=PUMPE_SVG; })();
-var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk",
+/* ================= Einschaltungen und Laufzeit (Pumpwerk) =================
+   Wie "Heizzyklen & Gluterhaltung" der Heizung: Umschalter Tage / Monate / Jahre (das Pumpwerk laeuft das ganze Jahr, darum
+   Kalenderjahre statt Heizsaisons). Gestapelte Balken: unten die normalen Laeufe, oben die Kurzlaeufe unter PUMPE_KURZ_S
+   (Zaehlung wie die Tagesuebersicht, pumpTage). Tage: Anzahl je Tag; Monate/Jahre: Ø je Tag (nur abgeschlossene Tage mit Daten,
+   Summen im Tooltip). Linie rechts: Laufzeit in Minuten je Tag (ungefaehr der Wasserverbrauch). Nachtstarts (0-5 Uhr) im Tooltip,
+   ab 10 orange, ab 20 rot wie in der Tagesuebersicht. Tageswerte im Browser (pw_tag1_YYYY-MM-DD); was eine Ansicht braucht,
+   holt sie selbst (bis PUMPEN.AUTO fehlende Tage, sonst per Knopf), nie vor dem Anlegen des Kanals. */
+var PUMPEN={ CH:3484334, TAGE:30, AUTO:70, _t:0, _laeuft:false, _tage:{}, _ab:null, jahr:null };
+PUMPEN.MODI={tage:"Tage", monate:"Monate", jahre:"Jahre"};
+PUMPEN.modus=function(){ var m=lsGet("pw_modus"); return PUMPEN.MODI[m]?m:"tage"; };
+// erster Tag mit Daten: Anlegedatum des Kanals (einmal je Seitenaufruf gefragt)
+PUMPEN.ab=function(){ if(PUMPEN._ab) return PUMPEN._ab;
+  PUMPEN._ab=j(api(PUMPEN.CH,"/feeds.json?results=1",true)).then(function(d){ var c=d&&d.channel&&d.channel.created_at; return c ? ymdLocal(new Date(c)) : "2020-01-01"; })
+    .catch(function(){ PUMPEN._ab=null; return "2020-01-01"; });
+  return PUMPEN._ab; };
+// Tageswerte von vonYmd bis bisYmd: gemerkte Tage, fehlende zusammenhaengend geholt (10 min Vorlauf, damit die erste Minute
+// des Tages ihre Differenz hat) und mit pumpTage je Tag gerechnet
+PUMPEN.tageHolen=function(vonYmd, bisYmd){ var heute=ymdLocal(new Date()), vorgestern=ymdLocal(new Date(Date.now()-2*864e5)), out=[], fehlt=[];
+  var ende=(bisYmd && bisYmd<heute) ? bisYmd : heute;
+  for(var k=vonYmd; k<=ende; k=ASCHE.folgetag(k)){ var c=k<heute ? lsGet("pw_tag1_"+k) : null, w=null; if(c){ try{ w=JSON.parse(c); }catch(e){ w=null; } }
+    if(!w) fehlt.push(k); out.push({ymd:k, w:w}); }
+  if(!fehlt.length) return Promise.resolve(out);
+  var bereiche=[], cur=null; fehlt.forEach(function(k){ if(cur && ASCHE.folgetag(cur.bis)===k) cur.bis=k; else { cur={von:k, bis:k}; bereiche.push(cur); } });
+  return Promise.all(bereiche.map(function(b){ var von=new Date(b.von+"T00:00:00").getTime()-600000, bis=Math.min(new Date(ASCHE.folgetag(b.bis)+"T00:00:00").getTime(), Date.now());
+      return holeBereich(PUMPEN.CH, von, bis, true).then(function(r){ var jeTag={}; pumpTage(r.feeds||[]).forEach(function(t){ jeTag[t.tag]=t; });
+        for(var y=b.von; y<=b.bis; y=ASCHE.folgetag(y)){ var t=jeTag[y], w=t ? {starts:t.starts, sec:Math.round(t.sec), kurz:Math.round((t.kurzPct||0)*t.starts/100), nacht:t.nacht, abd:Math.round(t.abd*100)/100} : {starts:0, sec:0, kurz:0, nacht:0, abd:0};
+          out.forEach(function(o){ if(o.ymd===y) o.w=w; });
+          // abgeschlossene Tage merken (leere erst, wenn sicher vorbei); nichts aus einer lueckenhaften Antwort
+          if(y<heute && !r.luecke && (w.abd>0 || y<vorgestern)) lsSet("pw_tag1_"+y, JSON.stringify(w)); } }); }))
+    .then(function(){ return out; }); };
+PUMPEN.fehlend=function(vonYmd, bisYmd){ var heute=ymdLocal(new Date()), n=0;
+  for(var y=vonYmd; y<=bisYmd && y<heute; y=ASCHE.folgetag(y)) if(!lsGet("pw_tag1_"+y)) n++; return n; };
+// Summen ueber Tage (nur abgeschlossene mit Daten)
+PUMPEN.summe=function(tage){ var heute=ymdLocal(new Date()), s={starts:0, kurz:0, sec:0, nacht:0, tage:0};
+  tage.forEach(function(t){ var w=t.w; if(!w || !(w.abd>0) || t.ymd>=heute) return; s.starts+=w.starts; s.kurz+=w.kurz; s.sec+=w.sec; s.nacht+=w.nacht; s.tage++; }); return s; };
+PUMPEN.nachtFarbe=function(n){ return n>=20 ? "var(--red)" : n>=10 ? "var(--amber)" : ""; };
+PUMPEN.zeichnen=function(){ var el=document.getElementById("pw-chart"), nt=document.getElementById("pw-note"), mb=document.getElementById("pw-mehr"); if(!el) return;
+  var heute=ymdLocal(new Date()), m=PUMPEN.modus(), cy=new Date().getFullYear(), kurz=function(ymd){ return (+ymd.slice(8))+"."+(+ymd.slice(5,7))+"."; };
+  var LEG=[{color:"var(--blue)", label:"Läufe"}, {color:"var(--amber)", label:"Kurzläufe unter "+PUMPE_KURZ_S+" s"}, {color:"var(--green)", label:"Laufzeit (min, rechts)"}];
+  var LIN=function(w){ return {werte:w, color:"var(--green)", unit:"min Laufzeit", dec:0}; };
+  var leer=function(t){ el.innerHTML='<div class="chart-empty">'+t+'</div>'; };
+  var knopf=function(txt, von, bis){ if(!mb) return; if(!txt || PUMPEN._laeuft){ mb.style.display="none"; return; } mb.style.display=""; mb.textContent=txt; mb.dataset.von=von; mb.dataset.bis=bis; };
+  var nachtTxt=function(n, tage){ var c=PUMPEN.nachtFarbe(tage ? n/tage : n); return '<span'+(c?' style="color:'+c+';font-weight:700"':'')+'>'+(tage ? fmt(n/tage,1)+" Nachtstarts je Tag" : n+" Nachtstarts")+'</span>'; };
+  var balkenSum=function(s, label, tip){ var d=s.tage||1;
+    return {v:(s.starts-s.kurz)/d, v2:s.kurz/d, color:"var(--blue)", color2:"var(--amber)", label:label, tip:tip,
+      // kurze Zeilen: der Tooltip bricht nicht um (Handy)
+      tipExtra:"Ø je Tag: "+fmt(s.starts/d,1)+" Einschaltungen,<br>davon "+fmt(s.kurz/d,1)+" Kurzläufe · "+nachtTxt(s.nacht, d)+
+        "<br>Summe: "+s.starts+" Einschaltungen, "+pumpDauerKompakt(s.sec)+"<br>in "+s.tage+" Tag"+(s.tage===1?"":"en")+(s.starts?" · Ø "+fmt(s.sec/s.starts,0)+" s je Start":"")}; };
+  var monatsTage=function(von, bis){ var o=[]; Object.keys(PUMPEN._tage).sort().forEach(function(y){ if(y>=von && y<=bis) o.push({ymd:y, w:PUMPEN._tage[y]}); }); return o; };
+  if(m==="tage"){ knopf(null); var von=ymdLocal(new Date(Date.now()-(PUMPEN.TAGE-1)*864e5)), T=monatsTage(von, heute);
+    if(!T.length){ leer(PUMPEN._laeuft?"wird geladen…":"–"); return; }
+    var lin=[], sm=PUMPEN.summe(T);
+    var bars=T.map(function(t,i){ var w=t.w||{}, st=w.starts||0, k=w.kurz||0, unv=w.abd<0.9 && t.ymd<heute;
+      lin.push(w.abd>0 ? (w.sec||0)/60 : null);
+      return {v:st-k, v2:k, color:"var(--blue)", color2:"var(--amber)", show:st, label:(i%5===(T.length-1)%5) ? kurz(t.ymd) : "",
+        tip:ASCHE.fmtTag(t.ymd)+(t.ymd===heute?" (bis jetzt)":""),
+        tipExtra:st+" Einschaltungen, davon "+k+" Kurzläufe<br>"+nachtTxt(w.nacht||0)+(st?" · Ø "+fmt((w.sec||0)/st,0)+" s je Start":"")+(unv?"<br>Messwerte fehlen ("+Math.round((w.abd||0)*100)+" % des Tages)":"")}; });
+    if(!bars.some(function(b){ return b.show>0; })) leer("keine Einschaltungen in den letzten "+PUMPEN.TAGE+" Tagen");
+    else barChart(el, bars, {unit:"×", autoW:true, legend:LEG, linie:LIN(lin)});
+    if(nt) nt.textContent=sm.tage ? "Ø je Tag (ohne heute): "+fmt(sm.starts/sm.tage,1)+" Einschaltungen, davon "+fmt(sm.kurz/sm.tage,1)+" Kurzläufe, "+fmt(sm.sec/60/sm.tage,0)+" min Laufzeit, "+fmt(sm.nacht/sm.tage,1)+" Nachtstarts." : "";
+    return; }
+  if(m==="monate"){ var jahr=PUMPEN.jahr||cy, von2=jahr+"-01-01", bis2=jahr===cy?heute:jahr+"-12-31";
+    var bm=[], lm=[];
+    for(var mi=0; mi<12; mi++){ var mv=jahr+"-"+("0"+(mi+1)).slice(-2), su=PUMPEN.summe(monatsTage(mv+"-01", mv+"-31")); if(!su.tage) continue;
+      bm.push(balkenSum(su, LADEN.KURZ[mi]+" "+String(jahr).slice(2), LADEN.MONAT[mi]+" "+jahr+(mv===heute.slice(0,7)?" (bis gestern)":""))); lm.push(su.sec/60/su.tage); }
+    var fe=PUMPEN.fehlend(PUMPEN._abYmd&&PUMPEN._abYmd>von2?PUMPEN._abYmd:von2, bis2);
+    knopf(fe>0 && !PUMPEN._laeuft ? "Jahr "+jahr+" laden" : null, von2, bis2);
+    if(!bm.length) leer(PUMPEN._laeuft?"wird geladen…":"keine Daten für "+jahr); else barChart(el, bm, {unit:"× je Tag", dec:1, autoW:true, legend:LEG, linie:LIN(lm)});
+    if(nt) nt.textContent="Balken: Ø Einschaltungen je Tag (nur abgeschlossene Tage mit Daten), Summen im Tooltip. Linie: Ø Laufzeit je Tag."+(fe>0?" Noch nicht alle Tage geladen.":"");
+    return; }
+  // Jahre: aus allen gemerkten Tagen
+  var jahre={}; Object.keys(PUMPEN._tage).forEach(function(y){ (jahre[y.slice(0,4)]=jahre[y.slice(0,4)]||[]).push({ymd:y, w:PUMPEN._tage[y]}); });
+  var bj=[], lj=[]; Object.keys(jahre).sort().forEach(function(y){ var su=PUMPEN.summe(jahre[y]); if(!su.tage) return; bj.push(balkenSum(su, y, y+(+y===cy?" (bis gestern)":""))); lj.push(su.sec/60/su.tage); });
+  var ab=PUMPEN._abYmd||(cy+"-01-01"), lo=null; for(var yy=cy; yy>=+ab.slice(0,4); yy--){ var v0=yy+"-01-01"<ab?ab:yy+"-01-01"; if(PUMPEN.fehlend(v0, yy===cy?heute:yy+"-12-31")>0){ lo=yy; break; } }
+  knopf(lo!==null ? "Jahr "+lo+" laden" : null, lo+"-01-01", lo===cy?heute:lo+"-12-31");
+  if(!bj.length) leer(PUMPEN._laeuft?"wird geladen…":"noch keine Daten"); else barChart(el, bj, {unit:"× je Tag", dec:1, autoW:true, legend:LEG, linie:LIN(lj)});
+  if(nt) nt.textContent="Balken: Ø Einschaltungen je Tag, Linie: Ø Laufzeit je Tag. Ein Jahr erscheint ganz, sobald alle seine Tage geladen sind (Knopf, grösserer Download, danach im Browser gemerkt).";
+};
+// Tage von..bis monatsweise holen (nicht vor dem Anlegen des Kanals) und zeichnen
+PUMPEN.holen=function(von, bis){ var msg=document.getElementById("pw-msg"); PUMPEN._laeuft=true; PUMPEN.zeichnen();
+  return PUMPEN.ab().then(function(ab){ PUMPEN._abYmd=ab; if(von<ab) von=ab; var monate=[], v=von;
+      while(v<=bis){ var d=new Date(v+"T12:00:00"), e=ymdLocal(new Date(d.getFullYear(), d.getMonth()+1, 0)); if(e>bis) e=bis; monate.push([v,e]); v=ASCHE.folgetag(e); }
+      return monate.reverse().reduce(function(p,mm){ return p.then(function(){ if(msg){ msg.textContent="lädt "+LADEN.KURZ[+mm[0].slice(5,7)-1]+" "+mm[0].slice(0,4)+" …"; msg.style.color=""; }
+        return PUMPEN.tageHolen(mm[0], mm[1]).then(function(t){ t.forEach(function(o){ if(o.w) PUMPEN._tage[o.ymd]=o.w; }); PUMPEN.zeichnen(); }); }); }, Promise.resolve()); })
+    .then(function(){ if(msg) msg.textContent=""; })
+    .catch(function(e){ console.error(e); if(msg){ msg.textContent="Nicht vollständig geladen – nochmals versuchen (fertige Monate sind gemerkt)."; msg.style.color="var(--red)"; } })
+    .then(function(){ PUMPEN._laeuft=false; PUMPEN.zeichnen(); }); };
+// gemerkte Tage aus dem Browser lesen (ohne Abruf)
+PUMPEN.ausBrowser=function(){ try{ Object.keys(localStorage).forEach(function(k){ if(/^pw_tag1_/.test(k)){ var w=JSON.parse(localStorage.getItem(k)); if(w) PUMPEN._tage[k.slice(8)]=w; } }); }catch(e){} };
+// was die Ansicht braucht, ohne Knopf: Tage = letzte 30 Tage; Monate = das gewaehlte Jahr, wenn hoechstens AUTO Tage fehlen
+PUMPEN.sichern=function(){ if(PUMPEN._laeuft) return; var m=PUMPEN.modus(), heute=ymdLocal(new Date()), cy=new Date().getFullYear();
+  if(m==="monate"){ var j=PUMPEN.jahr||cy, von=j+"-01-01", bis=j===cy?heute:j+"-12-31"; if(PUMPEN._abYmd && von<PUMPEN._abYmd) von=PUMPEN._abYmd;
+    if(PUMPEN.fehlend(von, bis)>0 && PUMPEN.fehlend(von, bis)<=PUMPEN.AUTO) PUMPEN.holen(von, bis); } };
+PUMPEN.panel={
+  reset:function(){ PUMPEN._t=0; },
+  html:function(){ return ""; },
+  htmlTab:function(){ var m=PUMPEN.modus(), cy=new Date().getFullYear(), opts="";
+    for(var y=cy; y>=cy-5; y--) opts+='<option value="'+y+'"'+((PUMPEN.jahr||cy)===y?' selected':'')+'>'+y+'</option>';
+    return '<div class="panel"><h2>Einschaltungen &amp; Laufzeit <span class="head-ctl ld-ctl"><select id="pw-jahr" class="ld-sel"'+(m==="monate"?'':' style="display:none"')+'>'+opts+'</select>'+
+      '<span class="seg" id="pw-seg">'+Object.keys(PUMPEN.MODI).map(function(k){ return '<button data-t="'+k+'"'+(k===m?' class="active"':'')+'>'+PUMPEN.MODI[k]+'</button>'; }).join("")+'</span></span></h2>'+
+      '<div id="pw-chart"><div class="chart-empty">wird geladen…</div></div><div class="note" id="pw-note"></div>'+
+      '<div class="frei" style="margin:8px 0 0;padding:0;background:transparent;box-shadow:none"><button class="btn" id="pw-mehr" style="display:none"></button><span class="frei-msg" id="pw-msg"></span></div></div>'; },
+  bind:function(){ var g=function(id){ return document.getElementById(id); };
+    var seg=g("pw-seg"); if(seg) seg.addEventListener("click",function(ev){ var b=ev.target.closest("button"); if(!b||!b.dataset.t) return; lsSet("pw_modus", b.dataset.t);
+      [].forEach.call(seg.querySelectorAll("button"), function(x){ x.className=(x===b)?"active":""; });
+      var sj=g("pw-jahr"); if(sj) sj.style.display=(b.dataset.t==="monate")?"":"none";
+      PUMPEN.zeichnen(); PUMPEN.sichern(); });
+    var sj=g("pw-jahr"); if(sj) sj.addEventListener("change",function(){ PUMPEN.jahr=parseInt(this.value,10)||null; PUMPEN.zeichnen(); PUMPEN.sichern(); });
+    var mb=g("pw-mehr"); if(mb) mb.addEventListener("click",function(){ if(PUMPEN._laeuft) return;
+      if(!confirm("Die fehlenden Tage einmal von ThingSpeak laden? Das sind alle Minutenwerte (grösserer Download, besser im WLAN), danach im Browser gemerkt.")) return;
+      PUMPEN.holen(mb.dataset.von, mb.dataset.bis); }); },
+  load:function(){ if(Date.now()-PUMPEN._t<600000) return; PUMPEN._t=Date.now();
+    PUMPEN.ausBrowser(); var heute=ymdLocal(new Date());
+    PUMPEN.ab().then(function(ab){ PUMPEN._abYmd=ab; PUMPEN.zeichnen();
+      return PUMPEN.holen(ymdLocal(new Date(Date.now()-(PUMPEN.TAGE-1)*864e5)), heute); })   // letzte 30 Tage, heute immer neu
+      .then(function(){ PUMPEN.sichern(); }); }
+};
+var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk", extra:PUMPEN.panel,
   // Symbol im Titel folgt dem Zustand (wie Flamme/Kohle bei der Heizung): gruen = Pumpe laeuft, blau = steht,
   // rot = Stoerung, grau = laenger als 30 min keine Meldung. "Laeuft" = Momentaufnahme der letzten Minutenmeldung.
   statusIcon:function(f,last){ var aktuell=(Date.now()-Date.parse(last.created_at))<30*60000, st=num(last.field6)>=0.5, lauft=num(last.field1)>=0.5;
