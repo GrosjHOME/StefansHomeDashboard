@@ -11,7 +11,7 @@ aktualisiert sich im Takt des jeweiligen Loggers (die Seite lernt je Gerät aus 
 **Inhalt:** [Ansichten](#ansichten) · [Datenfluss](#datenfluss) ·
 [Projektstruktur](#projektstruktur) · [ThingSpeak-Kanäle](#thingspeak-kanäle) ·
 [Deployment](#deployment) · [Als App installieren](#als-app-installieren-pwa) · [Android-Widget](#android-widget-32) · [PV-Anteil am Laden](#pv-anteil-am-laden) ·
-[PV-Morgenprognose](#pv-morgenprognose-val-town) · [Asche-Prognose](#asche-prognose-val-town) · [Schnitzel-Prognose](#schnitzel-prognose-val-town) · [Geräte-Zähler](#geräte-zähler-val-town) · [Wächter](#wächter-val-town) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
+[PV-Morgenprognose](#pv-morgenprognose-val-town) · [Asche-Prognose](#asche-prognose-val-town) · [Schnitzel-Prognose](#schnitzel-prognose-val-town) · [Geräte-Zähler](#geräte-zähler-val-town) · [Wächter](#wächter-val-town) · [Monatsbericht](#monatsbericht-val-town) · [ID.3-Ladezustand (Tibber-Poller)](#id3-ladezustand-tibber-poller) ·
 [Nutzung](#nutzung) · [Herkunft](#herkunft)
 
 ## Ansichten
@@ -49,7 +49,7 @@ die PV-Morgenprognose sowie die Einträge der Heizung (Asche-Leerungen, Auffüll
 schreibt neue Einträge zurück (mit Token). Der Wächter im Val liest ThingSpeak und die Einträge der Heizung und
 schickt bei Störungen eine E-Mail. Was jede Datei im Val **liest** und **schreibt**, steht in der Tabelle unten.
 
-### Val Town: ein Val, sechs Dateien
+### Val Town: ein Val, sieben Dateien
 
 Alles, was auf einem Server laufen muss, steckt im Val **GrosjeansHomeDashboard**
 (val.town, Konto `steffgrosjean`). Jede Datei hat ihren eigenen Trigger. Den
@@ -61,6 +61,7 @@ Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
 | `prognose.ts` | PV-Morgenprognose rechnen und ausliefern | HTTP | `scripts/valtown_pv_prognose/prognose.ts` |
 | `morgens.ts` | Prognose um 06:00 anstossen | Cron `0 4-8 * * *` | `scripts/valtown_pv_prognose/morgens.ts` |
 | `waechter.ts` | E-Mail bei Störungen | Cron alle 30 min | `scripts/valtown_waechter/waechter.ts` |
+| `monatsbericht.ts` | Monatsbericht per E-Mail (am 1.) | Cron täglich, z. B. 07:10 | `scripts/valtown_waechter/monatsbericht.ts` |
 | `heizung.ts` | von Hand eingetragene Werte der Heizung speichern: Asche-Leerungen, Auffüllen des Schnitzel-Bunkers, Lager (früher `asche.ts`) | HTTP | `scripts/valtown_heizung/heizung.ts` |
 | `geraete.ts` | Geräte-Zähler: wie viele verschiedene Geräte das Dashboard benutzen (Anzeige im Info-Fenster ℹ️) | HTTP | `scripts/valtown_geraete/geraete.ts` |
 
@@ -72,6 +73,7 @@ Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
 | `prognose.ts` | ThingSpeak (PV-Kanal, mit Lese-Key); Open-Meteo (Einstrahlung); Blob `pv_prognose_<Datum>` | Blob `pv_prognose_<Datum>` (die Prognose des Tages) |
 | `morgens.ts` | – (ruft die Rechnung in `prognose.ts` auf) | – (gespeichert wird über `prognose.ts`) |
 | `waechter.ts` | ThingSpeak (alle überwachten Kanäle, das Pumpwerk mit Lese-Key aus `PUMPWERK_READ_KEY`); Open-Meteo (Temperaturprognose); Endpunkt `prognose.ts` (Kontrolle der 06:00-Prognose); Blobs `schnitzel_daten` (Auffüllungen und Lager aus `heizung.ts`), `asche_leerungen` (Leerungen aus `heizung.ts`), `schnitzel_tage`, `asche_tage`, `waechter_status` | Blobs `schnitzel_tage` (Austragung je Tag), `asche_tage` (Brennzeit je Tag) und `waechter_status` (offene Meldungen); **E-Mail** an das Konto |
+| `monatsbericht.ts` | ThingSpeak (PV, Wallbox, Boiler, Heizung, Pumpwerk mit `PUMPWERK_READ_KEY`, ganzer Vormonat); Open-Meteo (Temperaturen); Blobs `asche_leerungen`, `schnitzel_daten`, `monatsbericht_gesendet`; Rechnungen aus `waechter.ts` (Import im selben Val) | Blob `monatsbericht_gesendet` (welcher Monat schon verschickt ist); **E-Mail** an das Konto |
 | `heizung.ts` | Blobs `asche_leerungen` und `schnitzel_daten` (Lesen für jeden, auch das Dashboard) | dieselben Blobs: Leerungen, Auffüllungen, Lager eintragen oder löschen (**nur mit Token** `ASCHE_TOKEN` im Header `X-Asche-Token`) |
 | `geraete.ts` | Blob `geraete` (öffentlich nur Zahlen, Einzelheiten mit Token) | Blob `geraete` (Meldung eines Geräts per POST; Entfernen nur mit Token) |
 
@@ -79,7 +81,7 @@ Das Dashboard selbst liest ThingSpeak und Open-Meteo direkt und ruft nur `progno
 Geschrieben wird vom Dashboard nur in `heizung.ts` (mit Token) und `geraete.ts` (Meldung des Geräts).
 Das Repo ist die Vorlage: Änderungen hier machen und dann in den Val kopieren.
 Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
-[PV-Morgenprognose](#pv-morgenprognose-val-town) · [Asche-Prognose](#asche-prognose-val-town) · [Schnitzel-Prognose](#schnitzel-prognose-val-town) · [Geräte-Zähler](#geräte-zähler-val-town) · [Wächter](#wächter-val-town).
+[PV-Morgenprognose](#pv-morgenprognose-val-town) · [Asche-Prognose](#asche-prognose-val-town) · [Schnitzel-Prognose](#schnitzel-prognose-val-town) · [Geräte-Zähler](#geräte-zähler-val-town) · [Wächter](#wächter-val-town) · [Monatsbericht](#monatsbericht-val-town).
 
 ## Projektstruktur
 
@@ -297,7 +299,7 @@ jedem Wetter-Update. Fehlt die Morgenprognose, rechnet der Balken wie bisher liv
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-sechs-dateien)) |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-sieben-dateien)) |
 | **Dateien** | `prognose.ts` (Trigger **HTTP**: Rechnung + Abruf) und `morgens.ts` (Trigger **Cron** `0 4-8 * * *`) |
 | **Quelltext** | `scripts/valtown_pv_prognose/` – hier ändern, dann in den Val kopieren |
 | **Speicher** | Blob `pv_prognose_YYYY-MM-DD` je Tag (bleibt erhalten, `?datum=…` liefert ältere Tage) |
@@ -403,7 +405,7 @@ ThingSpeak (beim ersten Mal ab dem 1. September also ein paar Läufe, bis die er
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-sechs-dateien)) |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-sieben-dateien)) |
 | **Datei** | `heizung.ts` (Trigger **HTTP**; früher `asche.ts`, speichert auch die [Schnitzel](#schnitzel-prognose-val-town)) |
 | **Quelltext** | `scripts/valtown_heizung/heizung.ts` – hier ändern, dann in den Val kopieren |
 | **Speicher** | Blob `asche_leerungen`: `leerungen` (Zeitpunkte, UTC) und `anteile` (Füllstand beim Leeren in %, fehlt = 100 %); Blob `schnitzel_daten`: Auffüllungen des Bunkers und Lager (siehe [Schnitzel-Prognose](#schnitzel-prognose-val-town)) |
@@ -490,7 +492,7 @@ Anleitung und schliesst mit ✕, «Schliessen», Esc, Klick daneben oder der Zur
 
 | | |
 |---|---|
-| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-sechs-dateien)) |
+| **Ort** | val.town, Konto `steffgrosjean`, Val **GrosjeansHomeDashboard** (siehe [Val Town](#val-town-ein-val-sieben-dateien)) |
 | **Datei** | `geraete.ts` (Trigger **HTTP**) |
 | **Quelltext** | `scripts/valtown_geraete/geraete.ts` – hier ändern, dann in den Val kopieren |
 | **Speicher** | Blob `geraete` (höchstens 100 Geräte) |
@@ -547,6 +549,34 @@ eine **E-Mail an die Adresse des Val-Town-Kontos**. Im Code steht keine Adresse,
    (aus `Secrets.h` im Repo PumpwerkBiral). Ohne ihn meldet der Wächter das Pumpwerk als «nicht abrufbar».
 4. Test: **Run**. Im Log steht "alles in Ordnung" oder die gefundenen Probleme.
    Die erste Mail kommt erst beim zweiten Lauf mit derselben Störung.
+
+</details>
+
+### Monatsbericht (Val Town)
+
+Die Datei `monatsbericht.ts` schickt am **1. jedes Monats** eine Mail mit dem Vormonat (fällt ein Lauf aus, bis zum 5. nachgeholt;
+gemerkt im Blob `monatsbericht_gesendet`). Betreff „📊 Zuhause: Monatsbericht Oktober 2026“. Inhalt:
+
+- ☀️ **PV-Ertrag** (Monatszähler der PV-Steuerung) gegen den gleichen Monat im Vorjahr
+- 🚗 **Laden**: kWh ins Auto, davon aus PV, wie oft eingesteckt – gleiche Schätzung wie «PV-Anteil am Laden»
+- 💧 **Boiler**: kWh fürs Warmwasser, davon aus PV, Ø je Tag – wie «PV-Anteil Boiler»
+- 🔥 **Heizung** (wenn sie gebrannt hat): Heizzyklen, Gluterhaltung, Brennzeit, Heizgradtage, Brennzeit und Heizzyklen je Heizgradtag;
+  Asche-Leerungen und Bunker-Auffüllungen
+- 🚰 **Pumpwerk**: Einschaltungen, Laufzeit, Ø Laufdauer je Start, Nachtstarts (0–5 Uhr), Minuten mit Störung
+
+Die Rechnungen kommen aus `waechter.ts` (Import im selben Val), die Datei braucht also den aktuellen `waechter.ts` daneben.
+
+<details>
+<summary><b>Einrichtung Schritt für Schritt</b></summary>
+
+1. Im Val **GrosjeansHomeDashboard** zuerst `waechter.ts` mit dem aktuellen Stand aus `scripts/valtown_waechter/waechter.ts` ersetzen
+   (die Rechnungen sind dort jetzt exportiert).
+2. Neue Datei **`monatsbericht.ts`** anlegen, den Inhalt von `scripts/valtown_waechter/monatsbericht.ts` einfügen und als Trigger
+   **Cron** täglich wählen, z. B. `10 7 * * *` (07:10; die Zeit ist UTC, also 08:10 bzw. im Sommer 09:10 Zürcher Zeit – egal, er
+   sendet nur einmal im Monat).
+3. Neue Umgebungsvariablen braucht es keine (`PUMPWERK_READ_KEY` hat der Val schon).
+4. Test: Umgebungsvariable **`MONATSBERICHT_TEST`** = `1` setzen und **Run** drücken – die Mail mit dem Vormonat kommt sofort
+   (ohne zu merken, dass sie verschickt ist). Danach die Variable wieder löschen.
 
 </details>
 

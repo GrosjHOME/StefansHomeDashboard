@@ -29,9 +29,9 @@
 import { blob } from "https://esm.town/v/std/blob/main.ts";
 import { email } from "https://esm.town/v/std/email";   // ohne /main.ts (sonst 404)
 
-const DASHBOARD = "https://grosjhome.github.io/StefansHomeDashboard/";
+export const DASHBOARD = "https://grosjhome.github.io/StefansHomeDashboard/";
 const PROGNOSE_URL = "https://steffgrosjean--23dbba40c0d911f1a70c1607ee4eb77e.web.val.run/";
-const PV_READ_KEY = "6GIAGINL9VN4CTL8";   // oeffentlicher Lese-Key (steht auch im Dashboard)
+export const PV_READ_KEY = "6GIAGINL9VN4CTL8";   // oeffentlicher Lese-Key (steht auch im Dashboard)
 const ZONE = "Europe/Zurich";
 const STATUS_KEY = "waechter_status";
 const ERINNERUNG_MS = 24 * 3600_000;
@@ -54,7 +54,7 @@ const HINWEISE: Record<string, string> = { asche: "🪣 Aschebox leeren", schnit
 const PW = { KANAL: 3484334, NAECHTE: 14, MIN_NAECHTE: 7, BIS_H: 5, FAKTOR: 3, MIN_STARTS: 8, MIN_SEC: 15 * 60, DAUER_MIN: 60, MIN_WERTE: 250 };
 const PW_KEY = "pumpe_naechte", PW_VERSION = 1, PW_MAX_ABRUFE = 8;   // je Lauf hoechstens so viele Naechte nachholen
 
-const PUMPWERK_READ_KEY = (Deno.env.get("PUMPWERK_READ_KEY") || "").trim() || undefined;   // privater Kanal, Key nur als Umgebungsvariable
+export const PUMPWERK_READ_KEY = (Deno.env.get("PUMPWERK_READ_KEY") || "").trim() || undefined;   // privater Kanal, Key nur als Umgebungsvariable
 
 // Alle Kanaele senden auch nachts (PV ~3 min, Wallbox/Boiler/Pumpwerk minuetlich, ID.3 alle 15 min)
 const KANAELE: { id: string; name: string; kanal: number; key?: string; maxMin: number; saison?: number[]; results?: number }[] = [
@@ -72,7 +72,7 @@ const FMT = new Intl.DateTimeFormat("de-CH", {
   timeZone: ZONE, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
 });
 const zeit = (ms: number) => FMT.format(new Date(ms));
-const lokal = (ms: number) => {
+export const lokal = (ms: number) => {
   const s = new Intl.DateTimeFormat("sv-SE", { timeZone: ZONE, year: "numeric", month: "2-digit",
     day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(ms));
   return { datum: s.slice(0, 10), h: +s.slice(11, 13), monat: +s.slice(5, 7) - 1 };
@@ -85,12 +85,12 @@ async function feeds(kanal: number, key?: string, results = 3): Promise<any[]> {
 }
 
 // ---- Schnitzel-Bunker ----
-const hgt = (t: number) => (t < 12 ? 20 - t : 0);   // Heizgradtage 20/12
-const median = (a: number[]) => { if (!a.length) return null; const s = a.slice().sort((x, y) => x - y);
+export const hgt = (t: number) => (t < 12 ? 20 - t : 0);   // Heizgradtage 20/12
+export const median = (a: number[]) => { if (!a.length) return null; const s = a.slice().sort((x, y) => x - y);
   return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2; };
-const plusTage = (ymd: string, n: number) => { const d = new Date(ymd + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+export const plusTage = (ymd: string, n: number) => { const d = new Date(ymd + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 // Beginn eines Zuercher Kalendertags als UTC-Zeitpunkt (Sommer-/Winterzeit beachtet)
-function tagBeginn(ymd: string): number {
+export function tagBeginn(ymd: string): number {
   const g = Date.parse(ymd + "T00:00:00Z"), p = lokalVoll(g), alsUtc = Date.parse(`${p.datum}T${p.hm}:00Z`);
   return g - (alsUtc - g);
 }
@@ -100,7 +100,7 @@ const lokalVoll = (ms: number) => {
   return { datum: s.slice(0, 10), hm: s.slice(11, 16) };
 };
 const austrMinute = (v: number) => Math.abs(v - 0.4) < 0.02 || Math.abs(v - 0.7) < 0.02 || Math.abs(v - 1) < 0.02;   // field6: Austragung laeuft
-const tsStempel = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+export const tsStempel = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
 // Austragung eines Tages (Minuten), dazu je Auffuellen an diesem Tag die Minuten davor (va) und danach (na)
 // Minuten-Feeds eines Zuercher Tags (Kanal 172428); je Lauf nur einmal geholt, Schnitzel und Asche brauchen dieselben Tage
 const tagCache = new Map<string, Promise<any[]>>();
@@ -209,7 +209,8 @@ async function schnitzelPruefen(heute: string): Promise<string | null | undefine
 // ---- Aschebox ----
 // Brennphasen wie heizPhasen() im Dashboard: Beginn bei Abgas (field8) - Kessel oben (field1) > 30 K, Ende unter 20 K;
 // zaehlt ab 60 s Dauer und 45 K Spitze. Dazu Glutstoesse bei heissem Kessel ueber den Abgas-Sprung. Ergebnis in ms.
-function heizPhasen(ff: any[]): { s: number; e: number }[] {
+// voll = Heizzyklus (ab 5 min), sonst Glutstoss (Gluterhaltung) - wie im Dashboard; der Waechter braucht nur s/e
+export function heizPhasen(ff: any[]): { s: number; e: number; voll: boolean }[] {
   const out: { s: number; e: number; max: number }[] = [], v: { t: number; a: number }[] = [];
   let an: number | null = null, maxD = 0, lastT: number | null = null;
   for (const x of ff) {
@@ -222,8 +223,8 @@ function heizPhasen(ff: any[]): { s: number; e: number }[] {
     lastT = t;
   }
   if (an !== null && lastT !== null) out.push({ s: an, e: lastT, max: maxD });
-  const ph = out.filter((x) => x.e - x.s >= 60000 && x.max >= 45).map((x) => ({ s: x.s, e: x.e }));
-  let sperre = 0; const sprung: { s: number; e: number }[] = [];
+  const ph = out.filter((x) => x.e - x.s >= 60000 && x.max >= 45).map((x) => ({ s: x.s, e: x.e, voll: x.e - x.s >= 300000 }));
+  let sperre = 0; const sprung: { s: number; e: number; voll: boolean }[] = [];
   for (let i = 2; i < v.length; i++) {
     const p = v[i]; if (p.t < sperre) continue;
     if (p.t - v[i - 2].t > 3.5 * 60000) continue;   // Messluecke
@@ -232,7 +233,7 @@ function heizPhasen(ff: any[]): { s: number; e: number }[] {
     let ende: number | null = null;
     for (let j = i + 1; j < v.length && v[j].t - p.t <= GLUT_MAX_MIN * 60000; j++) { if (v[j].a <= base + GLUT_ABKLING_K) { ende = v[j].t; break; } }
     if (ende === null) continue;
-    sprung.push({ s: p.t, e: ende }); sperre = ende;
+    sprung.push({ s: p.t, e: ende, voll: false }); sperre = ende;
   }
   return ph.concat(sprung);
 }
@@ -324,7 +325,7 @@ async function aschePruefen(heute: string): Promise<string | null | undefined> {
 // ---- Pumpwerk: Leck-Verdacht und Dauerlauf ----
 // Starts und Laufsekunden aus den Tageszaehlern: nur steigende Differenzen (der Reset um Mitternacht zaehlt nicht), wie
 // zaehlerDeltas im Dashboard
-function pwSumme(f: any[]) { let starts = 0, sec = 0, prev: { a: number; b: number } | null = null;
+export function pwSumme(f: any[]) { let starts = 0, sec = 0, prev: { a: number; b: number } | null = null;
   for (const x of f) { const a = parseFloat(x.field3), b = parseFloat(x.field2); if (!isFinite(a)) continue;
     if (prev && a >= prev.a && (!isFinite(b) || !isFinite(prev.b) || b >= prev.b)) { sec += a - prev.a; if (isFinite(b) && isFinite(prev.b)) starts += b - prev.b; }
     prev = { a, b }; }
