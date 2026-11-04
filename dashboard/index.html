@@ -2184,6 +2184,20 @@ function heizPhasen(ff){
   heizPhasen._ff=ff; heizPhasen._p=r; return r;
 }
 function heizVoll(ff){ return heizPhasen(ff).filter(function(p){ return p.voll; }); }
+// Pausen zwischen zwei Feuern: [{aus, start, min}] - aus = Ende des Abgas-Hochplateaus eines Heizzyklus (letzter Wert hoechstens
+// HEIZ_FEUER_AUS_K unter der Spitze), start = Beginn des naechsten Heizzyklus. Ohne den Zyklus, der beim ersten gueltigen Messwert
+// schon laeuft (dessen Spitze kann vor dem Zeitraum liegen). Lesefehler wie in heizPhasen uebergangen.
+var HEIZ_FEUER_AUS_K=15;
+function heizPausen(ff){
+  var pts=[]; ff.forEach(function(x){ var a=num(x.field8), k=num(x.field1);
+    if(a===null || k===null || a>400 || a<-100 || k<=0 || !kesselOk(k)) return; pts.push({t:Date.parse(x.created_at), a:a}); });
+  if(!pts.length) return [];
+  var v=heizVoll(ff).filter(function(p){ return p.s!==pts[0].t; }).sort(function(a,b){ return a.s-b.s; }), out=[];
+  for(var i=0;i<v.length-1;i++){ var z=v[i], mx=-Infinity, aus=null;
+    pts.forEach(function(q){ if(q.t>=z.s && q.t<=z.e && q.a>mx) mx=q.a; });
+    pts.forEach(function(q){ if(q.t>=z.s && q.t<=z.e && q.a>=mx-HEIZ_FEUER_AUS_K) aus=q.t; });
+    if(aus!==null && v[i+1].s>aus) out.push({aus:aus, start:v[i+1].s, min:(v[i+1].s-aus)/60000}); }
+  return out; }
 
 /* ================= Asche-Prognose (Heizung) =================
    Die Aschebox der Schnitzelheizung wird von Hand geleert. Asche entsteht aus den verbrannten Schnitzeln, und
@@ -2788,17 +2802,15 @@ var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung", extra:ext
     {sec:"zyk",label:"Brennzeit",unit:"h",dec:1,ausFeeds:function(ff){ return heizPhasen(ff).reduce(function(s,p){ return s+p.min; },0)/60; }},
     {sec:"zyk",label:"Austragung",unit:"h",dec:1,ausFeeds:function(ff){ return ASCHE.austrFlags(ff).filter(function(c){ return c===1; }).length/60; }},
     {sec:"zyk",label:"Störungszeit Austragung",unit:"min",dec:0,ausFeeds:function(ff){ return ASCHE.austrFlags(ff).filter(function(c){ return c===2; }).length; }},
-    // darunter der kuerzeste Abstand zwischen zwei Starts von Heizzyklen im Zeitraum (Start = Abgas - Kessel ueber 30 K, der steile
-    // Anstieg). Nicht "Ende bis Start": Das Ende (unter 20 K) liegt bei dieser Heizung fast am Talboden der Abgaskurve, die
-    // "Pause" waere nur die Minute am tiefsten Punkt. Glutstoesse zaehlen nicht. Ein Zyklus, der beim Beginn des Zeitraums schon
-    // laeuft, hat keinen echten Start (Beginn = erster Messwert) und zaehlt nicht als Bezug. Erst ab zwei echten Starts.
+    // darunter die kuerzeste Pause zwischen zwei Feuern im Zeitraum: von "Feuer aus" bis zum Start des naechsten Heizzyklus.
+    // Feuer aus = letzter Messwert des Zyklus, bei dem das Abgas hoechstens HEIZ_FEUER_AUS_K unter seiner Spitze liegt (Ende des
+    // Hochplateaus; eine Doppelspitze bleibt ein Feuer). Nicht das Zyklusende (Abgas - Kessel unter 20 K): Das liegt bei dieser
+    // Heizung fast am Talboden, kurz vor dem naechsten Start - die "Pause" waere nur die Minute dort. Glutstoesse zaehlen nicht.
+    // Ein Zyklus, der beim Beginn des Zeitraums schon laeuft, zaehlt nicht als Bezug (seine Spitze kann vor dem Zeitraum liegen).
     {sec:"zyk",label:"Ø Heizzyklus",unit:"min",dec:0,ausFeeds:function(ff){ var v=heizVoll(ff); return v.length ? v.reduce(function(s,p){ return s+p.min; },0)/v.length : null; },
-      unter:{titel:"Kürzester Abstand zwischen zwei Starts von Heizzyklen im Zeitraum (Start = Abgas mehr als 30 K über Kessel oben; Glutstösse zählen nicht)",
-        ausFeeds:function(ff){ var erst=null;   // erster gueltiger Messwert (wie heizPhasen: Lesefehler uebergehen)
-          for(var j=0;j<ff.length && erst===null;j++){ var a=num(ff[j].field8), k=num(ff[j].field1); if(a!==null && k!==null && a<=400 && a>=-100 && k>0 && kesselOk(k)) erst=Date.parse(ff[j].created_at); }
-          var v=heizVoll(ff).filter(function(p){ return p.s!==erst; }).sort(function(a,b){ return a.s-b.s; }), m=null;
-          for(var i=1;i<v.length;i++){ var d=(v[i].s-v[i-1].s)/60000; if(d>0 && (m===null || d<m)) m=d; }
-          return m===null ? "" : "kürzester Startabstand "+fmt(m,0)+"\u00a0min"; }}},   // Zahl und Einheit nicht trennen, davor darf es umbrechen
+      unter:{titel:"Kürzeste Pause zwischen zwei Feuern im Zeitraum: vom Ende des Feuers (Abgas fällt von seiner Spitze ab) bis zum Start des nächsten Heizzyklus (Abgas mehr als 30 K über Kessel oben); Glutstösse zählen nicht",
+        ausFeeds:function(ff){ var m=heizPausen(ff).reduce(function(a,p){ return (a===null || p.min<a) ? p.min : a; }, null);
+          return m===null ? "" : "kürzeste Pause "+fmt(m,0)+"\u00a0min"; }}},   // Zahl und Einheit nicht trennen, davor darf es umbrechen
     // Auslastung = Anteil des gewaehlten Zeitraums, in dem die Heizung gebrannt hat (Brennzeit / Zeitraum),
     // direkt aus den Heizungsdaten gerechnet (gleiche Zaehlung wie Heizzyklen/Brennzeit). In Klammern
     // zum Gegenpruefen der Wert des ThingSpeak-Skripts (HSH-Auslastung, Wallbox-Kanal 172228 field1):
