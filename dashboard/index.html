@@ -154,7 +154,7 @@
      wrap-reverse nur das Zusatz-Element unter den Umschalter um. */
   .head-ctl{flex:1 1 0; min-width:0; display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap-reverse;}
   .head-ctl .seg{margin-left:0;}
-  .head-ctl.ld-ctl{flex:1 0 auto;}   /* zu wenig Platz neben dem Titel: Umschalter als Ganzes in die naechste Zeile statt umbrechen */
+  .head-ctl.ld-ctl{flex:1 0 auto; max-width:100%;}   /* zu wenig Platz neben dem Titel: Umschalter als Ganzes in die naechste Zeile statt umbrechen; nie breiter als die Kachel (dann Auswahl unter den Umschalter) */
   .ld-kurz{display:none;} @media (max-width:480px){ .ld-lang{display:none;} .ld-kurz{display:inline;} }
   .fl-kopf{font-size:1rem; margin:0 0 6px;}
   .ub-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; margin-top:6px;}
@@ -914,7 +914,7 @@ PV.render=function(main){
   PV.period=ZEIT.mode;  // Zeitraum bleibt beim Tabwechsel erhalten (passt zum aktiven Button)
   PV.lfMode="jahre";
   PV.energyMode="tage"; PV.energyYear=null; PV.cmpMode="kumuliert";
-  var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 Monate</option>'; for(var _y=_cy;_y>=2014;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
+  var _cy=new Date().getFullYear(); var yearOpts='<option value="">Letzte 12 M.</option>'; for(var _y=_cy;_y>=2014;_y--) yearOpts+='<option value="'+_y+'">'+_y+'</option>';
   main.innerHTML='<div class="wrap wide">'+
     '<div class="view-head"><h1>☀️ PV-Anlage</h1>'+
       '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
@@ -2051,7 +2051,7 @@ LADEN.panel={
   reset:function(){ LADEN._t=0; },
   html:function(){ return ""; },
   htmlTab:function(){ var sel=LADEN.tab(), anz=function(k){ return k===sel?"":' style="display:none"'; }, cy=new Date().getFullYear();
-    var opts='<option value="">Letzte 12 Monate</option>'; for(var y=cy; y>=+LADEN.AB.slice(0,4); y--) opts+='<option value="'+y+'"'+(LADEN.jahr===y?' selected':'')+'>'+y+'</option>';
+    var opts='<option value="">Letzte 12 M.</option>'; for(var y=cy; y>=+LADEN.AB.slice(0,4); y--) opts+='<option value="'+y+'"'+(LADEN.jahr===y?' selected':'')+'>'+y+'</option>';
     return '<div class="panel"><h2>☀️ PV-Anteil am Laden <span class="head-ctl ld-ctl">'+
       '<select id="ld-jahr"'+(sel==="mo"?'':' style="display:none"')+' class="ld-sel">'+opts+'</select><span class="seg" id="ld-seg">'+
       Object.keys(LADEN.TAB).map(function(k){ return '<button data-t="'+k+'"'+(k===sel?' class="active"':'')+'>'+LADEN.TAB[k]+'</button>'; }).join("")+'</span></span></h2>'+
@@ -3000,13 +3000,21 @@ function pvAbfrageText(v){ var c=Math.round(v);
    Boiler (PV-Teil, BOILERPV) und Auto (PV-Teil, LADEN) - gleiche Schaetzung wie dort. Der Rest ging ans Haus oder ins Netz; ohne
    Hauszaehler laesst er sich nicht trennen. Tageswerte von Boiler und Auto aus dem Browser (boi_tag1_ / lade_tag1_), fehlende holt
    die Ansicht (bis FLUSS.AUTO Tage selbst, mehr beim Jahr per Knopf). */
-var FLUSS={ AUTO:70, _t:0, _laeuft:false, _pv:null };
+var FLUSS={ AUTO:70, _t:0, _laeuft:false, _pv:null, _pvAlt:{}, _nr:0 };
 FLUSS.MODI={heute:"Heute", gestern:"Gestern", monat:"Monat", jahr:"Jahr"};
 FLUSS.modus=function(){ var m=lsGet("fl_modus"); return FLUSS.MODI[m]?m:"heute"; };
-FLUSS.bereich=function(m){ var h=new Date(), heute=ymdLocal(h);
+// gewaehltes Jahr (Monat und Jahr) und gewaehlter Monat (0-11), im Browser gemerkt; nie in der Zukunft
+FLUSS.jahr=function(){ var cy=new Date().getFullYear(), y=+lsGet("fl_jahr"); return (y>=2000 && y<=cy) ? y : cy; };
+FLUSS.monat=function(y){ var h=new Date(), m=lsGet("fl_monat"); m=(m===null||m==="") ? h.getMonth() : +m; if(!(m>=0 && m<=11)) m=h.getMonth();
+  if(y===h.getFullYear() && m>h.getMonth()) m=h.getMonth(); return m; };
+// Zeitraum: laufender Monat / laufendes Jahr aus den Zaehlern der PV-Steuerung (feld), fruehere wie die PV-Energie (pvMonthTotal / pvYearTotal)
+FLUSS.bereich=function(m){ var h=new Date(), heute=ymdLocal(h), cy=h.getFullYear(), y=FLUSS.jahr();
   if(m==="gestern"){ var g=ymdLocal(new Date(Date.now()-864e5)); return {von:g, bis:g, feld:"field5", name:"gestern"}; }
-  if(m==="monat") return {von:heute.slice(0,8)+"01", bis:heute, feld:"field3", name:LADEN.MONAT[h.getMonth()]+" "+h.getFullYear()+" bis heute"};
-  if(m==="jahr") return {von:heute.slice(0,5)+"01-01", bis:heute, feld:"field4", name:h.getFullYear()+" bis heute"};
+  if(m==="monat"){ var m0=FLUSS.monat(y);
+    if(y===cy && m0===h.getMonth()) return {von:heute.slice(0,8)+"01", bis:heute, feld:"field3", name:LADEN.MONAT[m0]+" "+cy+" bis heute"};
+    return {von:y+"-"+("0"+(m0+1)).slice(-2)+"-01", bis:ymdLocal(new Date(y, m0+1, 0)), key:"m_"+y+"_"+m0, pvHol:function(){ return pvMonthTotal(y, m0); }, name:"im "+LADEN.MONAT[m0]+" "+y}; }
+  if(m==="jahr"){ if(y===cy) return {von:heute.slice(0,5)+"01-01", bis:heute, feld:"field4", name:cy+" bis heute"};
+    return {von:y+"-01-01", bis:y+"-12-31", key:"y_"+y, pvHol:function(){ return pvYearTotal(y); }, name:"im Jahr "+y}; }
   return {von:heute, bis:heute, feld:"field2", name:"heute"}; };
 FLUSS.fehlend=function(von, bis){ var heute=ymdLocal(new Date()), n=0; for(var y=von; y<=bis && y<heute; y=ASCHE.folgetag(y)) if(!lsGet("boi_tag1_"+y) || !lsGet("lade_tag1_"+y)) n++; return n; };
 // Summen PV-Teil Boiler und Auto (und ganz) ueber gemerkte Tage, heute aus den frisch geholten Werten
@@ -3031,7 +3039,7 @@ FLUSS.svg=function(pv, teile, breite){ var W=Math.max(600, Math.round((breite||1
     yL+=h; yR+=h+gap; });
   return '<svg class="chart" viewBox="0 0 '+W+' '+Math.max(H, lab+40)+'" preserveAspectRatio="xMidYMid meet">'+r+'</svg>'; };
 FLUSS.zeichnen=function(B, L){ var el=document.getElementById("fl-chart"), nt=document.getElementById("fl-note"), mb=document.getElementById("fl-mehr"); if(!el) return;
-  var m=FLUSS.modus(), b=FLUSS.bereich(m), pvF=FLUSS._pv, pv=pvF ? pvF[b.feld] : null, fe=FLUSS.fehlend(b.von, b.bis);
+  var m=FLUSS.modus(), b=FLUSS.bereich(m), pvF=FLUSS._pv, pv=b.key ? FLUSS._pvAlt[b.key] : (pvF ? pvF[b.feld] : null), fe=FLUSS.fehlend(b.von, b.bis);
   if(mb){ if(fe>0 && !FLUSS._laeuft && m==="jahr" && fe>FLUSS.AUTO){ mb.style.display=""; mb.textContent="Daten "+b.von.slice(0,4)+" laden"; } else mb.style.display="none"; }
   if(pv===null || pv===undefined){ el.innerHTML='<div class="chart-empty">'+(FLUSS._laeuft?"wird geladen…":"keine PV-Werte")+'</div>'; return; }
   var s=FLUSS.summe(b.von, b.bis, B, L), rest=Math.max(0, pv-s.boPv-s.auPv);
@@ -3042,20 +3050,29 @@ FLUSS.zeichnen=function(B, L){ var el=document.getElementById("fl-chart"), nt=do
       'Boiler und Auto nutzen <b>'+fmt(eig,0)+' %</b> des Solarstroms. Boiler '+kw(s.bo)+' kWh, davon '+kw(s.boPv)+' aus PV · Auto '+kw(s.au)+' kWh, davon '+kw(s.auPv)+' aus PV. '+
       'Der Rest ging ans Haus oder ins Netz – ohne Hauszähler lässt sich das nicht trennen.'; } };
 FLUSS.laden=function(){ var m=FLUSS.modus(), b=FLUSS.bereich(m), heute=ymdLocal(new Date()), msg=document.getElementById("fl-msg");
-  var fe=FLUSS.fehlend(b.von, b.bis); if(m==="jahr" && fe>FLUSS.AUTO && !FLUSS._knopf){ FLUSS.zeichnen(null, null); return Promise.resolve(); }
+  var nr=++FLUSS._nr, aktiv=function(){ return nr===FLUSS._nr; };   // neue Auswahl: ein noch laufendes Laden hoert nach dem aktuellen Monat auf
+  var pvP=(b.key && FLUSS._pvAlt[b.key]==null) ? b.pvHol().then(function(v){ if(v!==null) FLUSS._pvAlt[b.key]=v; }).catch(function(){}) : Promise.resolve();   // PV-Erzeugung frueherer Zeitraeume
+  if(msg){ msg.textContent=""; msg.style.color=""; }
+  var fe=FLUSS.fehlend(b.von, b.bis); if(m==="jahr" && fe>FLUSS.AUTO && !FLUSS._knopf){ FLUSS._laeuft=false; FLUSS.zeichnen(null, null); return pvP.then(function(){ if(aktiv()) FLUSS.zeichnen(null, null); }); }
   FLUSS._knopf=false; FLUSS._laeuft=true; FLUSS.zeichnen(null, null);
   // monatsweise, neuester zuerst (fertige Monate sind sofort gemerkt); heute immer frisch
   var monate=[], v=b.von; while(v<=b.bis){ var d=new Date(v+"T12:00:00"), e=ymdLocal(new Date(d.getFullYear(), d.getMonth()+1, 0)); if(e>b.bis) e=b.bis; monate.push([v,e]); v=ASCHE.folgetag(e); }
   var B=null, L=null;
-  return monate.reverse().reduce(function(p, mm){ return p.then(function(){ if(FLUSS.fehlend(mm[0], mm[1])===0 && mm[1]<heute) return;
+  return monate.reverse().reduce(function(p, mm){ return p.then(function(){ if(!aktiv() || (FLUSS.fehlend(mm[0], mm[1])===0 && mm[1]<heute)) return;
       if(msg && monate.length>1){ msg.textContent="lädt "+LADEN.KURZ[+mm[0].slice(5,7)-1]+" "+mm[0].slice(0,4)+" …"; msg.style.color=""; }
-      return BOILERPV.tageHolen(mm[0], mm[1]).then(function(t){ t.forEach(function(o){ if(o.ymd===heute) B=o.w; if(o.w) BOILERPV._tage[o.ymd]=o.w; }); }); }); }, Promise.resolve())
-    .then(function(){ return b.bis===heute ? LADEN.tage(heute, heute).then(function(t){ L=t.length?t[t.length-1].w:null; }) : null; })
-    .then(function(){ if(msg) msg.textContent=""; })
-    .catch(function(e){ console.error(e); if(msg){ msg.textContent="Nicht vollständig geladen – nochmals versuchen."; msg.style.color="var(--red)"; } })
-    .then(function(){ FLUSS._laeuft=false; FLUSS.zeichnen(B, L); }); };
-FLUSS.html=function(){ var m=FLUSS.modus();
-  return '<div class="panel a-fluss"><h2>Wohin geht der Solarstrom? <span class="head-ctl ld-ctl"><span class="seg" id="fl-seg">'+
+      return BOILERPV.tageHolen(mm[0], mm[1]).then(function(t){ t.forEach(function(o){ if(o.ymd===heute) B=o.w; if(o.w) BOILERPV._tage[o.ymd]=o.w; }); }); }); }, pvP)
+    .then(function(){ return (aktiv() && b.bis===heute) ? LADEN.tage(heute, heute).then(function(t){ L=t.length?t[t.length-1].w:null; }) : null; })
+    .then(function(){ if(msg && aktiv()) msg.textContent=""; })
+    .catch(function(e){ console.error(e); if(msg && aktiv()){ msg.textContent="Nicht vollständig geladen – nochmals versuchen."; msg.style.color="var(--red)"; } })
+    .then(function(){ if(!aktiv()) return; FLUSS._laeuft=false; FLUSS.zeichnen(B, L); }); };
+// Auswahl Jahr (ab dem Anlegen des Boiler-Kanals) und Monat (im laufenden Jahr bis heute)
+FLUSS.monatOpts=function(y){ var h=new Date(), bis=(y===h.getFullYear()) ? h.getMonth() : 11, m=FLUSS.monat(y), o="";
+  for(var i=0;i<=bis;i++) o+='<option value="'+i+'"'+(i===m?' selected':'')+'>'+LADEN.KURZ[i]+'</option>'; return o; };
+FLUSS.html=function(){ var m=FLUSS.modus(), y=FLUSS.jahr(), cy=new Date().getFullYear(), ab=+(lsGet("boi_ab")||"2018").slice(0,4), jo="";
+  for(var i=cy;i>=Math.min(ab,y);i--) jo+='<option value="'+i+'"'+(i===y?' selected':'')+'>'+i+'</option>';
+  return '<div class="panel a-fluss"><h2>Wohin geht der Solarstrom? <span class="head-ctl ld-ctl">'+
+    '<select id="fl-jahr" class="ld-sel"'+(m==="monat"||m==="jahr"?'':' style="display:none"')+'>'+jo+'</select>'+
+    '<select id="fl-monat" class="ld-sel"'+(m==="monat"?'':' style="display:none"')+'>'+FLUSS.monatOpts(y)+'</select><span class="seg" id="fl-seg">'+
     Object.keys(FLUSS.MODI).map(function(k){ return '<button data-t="'+k+'"'+(k===m?' class="active"':'')+'>'+FLUSS.MODI[k]+'</button>'; }).join("")+'</span></span></h2>'+
     '<div id="fl-chart"><div class="chart-empty">wird geladen…</div></div><div class="note" id="fl-note"></div>'+
     '<div class="frei" style="margin:8px 0 0;padding:0;background:transparent;box-shadow:none"><button class="btn" id="fl-mehr" style="display:none"></button><span class="frei-msg" id="fl-msg"></span></div>'+
@@ -3063,8 +3080,12 @@ FLUSS.html=function(){ var m=FLUSS.modus();
     'vom PV-Strom geht zuerst die an der Wallbox eingestellte Hausreserve ab, der Boiler hat Vorrang vor dem Auto. Was übrig bleibt, nutzte das Haus oder ging ins Netz – '+
     'ohne Hauszähler nicht zu trennen. Die Tageswerte von Boiler und Auto liegen im Browser; für ein ganzes Jahr holt der Knopf sie einmal von ThingSpeak.</details></div>'; };
 FLUSS.bind=function(){ var g=function(id){ return document.getElementById(id); };
+  var js=g("fl-jahr"), ms=g("fl-monat"), zeige=function(){ var m=FLUSS.modus(); if(js) js.style.display=(m==="monat"||m==="jahr")?"":"none"; if(ms) ms.style.display=m==="monat"?"":"none"; };
   var seg=g("fl-seg"); if(seg) seg.addEventListener("click",function(ev){ var b=ev.target.closest("button"); if(!b||!b.dataset.t) return; lsSet("fl_modus", b.dataset.t);
-    [].forEach.call(seg.querySelectorAll("button"), function(x){ x.className=(x===b)?"active":""; }); FLUSS.laden(); });
+    [].forEach.call(seg.querySelectorAll("button"), function(x){ x.className=(x===b)?"active":""; }); zeige(); FLUSS.laden(); });
+  if(js) js.addEventListener("change",function(){ lsSet("fl_jahr", js.value); if(ms) ms.innerHTML=FLUSS.monatOpts(+js.value); FLUSS.laden(); });
+  if(ms) ms.addEventListener("change",function(){ lsSet("fl_monat", ms.value); FLUSS.laden(); });
+  BOILERPV.ab().then(function(ab){ jahrAuswahl(g("fl-jahr"), +ab.slice(0,4), FLUSS.jahr()); });   // Jahre ab dem Anlegen des Boiler-Kanals
   var mb=g("fl-mehr"); if(mb) mb.addEventListener("click",function(){ if(FLUSS._laeuft) return;
     if(!confirm("Boiler-, PV- und Wallbox-Werte des ganzen Jahres einmal von ThingSpeak laden (grösserer Download, besser im WLAN)? Danach im Browser gemerkt.")) return;
     FLUSS._knopf=true; FLUSS.laden(); }); };
