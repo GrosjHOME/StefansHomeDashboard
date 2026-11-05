@@ -157,6 +157,13 @@
   .head-ctl.ld-ctl{flex:1 0 auto;}   /* zu wenig Platz neben dem Titel: Umschalter als Ganzes in die naechste Zeile statt umbrechen */
   .ld-kurz{display:none;} @media (max-width:480px){ .ld-lang{display:none;} .ld-kurz{display:inline;} }
   .fl-kopf{font-size:1rem; margin:0 0 6px;}
+  .ub-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; margin-top:6px;}
+  .ub-k{cursor:pointer; border-left:6px solid var(--line); transition:transform .1s ease; margin:0;}
+  .ub-k:hover{transform:translateY(-2px);}
+  .ub-k h2{margin-bottom:8px;} .ub-k h2 .tag{margin-left:auto;}
+  .ub-gross{font-size:1.9rem; font-weight:700; line-height:1.1;} .ub-gross small{font-size:.9rem; font-weight:600; color:var(--muted);}
+  .ub-z{font-size:.9rem; color:var(--muted); margin-top:4px;} .ub-z b{color:var(--ink);}
+  .ub-zwei{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
   .ld-sel{padding:4px 10px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:13px;}   /* wie die Jahr-Auswahl der PV-Energie */
   .seg button{cursor:pointer; border:0; background:transparent; color:var(--muted); font-family:inherit; font-size:.76rem; font-weight:600; padding:4px 10px; border-radius:6px;}
   .seg button.active{background:var(--card); color:var(--ink); box-shadow:var(--shadow);}
@@ -302,6 +309,7 @@
   <header class="nav">
     <div class="brand">⚡ Grosjeans Zuhause</div>
     <nav class="tabs" id="tabs">
+      <a data-view="home">🏠<span class="tl"> Übersicht</span></a>
       <a data-view="pv">☀️<span class="tl"> PV-Anlage</span></a>
       <a data-view="wallbox">🚗<span class="tl"> Wallbox</span></a>
       <a data-view="heizung">🔥<span class="tl"> Heizung</span></a>
@@ -2362,6 +2370,14 @@ ASCHE.rechne=function(tage, leer, temps, teile){
       if(!prog) prog={tage:null, ymd:null}; } }
   return {hist:hist, saison:saison, kap:kap, kapA:kapA, nInt:kaps.length, letzte:letzte, letzteTs:X?X.ts:null, seitBrenn:seitBrenn, seitAustr:seitAustr,
     pct:(kap&&kap>0)?seitBrenn/kap*100:null, prog:prog, mittelTag:mittelTag, rateHGT:rateHGT, nT:nT}; };
+// Stand der Aschebox rechnen (ohne Anzeige): Tage ab Saisonstart, Leerungen, Temperaturen, Teilung der Leerungstage -> ASCHE.rechne.
+// Fuer den Bereich Aschebox und die Uebersicht.
+ASCHE.berechnen=function(){ var heute=new Date(), jahr=heute.getMonth()>=8?heute.getFullYear():heute.getFullYear()-1;
+  var saisonCache=lsGet("hz_saison_"+jahr), von=saisonCache||(jahr+"-09-01"), minVon=ymdLocal(new Date(Date.now()-ASCHE.MAX_TAGE*864e5)); if(von<minVon) von=minVon;
+  return Promise.all([ASCHE.tage(von), ASCHE.leerungen(), ASCHE.temps()]).then(function(r){ var tage=r[0], leer=r[1], temps=r[2];
+      // die Leerungstage zusaetzlich an der Uhrzeit der Leerung teilen (Brennzeit davor/danach)
+      return ASCHE.teile(ASCHE.leerungenTage(leer).filter(function(L){ return L.ymd>=von; })).then(function(teile){
+        var e=ASCHE.rechne(tage, leer, temps, teile); if(e.saison && !saisonCache) lsSet("hz_saison_"+jahr, e.saison); return e; }); }); };
 // Farbe und Balkenbreite des Fuellstands - eine Regel fuer den grossen Balken oben und die Balken der letzten Leerungen
 ASCHE.farbe=function(pct){ return pct>=90?"var(--red)":(pct>=70?"var(--amber)":"var(--green)"); };
 ASCHE.breite=function(pct){ return (pct==null||isNaN(pct)?0:Math.max(0,Math.min(100,pct)))+"%"; };   // null/undefined/NaN -> 0 % (sonst "NaN%", vom Browser verworfen)
@@ -2476,13 +2492,8 @@ ASCHE.panel={
       var z=l[l.length-1]; if(!confirm("Letzte Leerung ("+ASCHE.fmtTag(ymdLocal(new Date(z)))+") löschen?")) return;
       return ASCHE.schreiben("DELETE", z).then(function(){ sag("Leerung gelöscht.","var(--green)"); neu(); }); }).catch(function(e){ sag("Nicht gelöscht: "+e.message); }); }); },
   load:function(){ if(Date.now()-ASCHE._t<600000) return; ASCHE._t=Date.now();
-    var g=function(id){ return document.getElementById(id); }, heute=new Date(), jahr=heute.getMonth()>=8?heute.getFullYear():heute.getFullYear()-1;
-    var saisonCache=lsGet("hz_saison_"+jahr), von=saisonCache||(jahr+"-09-01"), minVon=ymdLocal(new Date(Date.now()-ASCHE.MAX_TAGE*864e5)); if(von<minVon) von=minVon;
-    Promise.all([ASCHE.tage(von), ASCHE.leerungen(), ASCHE.temps()]).then(function(r){ var tage=r[0], leer=r[1], temps=r[2];
-      // die Leerungstage zusaetzlich an der Uhrzeit der Leerung teilen (Brennzeit davor/danach)
-      return ASCHE.teile(ASCHE.leerungenTage(leer).filter(function(L){ return L.ymd>=von; })).then(function(teile){
-        return {tage:tage, leer:leer, temps:temps, teile:teile}; }); }).then(function(r){ var tage=r.tage, leer=r.leer, temps=r.temps;
-      var e=ASCHE.rechne(tage, leer, temps, r.teile); if(e.saison && !saisonCache) lsSet("hz_saison_"+jahr, e.saison);
+    var g=function(id){ return document.getElementById(id); };
+    ASCHE.berechnen().then(function(e){
       if(!g("as-pct")) return;
       var set=function(id,txt,farbe){ var el=g(id); if(!el) return; el.textContent=txt; el.style.color=farbe||""; };
       // setzeBalken: grosser Fuellstand-Balken oben (DOM); nicht zu verwechseln mit balken() in ASCHE.tabelle, das HTML liefert
@@ -2576,6 +2587,14 @@ SCHNITZEL.rechne=function(tage, d, temps, teile){
   return {auff:f, lagerHist:lagerHist, lagerSeit:lagerSeit, k:k, quelle:quelle, nInt:raten.length, hist:hist, letzteTs:X?X.ts:null, letzteRest:X?X.rest:null, seitA:seitA, stoerSeit:stoerSeit, inhalt:inhalt, pct:pct,
     verbraucht:(inhalt!==null)?B-inhalt:null, prog:prog, mittelA:mittelA, rateAH:rateAH, nT:nT,
     lager:lager, lagerTs:L?L.ts:null, lagerProg:lagerProg, auffuellungen:auffuellungen}; };
+// Stand des Bunkers rechnen (ohne Anzeige) -> {leer, d, e}; fuer den Bereich Schnitzel-Bunker und die Uebersicht
+SCHNITZEL.berechnen=function(){
+  return ASCHE.leerungen().then(function(leer){ var d=SCHNITZEL.daten(leer.s);
+    // Tage ab dem vorletzten Auffuellen (fuer das letzte Intervall), hoechstens ASCHE.MAX_TAGE zurueck, mindestens 15 Tage (Raten)
+    var minVon=ymdLocal(new Date(Date.now()-ASCHE.MAX_TAGE*864e5)), von=ymdLocal(new Date(Date.now()-15*864e5));
+    d.f.forEach(function(F){ if(F.ymd<von) von=F.ymd; }); if(von<minVon) von=minVon;
+    return Promise.all([ASCHE.tage(von), ASCHE.temps(), ASCHE.teile(d.f.filter(function(F){ return F.ymd>=von; }))])
+      .then(function(r){ return {leer:leer, d:d, e:SCHNITZEL.rechne(r[0], d, r[1], r[2])}; }); }); };
 // Farbe: wenig im Bunker ist schlecht (bis 10 % rot, bis 40 % orange)
 // Verlaeufe im Tab "Schnitzel-Bunker" und "Lager" (unter dem Fuellstand-Diagramm, neben der Asche)
 SCHNITZEL.tabellen=function(e, leer){
@@ -2666,13 +2685,7 @@ SCHNITZEL.panel={
       return ASCHE.senden("DELETE",{art:"lager", zeit:z}).then(function(){ sag("Lager-Eintrag gelöscht.","var(--green)"); neu(); }); }).catch(function(e){ sag("Nicht gelöscht: "+e.message); }); }); },
   load:function(){ if(Date.now()-SCHNITZEL._t<600000) return; SCHNITZEL._t=Date.now();
     var g=function(id){ return document.getElementById(id); };
-    ASCHE.leerungen().then(function(leer){ var d=SCHNITZEL.daten(leer.s);
-      // Tage ab dem vorletzten Auffuellen (fuer das letzte Intervall), hoechstens ASCHE.MAX_TAGE zurueck, mindestens 15 Tage (Raten)
-      var minVon=ymdLocal(new Date(Date.now()-ASCHE.MAX_TAGE*864e5)), von=ymdLocal(new Date(Date.now()-15*864e5));
-      d.f.forEach(function(F){ if(F.ymd<von) von=F.ymd; }); if(von<minVon) von=minVon;
-      return Promise.all([ASCHE.tage(von), ASCHE.temps(), ASCHE.teile(d.f.filter(function(F){ return F.ymd>=von; }))])
-        .then(function(r){ return {leer:leer, d:d, e:SCHNITZEL.rechne(r[0], d, r[1], r[2])}; }); })
-    .then(function(r){ var e=r.e; if(!g("sz-pct")) return;
+    SCHNITZEL.berechnen().then(function(r){ var e=r.e; if(!g("sz-pct")) return;
       var set=function(id,txt,farbe){ var el=g(id); if(!el) return; el.textContent=txt; el.style.color=farbe||""; };
       var tag=function(txt, warn){ var t=g("sz-tag"); if(!t) return; t.textContent=txt; t.className="as-sub"+(warn?" warn":""); };
       var pf=e.pct===null?"":SCHNITZEL.farbe(e.pct), fb=g("sz-fuell");
@@ -3892,11 +3905,71 @@ PLANNER.load=function(){
   }).catch(function(){ afterPnow(); });
 };
 
-var VIEWS={ pv:PV, wallbox:WALLBOX, heizung:HEIZUNG, boiler:BOILER, pumpe:PUMPE, planer:PLANNER };
+/* ================= Uebersicht: Heute auf einen Blick =================
+   Startseite: je Bereich eine Kachel mit den wichtigsten Werten und einer Ampel (farbiger Rand), Tippen oeffnet den Tab.
+   Jede Minute die neuesten Meldungen der Kanaele; Aschebox und Bunker (ASCHE/SCHNITZEL.berechnen) alle 10 Minuten.
+   Ampel: gruen = gut/laeuft, orange = beachten, rot = handeln, grau = keine aktuellen Daten oder ruht. */
+var UEBERSICHT={ _t:0, _hz:null };
+UEBERSICHT.KACHELN=[["pv","☀️ PV-Anlage"],["wallbox","🚗 Auto & Wallbox"],["boiler","💧 Boiler"],["heizung","🔥 Heizung"],["asche","🪣 Aschebox & 🪵 Bunker"],["pumpe","🚰 Pumpwerk"]];
+UEBERSICHT.render=function(main){
+  main.innerHTML='<div class="wrap wide"><div class="view-head"><h1>🏠 Heute auf einen Blick</h1><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><div class="meta" id="ub-stand"></div></div></div><div class="ub-grid">'+
+    UEBERSICHT.KACHELN.map(function(k){ return '<div class="panel ub-k" id="ub-'+k[0]+'" data-ziel="'+(k[0]==="asche"?"heizung":k[0])+'" role="link" tabindex="0">'+
+      '<h2>'+k[1]+'<span class="tag" id="ub-'+k[0]+'-t"></span></h2><div id="ub-'+k[0]+'-i"><div class="ub-z">wird geladen…</div></div></div>'; }).join("")+
+    '</div><footer>Tippen öffnet den Bereich · Aktualisierung jede Minute</footer></div>';
+  [].forEach.call(main.querySelectorAll(".ub-k"), function(el){ var go=function(){ switchView(el.getAttribute("data-ziel")); };
+    el.addEventListener("click", go); el.addEventListener("keydown", function(e){ if(e.key==="Enter") go(); }); });
+  UEBERSICHT._t=0; };
+// eine Kachel fuellen: farbe = Ampel des Randes, html = Inhalt, ts = Zeit der neuesten Meldung (Stand), alt = so viele Minuten gilt als aktuell
+UEBERSICHT.setze=function(key, farbe, html, ts, alt){ var el=document.getElementById("ub-"+key), i=document.getElementById("ub-"+key+"-i"), t=document.getElementById("ub-"+key+"-t"); if(!el||!i) return;
+  var veraltet=ts && alt && Date.now()-ts.getTime()>alt*60000;
+  el.style.borderLeftColor = veraltet ? "var(--muted)" : (farbe||"var(--line)");
+  i.innerHTML=html+(veraltet ? '<div class="ub-z" style="color:var(--amber)">keine aktuellen Daten</div>' : "");
+  if(t){ if(ts) standZeit(t, ts); else { t.removeAttribute("data-ts"); t.textContent=""; } t.style.display=ts?"":"none"; } };   // ohne Zeit keine leere Marke
+UEBERSICHT.letzter=function(f, feld, ok){ for(var i=f.length-1;i>=0;i--){ var v=num(f[i][feld]); if(v!==null && (!ok||ok(v))) return v; } return null; };
+UEBERSICHT.load=function(){ var U=UEBERSICHT, L=U.letzter, tok=ladeToken(), echt=function(){ return ladeToken()===tok; };
+  var zeitVon=function(f){ return f.length ? new Date(f[f.length-1].created_at) : null; }, feeds=function(d){ return (d&&d.feeds)||[]; };
+  // PV
+  j(api(172430,"/feeds.json?results=5",true)).then(function(d){ if(!echt()) return; var f=feeds(d), p=L(f,"field1"), e=L(f,"field2"), kw=p===null?null:p/1000;
+    U.setze("pv", kw===null?"":kw>=1?"var(--green)":kw>0.05?"var(--amber)":"var(--muted)",
+      '<div class="ub-gross">'+fmt(kw,1)+' <small>kW jetzt</small></div><div class="ub-z">heute <b>'+fmt(e,1)+' kWh</b></div>', zeitVon(f), 45); }).catch(function(){});
+  // Auto & Wallbox
+  Promise.all([j(api(172228,"/feeds.json?results=5")).catch(function(){ return null; }), j(api(3514838,"/feeds.json?results=5")).catch(function(){ return null; })]).then(function(r){ if(!echt()) return;
+    var w=feeds(r[0]), a=feeds(r[1]), st=Math.round(L(w,"field8")||0), c=L(w,"field4"), soc=L(a,"field1"), km=L(a,"field2");
+    var wbTxt=st===67?"lädt "+fmt((c||0)/1e6,1)+" kW":st===66?"eingesteckt, lädt nicht":st===65?"nicht eingesteckt":"–";
+    U.setze("wallbox", soc===null?"":soc<20?"var(--red)":soc<40?"var(--amber)":"var(--green)",
+      '<div class="ub-gross">'+fmt(soc,0)+' <small>% Akku</small></div><div class="ub-z">'+(km!==null?'Reichweite <b>'+fmt(km,0)+' km</b> · ':'')+'Wallbox: <b>'+wbTxt+'</b></div>', zeitVon(a)||zeitVon(w), 90); });
+  // Boiler
+  j(api(502977,"/feeds.json?results=5")).then(function(d){ if(!echt()) return; var f=feeds(d), tm=L(f,"field1",kesselOk), tu=L(f,"field2",kesselOk), lw=L(f,"field3");
+    U.setze("boiler", tm===null?"":tm<40?"var(--red)":tm<45?"var(--amber)":"var(--green)",
+      '<div class="ub-gross">'+fmt(tm,0)+' <small>°C Mitte</small></div><div class="ub-z">unten '+fmt(tu,0)+' °C · <b>'+(lw>10?"lädt "+fmt(lw/1000,1)+" kW":"lädt nicht")+'</b></div>', zeitVon(f), 45); }).catch(function(){});
+  // Heizung (Kessel, Feuer)
+  j(api(172428,"/feeds.json?results=15")).then(function(d){ if(!echt()) return; var f=feeds(d), ko=L(f,"field1",kesselOk), ts=zeitVon(f), aktuell=ts && Date.now()-ts.getTime()<3600000;
+    var saison=[9,10,11,0,1,2,3].indexOf(new Date().getMonth())>=0, brennt=!!aktuell && f.length>0 && heizBrenntJetzt(f);   // alte Daten: kein "brennt"
+    if(!aktuell && !saison){ U.setze("heizung", "var(--muted)", '<div class="ub-gross">'+feuerSymbolHtml(false,false)+' <small>Sommerpause</small></div><div class="ub-z">die Heizung sendet erst in der Heizsaison</div>', null); return; }
+    U.setze("heizung", ko===null?"":ko<50?"var(--red)":ko<60?"var(--amber)":"var(--green)",
+      '<div class="ub-gross">'+feuerSymbolHtml(brennt, aktuell)+' '+fmt(ko,0)+' <small>°C Kessel oben</small></div><div class="ub-z"><b>'+(!aktuell?"Zustand unbekannt":brennt?"Feuer brennt":"nur noch Glut")+'</b> · Abgas '+fmt(L(f,"field8",abgasOk),0)+' °C</div>', ts, 60); }).catch(function(){});
+  // Pumpwerk
+  j(api(3484334,"/feeds.json?results=5",true)).then(function(d){ if(!echt()) return; var f=feeds(d); if(!f.length) return;
+    var z=pumpZustand(f), stoer=(L(f,"field6")||0)>=0.5, n=L(f,"field2"), sec=L(f,"field3");
+    U.setze("pumpe", stoer?"var(--red)":(PUMPE_ZUSTAND_FARBE[z]||"var(--blue)"),
+      '<div class="ub-gross">'+(stoer?'<span style="color:var(--red)">Störung</span>':z)+'</div><div class="ub-z">heute <b>'+fmt(n,0)+' Einschaltungen</b> · '+(sec===null?"–":pumpDauerKompakt(sec))+' Laufzeit</div>', zeitVon(f), 20); }).catch(function(){});
+  // Aschebox und Bunker (rechnen aus vielen Tagen - nur alle 10 Minuten)
+  if(Date.now()-U._t>=600000){ U._t=Date.now();
+    Promise.all([ASCHE.berechnen().catch(function(){ return null; }), SCHNITZEL.berechnen().catch(function(){ return null; })]).then(function(r){ if(!echt()) return; var a=r[0], b=r[1]&&r[1].e;
+      var teil=function(titel, pct, farbe, prog, tageTxt){ return '<div><div class="ub-z">'+titel+'</div><div class="ub-gross"'+(pct===null?'':' style="color:'+farbe+'"')+'>'+(pct===null?"–":fmt(Math.min(999,pct),0))+' <small>%</small></div>'+
+        '<div class="bar as-minibar"><span style="width:'+ASCHE.breite(pct)+';background:'+(farbe||"var(--muted)")+'"></span></div><div class="ub-z">'+tageTxt+'</div></div>'; };
+      var progTxt=function(p, jetzt, inN){ return !p ? "–" : p.tage===0 ? "<b>"+jetzt+"</b>" : p.tage===null ? inN+" über 120 Tagen" : inN+" <b>"+p.tage+" Tag"+(p.tage===1?"":"en")+"</b>"; };
+      var ap=a&&a.saison ? a.pct : null, bp=b ? b.pct : null, af=ap===null?"":ASCHE.farbe(ap), bf=bp===null?"":SCHNITZEL.farbe(bp);
+      var schlimm=function(f){ return f==="var(--red)"?2:f==="var(--amber)"?1:0; }, rand=Math.max(schlimm(af),schlimm(bf));
+      U.setze("asche", (ap===null&&bp===null)?"var(--muted)":rand===2?"var(--red)":rand===1?"var(--amber)":"var(--green)",
+        '<div class="ub-zwei">'+teil("Aschebox voll", ap, af, null, progTxt(a&&a.prog, "jetzt leeren", "voll in"))+teil("Bunker", bp, bf, null, progTxt(b&&b.prog, "jetzt auffüllen", "auffüllen in"))+'</div>', null); }); }
+  var st=document.getElementById("ub-stand"); if(st) st.textContent="aktualisiert "+new Date().toLocaleTimeString("de-CH",{hour:"2-digit",minute:"2-digit"});
+};
+var VIEWS={ home:UEBERSICHT, pv:PV, wallbox:WALLBOX, heizung:HEIZUNG, boiler:BOILER, pumpe:PUMPE, planer:PLANNER };
 var state={view:null, lastLoad:0, vorLoad:0, lastData:0, misses:0, geladen:false, ansichtNr:0};   // ansichtNr: zaehlt jeden Tabwechsel (Antworten der vorherigen Ansicht verwerfen)
 function laden(){ state.vorLoad=state.lastLoad; state.lastLoad=Date.now(); if(state.view) VIEWS[state.view].load(); }   // im Takt des Loggers (aktTick), spaetestens alle 60 s, und beim Zurueckkehren in die App
 function switchView(v){
-  if(!VIEWS[v]) v="pv";
+  if(!VIEWS[v]) v="home";
   AKT_NEXT=null; AKT_MARGE=5000; state.view=v; state.ansichtNr++; state.lastData=0; state.misses=0; state.geladen=false;   // Planung der vorherigen Ansicht nicht mitnehmen
   var tabs=document.querySelectorAll("#tabs a");
   tabs.forEach(function(a){ a.classList.toggle("active", a.getAttribute("data-view")===v); });
@@ -3912,7 +3985,7 @@ document.addEventListener("visibilitychange",function(){ if(document.hidden || D
 document.getElementById("tabs").addEventListener("click",function(e){ var a=e.target.closest("a[data-view]"); if(!a)return; e.preventDefault(); switchView(a.getAttribute("data-view")); });
 window.addEventListener("hashchange",function(){ var v=location.hash.slice(1); if(v===state.view) return;   // von switchView selbst gesetzt
   switchView(v); });
-switchView(location.hash.slice(1) || "pv");
+switchView(location.hash.slice(1) || "home");
 
 // PWA: Service Worker registrieren (macht die Seite als App installierbar). Geht nur
 // ueber http(s), nicht als lokale Datei (file://) - dort einfach ueberspringen.
