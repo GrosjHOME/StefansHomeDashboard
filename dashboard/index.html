@@ -636,7 +636,9 @@ function barChart(holder, bars, opts){
   // opts.linie = {werte:[je Balken Zahl oder null], color, unit, dec}: zusaetzlich eine Linie auf eigener Achse rechts
   // (z. B. Heizzyklen je Heizgradtag), Punkte in Balkenmitte, Luecken bei null; Wert auch im Tooltip
   var L2=opts.linie && opts.linie.werte.some(function(v){ return v!=null; }) ? opts.linie : null;
-  var H=300,padL=58,padR=L2?64:16,padT=28,padB=48,n=bars.length;
+  // opts.linie2 = {werte, color, unit, dec, name, achse (Zeichen hinter den Achsenzahlen)}: zweite Linie (gestrichelt) mit eigener Achse ganz rechts, darf negativ sein (z. B. Aussentemperatur)
+  var L3=opts.linie2 && opts.linie2.werte.some(function(v){ return v!=null; }) ? opts.linie2 : null;
+  var H=300,padL=58,padR=(L2?64:16)+(L3?62:0),padT=28,padB=48,n=bars.length;
   // gestapelte Balken moeglich: b.v = unteres Segment, b.v2 = oberes Segment (color2).
   // Optional: b.lo/b.hi = feine Striche (z. B. Min/Max der Vorjahre), b.show = angezeigter
   // Wert (Beschriftung + Tooltip) statt der Stapelsumme, b.tipExtra = 3. Tooltip-Zeile.
@@ -669,6 +671,14 @@ function barChart(holder, bars, opts){
     L2.werte.forEach(function(v,i){ if(v==null){ pen=false; return; } var cx=padL+slot*i+slot/2; d+=(pen?" L ":"M ")+cx+" "+Y2(v); pen=true;
       r+='<circle cx="'+cx+'" cy="'+Y2(v)+'" r="4" fill="'+L2.color+'"/>'; });
     r+='<path d="'+d+'" fill="none" stroke="'+L2.color+'" stroke-width="2.5" stroke-linejoin="round"/>'; }
+  if(L3){ var w3=L3.werte.filter(function(v){ return v!=null; }), lo3=Math.floor(Math.min.apply(null,w3)/5)*5, hi3=Math.ceil(Math.max.apply(null,w3)/5)*5;
+    if(hi3-lo3<10) hi3=lo3+10; if((hi3-lo3)%10) hi3+=5;   // Achse in ganzen 5ern, Mitte ganzzahlig
+    var Y3=function(v){ return padT+(H-padT-padB)*(1-(v-lo3)/(hi3-lo3)); };
+    [lo3,(lo3+hi3)/2,hi3].forEach(function(v){ yl+='<text x="'+(W-54)+'" y="'+(Y3(v)+7)+'" text-anchor="start" font-size="21" fill="'+L3.color+'">'+String(v).replace("-","−")+(L3.achse||"")+'</text>'; });   // Einheit an der Zahl (z. B. 15°), oben kein Platz
+    var d3="", pen3=false;
+    L3.werte.forEach(function(v,i){ if(v==null){ pen3=false; return; } var cx=padL+slot*i+slot/2; d3+=(pen3?" L ":"M ")+cx+" "+Y3(v); pen3=true;
+      r+='<circle cx="'+cx+'" cy="'+Y3(v)+'" r="3.5" fill="'+L3.color+'"/>'; });
+    r+='<path d="'+d3+'" fill="none" stroke="'+L3.color+'" stroke-width="2.5" stroke-dasharray="7 5" stroke-linejoin="round"/>'; }
   var svgStr='<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+grid+r+yl+
     '<text x="6" y="18" font-size="18" fill="var(--muted)">'+(opts.unit||"")+'</text><g class="ov" style="display:none"></g></svg>';
   var legHtml="";
@@ -681,9 +691,10 @@ function barChart(holder, bars, opts){
     var b=bars[idx], bx=padL+slot*idx+(slot-bw)/2;
     ov.innerHTML='<rect x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+(H-padT-padB)+'" fill="var(--ink)" opacity="0.06"/>'; ov.style.display="";
     var tv=(b.show!=null)?b.show:b.v+(b.v2||0);
-    var lw=L2 ? L2.werte[idx] : null;
+    var lw=L2 ? L2.werte[idx] : null, lw3=L3 ? L3.werte[idx] : null;
     tip.innerHTML='<div style="color:var(--muted);margin-bottom:2px">'+(b.tip||b.label)+'</div><div>'+fmt(tv,opts.dec||0)+' '+(opts.unit||"")+'</div>'+
       (lw!=null?'<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+L2.color+';margin-right:5px"></span>'+fmt(lw,L2.dec||0)+' '+(L2.unit||"")+'</div>':'')+
+      (lw3!=null?'<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+L3.color+';margin-right:5px"></span>'+fmt(lw3,L3.dec||0).replace("-","−")+' '+(L3.unit||"")+(L3.name?' '+L3.name:'')+'</div>':'')+
       (b.tipExtra?'<div style="color:var(--muted);margin-top:2px">'+b.tipExtra+'</div>':'');
     var px=(bx+bw/2)/W*rect.width; tip.style.left=Math.max(0,Math.min(rect.width-tip.offsetWidth-4, px+8))+"px"; tip.style.top="6px"; tip.style.opacity=1;
   });
@@ -2826,47 +2837,48 @@ ZYKLEN.saison=function(jahr, schritt){ var b=SAISON.bereich(jahr), monate=[], v=
 ZYKLEN.temps=function(jahr){ if(ZYKLEN._temps[jahr]) return Promise.resolve(ZYKLEN._temps[jahr]);
   return SAISON.temps(jahr).then(function(t){ ZYKLEN._temps[jahr]=t; return t; }); };
 // Summen ueber Tage [{ymd,w}]: nur abgeschlossene Tage mit Daten; HGT nur Tage mit Temperatur
-ZYKLEN.summe=function(tage, temps){ var heute=ymdLocal(new Date()), s={zyk:0, glut:0, tage:0, hgt:0, zykT:0};
+ZYKLEN.summe=function(tage, temps){ var heute=ymdLocal(new Date()), s={zyk:0, glut:0, tage:0, hgt:0, zykT:0, tSum:0, tN:0};
   tage.forEach(function(t){ var w=t.w; if(!w || !(w.n>0) || t.ymd>=heute) return; s.zyk+=w.zyk||0; s.glut+=w.glut||0; s.tage++;
-    var T=temps[t.ymd]; if(T!=null){ s.hgt+=hgt(T); s.zykT+=w.zyk||0; } });
-  s.jeHgt = s.hgt>=10 ? s.zykT/s.hgt : null; return s; };
+    var T=temps[t.ymd]; if(T!=null){ s.hgt+=hgt(T); s.zykT+=w.zyk||0; s.tSum+=T; s.tN++; } });
+  s.jeHgt = s.hgt>=10 ? s.zykT/s.hgt : null; s.tMittel = s.tN ? s.tSum/s.tN : null; return s; };
 ZYKLEN.zeichnen=function(){ var el=document.getElementById("zy-chart"), nt=document.getElementById("zy-note"), mb=document.getElementById("zy-mehr"); if(!el) return;
   var heute=ymdLocal(new Date()), m=ZYKLEN.modus(), cur=SAISON.aktuell(), kurz=function(ymd){ return (+ymd.slice(8))+"."+(+ymd.slice(5,7))+"."; };
-  var LEG=[{color:"var(--amber)", label:"Heizzyklen"}, {color:"var(--amber-lt)", label:"Gluterhaltung (Glutstösse)"}, {color:"var(--blue)", label:"Heizzyklen je Heizgradtag (rechts)"}];
+  var LEG=[{color:"var(--amber)", label:"Heizzyklen"}, {color:"var(--amber-lt)", label:"Gluterhaltung (Glutstösse)"}, {color:"var(--blue)", label:"Heizzyklen je Heizgradtag (rechts)"}, {color:"var(--red)", dash:true, label:"Ø Aussentemperatur (°C, ganz rechts)"}];
   var LIN=function(w){ return {werte:w, color:"var(--blue)", unit:"je Heizgradtag", dec:2}; };
+  var TMP=function(w){ return {werte:w, color:"var(--red)", unit:"°C", achse:"°", dec:1, name:"Ø aussen"}; };
   var leer=function(t){ el.innerHTML='<div class="chart-empty">'+t+'</div>'; };
   var knopf=function(jahr){ if(!mb) return; if(jahr==null || ZYKLEN._laeuft){ mb.style.display="none"; return; }
     mb.style.display=""; mb.textContent="Saison "+SAISON.name(jahr)+" laden"; mb.dataset.j=jahr; };
   var balken=function(s, label, tip){ return {v:s.tage?s.zyk/s.tage:0, v2:s.tage?s.glut/s.tage:0, color:"var(--amber)", color2:"var(--amber-lt)", label:label, tip:tip,
     tipExtra:"Ø je Tag: "+fmt(s.tage?s.zyk/s.tage:0,1)+" Heizzyklen · "+fmt(s.tage?s.glut/s.tage:0,1)+" Gluterhaltung<br>Summe: "+s.zyk+" Heizzyklen · "+s.glut+" Gluterhaltung in "+s.tage+" Tag"+(s.tage===1?"":"en")}; };
   if(m==="tage"){ knopf(null); var D=ZYKLEN._tage30; if(!D){ leer(ZYKLEN._laeuft?"wird geladen…":"–"); return; }
-    var sz=0, sg=0, n=0, lin=[];
+    var sz=0, sg=0, n=0, lin=[], tmp=[], tS=0, tN=0;
     var bars=D.tage.map(function(t, i){ var w=t.w||{}, z=w.zyk||0, g=w.glut||0, T=D.temps[t.ymd], h=T!=null?hgt(T):null;
-      if(t.ymd<heute && w.n>0){ sz+=z; sg+=g; n++; }
-      lin.push(t.ymd<heute && w.n>0 && h!=null && h>=2 ? z/h : null);
+      if(t.ymd<heute && w.n>0){ sz+=z; sg+=g; n++; if(T!=null){ tS+=T; tN++; } }
+      lin.push(t.ymd<heute && w.n>0 && h!=null && h>=2 ? z/h : null); tmp.push(T!=null ? T : null);
       return {v:z, v2:g, color:"var(--amber)", color2:"var(--amber-lt)", show:z+g, label:(i%5===(D.tage.length-1)%5) ? kurz(t.ymd) : "",
         tip:ASCHE.fmtTag(t.ymd)+(t.ymd===heute?" (bis jetzt)":""), tipExtra:z+" Heizzyklen · "+g+" Gluterhaltung"+(h!=null?" · "+fmt(h,1)+" Heizgradtage":"")+(w.n>0?"":" · keine Daten")}; });
     if(!bars.some(function(b){ return b.show>0; })) leer("keine Heizzyklen in den letzten "+ZYKLEN.TAGE+" Tagen");
-    else barChart(el, bars, {unit:"×", autoW:true, legend:LEG, linie:LIN(lin)});
-    if(nt) nt.textContent=n ? "Ø je Tag (ohne heute): "+fmt(sz/n,1)+" Heizzyklen und "+fmt(sg/n,1)+" Gluterhaltung." : "";
+    else barChart(el, bars, {unit:"×", autoW:true, legend:LEG, linie:LIN(lin), linie2:TMP(tmp)});
+    if(nt) nt.textContent=n ? "Ø je Tag (ohne heute): "+fmt(sz/n,1)+" Heizzyklen und "+fmt(sg/n,1)+" Gluterhaltung"+(tN?", Ø Aussentemperatur "+fmt(tS/tN,1).replace("-","−")+" °C":"")+"." : "";
     return; }
   if(m==="monate"){ var jahr=ZYKLEN.jahr||cur, S=ZYKLEN._d[jahr];
     if(!S){ leer(ZYKLEN._laeuft ? "wird geladen…" : "Saison "+SAISON.name(jahr)+" ist noch nicht geladen."); knopf(ZYKLEN._laeuft || jahr===cur || ZYKLEN.fehlend(jahr)<=ZYKLEN.AUTO ? null : jahr); if(nt) nt.textContent=""; return; }
     knopf(null);
     var proM={}; S.tage.forEach(function(t){ (proM[t.ymd.slice(0,7)]=proM[t.ymd.slice(0,7)]||[]).push(t); });
-    var lm=[], bm=[];
+    var lm=[], bm=[], tm=[];
     Object.keys(proM).sort().forEach(function(mo){ var su=ZYKLEN.summe(proM[mo], S.temps); if(!su.tage) return; var mi=+mo.slice(5,7)-1;
-      bm.push(balken(su, LADEN.KURZ[mi]+" "+mo.slice(2,4), LADEN.MONAT[mi]+" "+mo.slice(0,4)+(mo===heute.slice(0,7)?" (bis gestern)":""))); lm.push(su.jeHgt); });
-    if(!bm.length) leer("keine Daten für die Saison "+SAISON.name(jahr)); else barChart(el, bm, {unit:"× je Tag", dec:1, autoW:true, legend:LEG, linie:LIN(lm)});
-    if(nt) nt.textContent="Balken: Ø je Tag (nur abgeschlossene Tage mit Daten), Summen im Tooltip. Linie: Heizzyklen je Heizgradtag (ab 10 Heizgradtagen im Monat).";
+      bm.push(balken(su, LADEN.KURZ[mi]+" "+mo.slice(2,4), LADEN.MONAT[mi]+" "+mo.slice(0,4)+(mo===heute.slice(0,7)?" (bis gestern)":""))); lm.push(su.jeHgt); tm.push(su.tMittel); });
+    if(!bm.length) leer("keine Daten für die Saison "+SAISON.name(jahr)); else barChart(el, bm, {unit:"× je Tag", dec:1, autoW:true, legend:LEG, linie:LIN(lm), linie2:TMP(tm)});
+    if(nt) nt.textContent="Balken: Ø je Tag (nur abgeschlossene Tage mit Daten), Summen im Tooltip. Linie: Heizzyklen je Heizgradtag (ab 10 Heizgradtagen im Monat). Rot gestrichelt: Ø Aussentemperatur der gezählten Tage (Open-Meteo, Tagesmittel).";
     return; }
   // Saisons: die laufende und alle schon ganz geladenen
-  var jahre=Object.keys(ZYKLEN._d).map(Number).sort(function(a,b){ return a-b; }), bs=[], ls=[];
+  var jahre=Object.keys(ZYKLEN._d).map(Number).sort(function(a,b){ return a-b; }), bs=[], ls=[], ts=[];
   jahre.forEach(function(y){ var su=ZYKLEN.summe(ZYKLEN._d[y].tage, ZYKLEN._d[y].temps); if(!su.tage) return;
-    bs.push(balken(su, SAISON.name(y), "Saison "+SAISON.name(y)+(y===cur?" (bis gestern)":""))); ls.push(su.jeHgt); });
-  if(!bs.length) leer(ZYKLEN._laeuft?"wird geladen…":"noch keine Saison geladen"); else barChart(el, bs, {unit:"× je Tag", dec:1, autoW:true, legend:LEG, linie:LIN(ls)});
+    bs.push(balken(su, SAISON.name(y), "Saison "+SAISON.name(y)+(y===cur?" (bis gestern)":""))); ls.push(su.jeHgt); ts.push(su.tMittel); });
+  if(!bs.length) leer(ZYKLEN._laeuft?"wird geladen…":"noch keine Saison geladen"); else barChart(el, bs, {unit:"× je Tag", dec:1, autoW:true, legend:LEG, linie:LIN(ls), linie2:TMP(ts)});
   var lo=cur-1; while(ZYKLEN._d[lo]) lo--; knopf(lo>=SAISON.AB ? lo : null);
-  if(nt) nt.textContent="Saison = 1. September bis 31. Mai. Balken: Ø je Tag, Linie: Heizzyklen je Heizgradtag. Frühere Saisons lädt der Knopf einmal von ThingSpeak (grosser Download, besser im WLAN); danach stehen sie auch in der Saison-Bilanz.";
+  if(nt) nt.textContent="Saison = 1. September bis 31. Mai. Balken: Ø je Tag, Linie: Heizzyklen je Heizgradtag, rot gestrichelt: Ø Aussentemperatur. Frühere Saisons lädt der Knopf einmal von ThingSpeak (grosser Download, besser im WLAN); danach stehen sie auch in der Saison-Bilanz.";
 };
 // eine Saison holen und zeichnen; fruehere werden in hz_bilanz gemerkt (auch fuer die Saison-Bilanz)
 ZYKLEN.holen=function(jahr){ var msg=document.getElementById("zy-msg"); ZYKLEN._laeuft=true; ZYKLEN.zeichnen();
