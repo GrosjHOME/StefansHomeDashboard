@@ -309,9 +309,11 @@ async function aschePruefen(heute: string): Promise<string | null | undefined> {
     if (temps[y] != null) { bsH += tage[y]; hs += hgt(temps[y]); nH++; } }
   const mittelTag = nT ? bs / nT : 0, rateHGT = nH >= 5 && hs >= 10 ? bsH / hs : null;
   const pred = (y: string) => (rateHGT !== null && temps[y] != null ? rateHGT * hgt(temps[y]) : mittelTag);
-  let rest = kap - seit, tageBis: number | null = null;
-  if (rest <= 0) tageBis = 0;
+  // voll = angezeigte 100 % (ab 99.5 %), sonst stuende "ca. 100 % - voll morgen" in der Meldung; wird sie im Lauf des Tages voll: "voll heute"
+  let rest = kap - seit, tageBis: number | null = null, jetzt = false;
+  if (rest <= kap * 0.005) { tageBis = 0; jetzt = true; }
   else { rest -= Math.max(0, pred(heute) - (tage[heute] ?? 0));
+    if (rest <= 0) tageBis = 0;
     const zuk: number[] = []; for (let q = 1; q <= 7; q++) { const y = plusTage(heute, q); if (temps[y] != null) zuk.push(pred(y)); }
     const fern = zuk.length ? zuk.reduce((s, v) => s + v, 0) / zuk.length : mittelTag;
     for (let n = 1; n <= 120 && rest > 0; n++) { const y = plusTage(heute, n); rest -= temps[y] != null ? pred(y) : fern; if (rest <= 0) { tageBis = n; break; } } }
@@ -319,7 +321,7 @@ async function aschePruefen(heute: string): Promise<string | null | undefined> {
   console.log(`Asche: ${pct.toFixed(0)} % (${(seit / 60).toFixed(1)} h von ${(kap / 60).toFixed(0)} h Brennzeit, ${quelle}), voll in ${tageBis ?? ">120"} Tagen`);
   if (tageBis === null || tageBis > ASCHE_VORLAUF) return null;
   const wann = tageBis === 1 ? "morgen" : `in ${tageBis} Tagen`;
-  return `Aschebox: ca. ${Math.min(999, pct).toFixed(0)} % – ${tageBis === 0 ? "jetzt leeren" : "voll " + wann} (Brennzeit pro Leerung ${(kap / 60).toFixed(0)} h aus ${quelle})`;
+  return `Aschebox: ca. ${Math.min(999, pct).toFixed(0)} % – ${tageBis === 0 ? (jetzt ? "jetzt leeren" : "voll heute") : "voll " + wann} (Brennzeit pro Leerung ${(kap / 60).toFixed(0)} h aus ${quelle})`;
 }
 
 // ---- Pumpwerk: Leck-Verdacht und Dauerlauf ----

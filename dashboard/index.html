@@ -2373,8 +2373,10 @@ ASCHE.rechne=function(tage, leer, temps, teile){
   var prog=null;
   if(kap && kap>0 && hatStart){
     var rest=kap-seitBrenn;
-    if(rest<=0) prog={tage:0, ymd:heute};
+    // voll = angezeigte 100 % (ab 99.5 %), sonst stuende bei "100 %" die Prognose morgen; wird sie im Lauf des Tages voll: heute (voll:false)
+    if(rest<=kap*0.005) prog={tage:0, ymd:heute, voll:true};
     else { var hw=null; tage.forEach(function(t){ if(t.ymd===heute) hw=t.w; }); rest-=Math.max(0, pred(heute)-(hw?hw.brenn:0));
+      if(rest<=0) prog={tage:0, ymd:heute, voll:false};
       var zukunft=[], y=heute; for(var q=0;q<7;q++){ y=ASCHE.folgetag(y); if(temps[y]!=null) zukunft.push(pred(y)); }
       var fern=zukunft.length ? zukunft.reduce(function(a,b){ return a+b; },0)/zukunft.length : mittelTag;
       y=heute; for(var n=1; n<=120 && rest>0; n++){ y=ASCHE.folgetag(y); rest-=(temps[y]!=null)?pred(y):fern; if(rest<=0){ prog={tage:n, ymd:y}; break; } }
@@ -2516,7 +2518,7 @@ ASCHE.panel={
         var pf=e.pct===null?"":ASCHE.farbe(e.pct);
         set("as-pct", e.pct===null?"–":fmt(Math.min(999,e.pct),0), pf);
         setzeBalken(e.pct, pf);
-        set("as-prog", !e.prog ? (e.kap?"–":"noch keine Leerung erfasst") : e.prog.tage===0 ? "jetzt (Box voll)" : e.prog.tage===null ? "in mehr als 120 Tagen" : ASCHE.fmtTag(e.prog.ymd)+" · in "+e.prog.tage+" Tag"+(e.prog.tage===1?"":"en"),
+        set("as-prog", !e.prog ? (e.kap?"–":"noch keine Leerung erfasst") : e.prog.tage===0 ? (e.prog.voll ? "jetzt (Box voll)" : "heute · "+ASCHE.fmtTag(e.prog.ymd)) : e.prog.tage===null ? "in mehr als 120 Tagen" : ASCHE.fmtTag(e.prog.ymd)+" · in "+e.prog.tage+" Tag"+(e.prog.tage===1?"":"en"),
           (e.prog && e.prog.tage===0) ? "var(--red)" : "");   // Prognose neutral; die Ampel zeigen Zahl und Balken - nur "Box voll" rot
         tag((e.letzte?"seit Leerung "+ASCHE.fmtTag(e.letzte):"seit Saisonstart "+ASCHE.fmtTag(e.saison))+(e.nInt?" · Box aus "+e.nInt+" Leerung"+(e.nInt===1?"":"en"):"")); }
       set("as-seit", fmt(e.seitBrenn/60,1)); set("as-austr", fmt(e.seitAustr/60,1));
@@ -3991,7 +3993,7 @@ UEBERSICHT.load=function(){ var U=UEBERSICHT, L=U.letzter, tok=ladeToken(), echt
     Promise.all([ASCHE.berechnen().catch(function(){ return null; }), SCHNITZEL.berechnen().catch(function(){ return null; })]).then(function(r){ if(!echt()) return; var a=r[0], b=r[1]&&r[1].e;
       var teil=function(titel, pct, farbe, prog, tageTxt){ return '<div><div class="ub-z">'+titel+'</div><div class="ub-gross"'+(pct===null?'':' style="color:'+farbe+'"')+'>'+(pct===null?"–":fmt(Math.min(999,pct),0))+' <small>%</small></div>'+
         '<div class="bar as-minibar"><span style="width:'+ASCHE.breite(pct)+';background:'+(farbe||"var(--muted)")+'"></span></div><div class="ub-z">'+tageTxt+'</div></div>'; };
-      var progTxt=function(p, jetzt, inN){ return !p ? "–" : p.tage===0 ? "<b>"+jetzt+"</b>" : p.tage===null ? inN+" über 120 Tagen" : inN+" <b>"+p.tage+" Tag"+(p.tage===1?"":"en")+"</b>"; };
+      var progTxt=function(p, jetzt, inN){ return !p ? "–" : p.tage===0 ? (p.voll===false ? inN.replace(" in","")+" <b>heute</b>" : "<b>"+jetzt+"</b>") : p.tage===null ? inN+" über 120 Tagen" : inN+" <b>"+p.tage+" Tag"+(p.tage===1?"":"en")+"</b>"; };
       var ap=a&&a.saison ? a.pct : null, bp=b ? b.pct : null, af=ap===null?"":ASCHE.farbe(ap), bf=bp===null?"":SCHNITZEL.farbe(bp);
       var schlimm=function(f){ return f==="var(--red)"?2:f==="var(--amber)"?1:0; }, rand=Math.max(schlimm(af),schlimm(bf));
       U.setze("asche", (ap===null&&bp===null)?"var(--muted)":rand===2?"var(--red)":rand===1?"var(--amber)":"var(--green)",

@@ -380,6 +380,9 @@ Füllstand und als zwei Spalten (auf dem Handy nacheinander):
   Aussentemperatur in 2 m) der letzten 14 Tage × Heizgradtage aus der
   7-Tage-Prognose von Open-Meteo, weiter weg deren Mittel. Daraus der Tag, an dem
   die Box voll ist (100 %).
+  Zeigt der Füllstand 100 % (ab 99,5 %), heisst es «jetzt leeren» (Dashboard: «jetzt (Box
+  voll)»); reicht die heute noch erwartete Brennzeit bis zur vollen Box, «voll heute».
+  Der Wächter rechnet gleich.
 - **Füllstand beim Leeren:** Auswahlbox 10–100 % in 10-%-Schritten (Standard 90 %, im Browser gemerkt). Sie gilt als Füllstand der Leerung, die man mit **Asche geleert** einträgt. Die Prognose rechnet davon unabhängig immer bis zur vollen Box (100 %).
 - **«Aschebox – letzte Leerungen»:** Je Leerung der Füllstand beim Leeren (gross, mit farbigem Balken wie der Füllstand oben), die Tage seit der vorherigen (bzw. dem Saisonstart), die Brennzeit und die Austragung im Intervall und die Brennzeit auf 100 % hochgerechnet (die letzten 10), oben die laufende Periode. Auf dem Handy als kompakte Liste (je Leerung zwei Zeilen), ab 1100 Pixeln Breite als Tabelle. Die Leerungen stehen im Val-Town-Blob `asche_leerungen` (Zeitpunkte und Füllstand je Leerung); Tage und Brennzeiten werden daraus im Browser gerechnet, die Tageswerte je Tag liegen im `localStorage` (`hz_tag3_…`).
   Mit dem **Umschalter** im Kopf des Bereichs (**Asche / Schnitzel-Bunker / Lager**, Auswahl im Browser gemerkt, `hz_verlauf`) zeigt derselbe Platz stattdessen
