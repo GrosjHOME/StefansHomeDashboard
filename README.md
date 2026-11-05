@@ -271,13 +271,16 @@ System.
 
 Der Bereich **☀️ PV-Anteil am Laden** im Tab *Wallbox* zeigt, wie viel der Ladeenergie fürs Auto vom Dach kam. Bedienung wie
 die Grafik **Energie** der PV-Anlage: Umschalter **Ladevorgänge / Monate / Jahre** (auf dem Handy «Ladungen»), bei *Monate*
-die Auswahl **Letzte 12 Monate** oder ein Jahr. Oben steht der laufende Monat und die letzten 30 Tage.
+die Auswahl **Letzte 12 Monate** oder ein Jahr. Oben steht der laufende Monat und die letzten 30 Tage, jeweils mit der Zahl **Mal eingesteckt**.
 
 - **Ladevorgänge:** die letzten 12, je vom Einstecken bis zum Ausstecken (über Mitternacht zählt als einer): PV-Anteil mit
   Balken (ab 70 % grün, ab 30 % orange, darunter rot), geladene kWh, davon PV, angeschlossene Dauer.
 - **Monate / Jahre:** gestapelte Balken wie bei der PV-Energie – unten **grün der PV-Teil**, oben **orange der Netz-Teil**,
   darüber die geladenen kWh, unten «Okt 26» bzw. das Jahr. Zeigen/Tippen: Zeitraum, kWh, davon PV mit Anteil in %, Netz und
-  Anzahl Ladevorgänge. Ein Jahr erscheint, sobald seine Monate geladen sind.
+  Anzahl Ladevorgänge und wie oft eingesteckt wurde. Ein Jahr erscheint, sobald seine Monate geladen sind.
+- **Eingesteckt oder Ladevorgang?** *Eingesteckt* zählt jedes Einstecken (Verbindung 66/67 nach 65), auch wenn dabei nicht geladen
+  wurde. Ein *Ladevorgang* ist ein solches Einstecken mit mindestens 0,1 kWh geladener Menge, deshalb ist die Zahl kleiner.
+  Einträge ohne Status (die Wallbox sendet etwa stündlich einen leeren) werden übersprungen.
 - **Rechnung:** Einen Hauszähler gibt es nicht. Geschätzt wird wie in der Regelung der Wallbox (Repo WallboxWeidmuller):
   **PV-Überschuss = PV-Leistung − Boiler − Reserve** (Poti an der Wallbox); die Wallbox sendet diesen Wert jede Minute in
   Feld 3 von Kanal 172228. Je Minute zählt von der Ladeleistung (Feld 4) höchstens der Überschuss als PV, der Rest als
@@ -286,7 +289,7 @@ die Auswahl **Letzte 12 Monate** oder ein Jahr. Oben steht der laufende Monat un
   so weit drin, wie die Reserve sie abdeckt.
 - **Daten:** automatisch ab dem 1. des Vormonats. Was eine gewählte Ansicht zusätzlich braucht (letzte 12 Monate, ein Jahr,
   bei *Jahre* alles ab Januar 2024, seit das Auto an der Wallbox lädt), holt sie einmal von ThingSpeak, monatsweise nacheinander mit Anzeige «lädt …» – ein
-  grösserer Download, besser im WLAN. Bricht es ab, geht es beim nächsten Umschalten weiter. Tageswerte im Browser (`lade_tag1_…`, geladene Monate in `lade_monate`, Auswahl des Umschalters in `ld_tab`);
+  grösserer Download, besser im WLAN. Bricht es ab, geht es beim nächsten Umschalten weiter. Tageswerte im Browser (`lade_tag1_…` mit Versionsstempel `v:2`, ältere Tage ohne Stempel werden neu geholt; geladene Monate in `lade_monate`, Auswahl des Umschalters in `ld_tab`);
   Tage mit einer Fehlerantwort von ThingSpeak werden nicht gemerkt.
 
 ## PV-Morgenprognose (Val Town)

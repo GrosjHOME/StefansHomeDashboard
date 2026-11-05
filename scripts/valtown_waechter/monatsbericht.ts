@@ -52,8 +52,9 @@ async function pvMonat(jahr: number, m0: number): Promise<number | null> {
 function ladenUndBoiler(wb: any[], pv: any[], bo: any[]) {
   const pvAt = halter(pv, "field1"), boAt = halter(bo, "field3");
   let auto = 0, autoPv = 0, prev: { t: number; c: number; p: number } | null = null, vorgaenge = 0, angeschlossen = false;
-  for (const x of wb) { const t = Date.parse(x.created_at), c0 = zahlOderNull(x.field4); const st = Math.round(zahlOderNull(x.field8) ?? 0);
-    const an = st === 66 || st === 67; if (an && !angeschlossen) vorgaenge++; angeschlossen = an;
+  for (const x of wb) { const t = Date.parse(x.created_at), c0 = zahlOderNull(x.field4); const st8 = zahlOderNull(x.field8);
+    // Status 65 = ausgesteckt, 66/67 = eingesteckt. Fehlt der Status in einem Eintrag, gilt der letzte weiter (sonst zaehlt jede Luecke als neues Einstecken)
+    if (st8 !== null) { const an = Math.round(st8) === 66 || Math.round(st8) === 67; if (an && !angeschlossen) vorgaenge++; angeschlossen = an; }
     if (c0 === null) continue; const c = Math.max(0, c0 / 1e6);   // kW (field4 in mW)
     const f3 = zahlOderNull(x.field3), pvW = pvAt(t), boW = Math.max(0, boAt(t) ?? 0);
     const ueb = pvW !== null ? (f3 !== null ? Math.min(f3, pvW - boW) : pvW - boW) : (f3 ?? 0);
