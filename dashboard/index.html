@@ -1966,11 +1966,24 @@ LADEN.tagWerte=function(wb, pv, bo){
   if(cur) cur.z=true;
   var r3=function(v){ return Math.round(v*1000)/1000; };
   return {v:2, kwh:r3(e), pv:r3(epv), n:wb.length, seg:seg.map(function(x){ return {s:x.s, e:x.e, kwh:r3(x.kwh), pv:r3(x.pv), a:x.a, z:x.z}; })}; };
+// Alte gemerkte Tage (ohne v:2): ein leerer Eintrag ohne Status zerteilte die Ladesitzung in Stuecke. Ein leerer Eintrag schiebt nur
+// eine Luecke von etwa 1-3 min zwischen zwei echte Eintraege (die kuerzeste echte Trennung dauerte im Oktober 499 s), darum Stuecke
+// mit hoechstens 300 s Abstand wieder zusammensetzen. Die kWh stimmten schon, sie werden nur addiert. So muss nichts neu geholt werden.
+LADEN.MIGR_LUECKE_MS=300000;
+// a ("beim ersten Eintrag des Tages schon angeschlossen") stand oft falsch auf false, weil der erste Eintrag des Tages ein leerer war:
+// beginnt das erste Stueck innerhalb der Luecke nach Mitternacht, gilt es als schon angeschlossen; z ("noch beim letzten Eintrag
+// angeschlossen") ebenso, wenn das letzte Stueck bis in die Luecke vor Mitternacht reicht. ymd = Tag der Werte.
+LADEN.migrieren=function(w, ymd){ var seg=[], tag0=new Date(ymd+"T00:00:00").getTime(), tag1=new Date(LADEN.folgetag(ymd)+"T00:00:00").getTime();
+  (w.seg||[]).forEach(function(sg){ var l=seg[seg.length-1];
+    if(l && sg.s-l.e<=LADEN.MIGR_LUECKE_MS){ l.e=sg.e; l.kwh=Math.round((l.kwh+sg.kwh)*1000)/1000; l.pv=Math.round((l.pv+sg.pv)*1000)/1000; l.z=sg.z; }
+    else seg.push({s:sg.s, e:sg.e, kwh:sg.kwh, pv:sg.pv, a:sg.a || (!l && sg.s-tag0<=LADEN.MIGR_LUECKE_MS), z:sg.z}); });
+  var le=seg[seg.length-1]; if(le && tag1-le.e<=LADEN.MIGR_LUECKE_MS) le.z=true;
+  return {v:2, kwh:w.kwh, pv:w.pv, n:w.n, seg:seg}; };
 // Tageswerte von vonYmd bis bisYmd (ohne: heute), wie ASCHE.tage: gecachte Tage aus dem Browser, fehlende bereichsweise holen
 LADEN.tage=function(vonYmd, bisYmd){ var heute=ymdLocal(new Date()), vorgestern=ymdLocal(new Date(Date.now()-2*864e5)), tage=[], fehlt=[];
   var ende=(bisYmd && bisYmd<heute) ? bisYmd : heute;
   for(var k=vonYmd; k<=ende; k=LADEN.folgetag(k)){ var c=k<heute?lsGet("lade_tag1_"+k):null, w=null;
-    if(c){ try{ w=JSON.parse(c); }catch(e){ w=null; } if(w && w.v!==2) w=null; }   // v:2 = Sitzungen ohne Zerteilung durch leere Eintraege; aeltere Tage neu holen
+    if(c){ try{ w=JSON.parse(c); }catch(e){ w=null; } if(w && w.v!==2){ w=LADEN.migrieren(w, k); lsSet("lade_tag1_"+k, JSON.stringify(w)); } }   // v:2 = Sitzungen ohne Zerteilung durch leere Eintraege; aeltere Tage werden ohne Neuladen repariert
     if(!w) fehlt.push(k); tage.push({ymd:k, w:w}); }
   if(!fehlt.length) return Promise.resolve(tage);
   var bereiche=[], cur=null; fehlt.forEach(function(k){ if(cur && LADEN.folgetag(cur.bis)===k) cur.bis=k; else { cur={von:k, bis:k}; bereiche.push(cur); } });

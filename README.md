@@ -289,7 +289,7 @@ die Auswahl **Letzte 12 Monate** oder ein Jahr. Oben steht der laufende Monat un
   so weit drin, wie die Reserve sie abdeckt.
 - **Daten:** automatisch ab dem 1. des Vormonats. Was eine gewählte Ansicht zusätzlich braucht (letzte 12 Monate, ein Jahr,
   bei *Jahre* alles ab Januar 2024, seit das Auto an der Wallbox lädt), holt sie einmal von ThingSpeak, monatsweise nacheinander mit Anzeige «lädt …» – ein
-  grösserer Download, besser im WLAN. Bricht es ab, geht es beim nächsten Umschalten weiter. Tageswerte im Browser (`lade_tag1_…` mit Versionsstempel `v:2`, ältere Tage ohne Stempel werden neu geholt; geladene Monate in `lade_monate`, Auswahl des Umschalters in `ld_tab`);
+  grösserer Download, besser im WLAN. Bricht es ab, geht es beim nächsten Umschalten weiter. Tageswerte im Browser (`lade_tag1_…` mit Versionsstempel `v:2`; ältere Tage ohne Stempel werden beim Lesen ohne Neuladen repariert (Stücke mit höchstens 5 min Abstand wieder zusammengesetzt); geladene Monate in `lade_monate`, Auswahl des Umschalters in `ld_tab`);
   Tage mit einer Fehlerantwort von ThingSpeak werden nicht gemerkt.
 
 ## PV-Morgenprognose (Val Town)
