@@ -164,6 +164,7 @@
   .ub-gross{font-size:1.9rem; font-weight:700; line-height:1.1;} .ub-gross small{font-size:.9rem; font-weight:600; color:var(--muted);}
   .ub-z{font-size:.9rem; color:var(--muted); margin-top:4px;} .ub-z b{color:var(--ink);}
   .ub-zwei{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .ub-fluss{display:flex; height:10px; border-radius:5px; overflow:hidden; background:var(--bg); margin-top:10px; gap:2px;} .ub-fluss span{display:block; height:100%;}
   .ld-sel{padding:4px 10px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:13px;}   /* wie die Jahr-Auswahl der PV-Energie */
   .seg button{cursor:pointer; border:0; background:transparent; color:var(--muted); font-family:inherit; font-size:.76rem; font-weight:600; padding:4px 10px; border-radius:6px;}
   .seg button.active{background:var(--card); color:var(--ink); box-shadow:var(--shadow);}
@@ -3967,7 +3968,7 @@ PLANNER.load=function(){
    Startseite: je Bereich eine Kachel mit den wichtigsten Werten und einer Ampel (farbiger Rand), Tippen oeffnet den Tab.
    Jede Minute die neuesten Meldungen der Kanaele; Aschebox und Bunker (ASCHE/SCHNITZEL.berechnen) alle 10 Minuten.
    Ampel: gruen = gut/laeuft, orange = beachten, rot = handeln, grau = keine aktuellen Daten oder ruht. */
-var UEBERSICHT={ _t:0, _hz:null };
+var UEBERSICHT={ _t:0, _hz:null, _ft:0, _fl:null, _pv:null };
 UEBERSICHT.KACHELN=[["pv","☀️ PV-Anlage"],["wallbox","🚗 Auto & Wallbox"],["boiler","💧 Boiler"],["heizung","🔥 Heizung"],["asche","🪣 Aschebox & 🪵 Bunker"],["pumpe","🚰 Pumpwerk"]];
 UEBERSICHT.render=function(main){
   main.innerHTML='<div class="wrap wide"><div class="view-head"><h1>🏠 Heute auf einen Blick</h1><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><div class="meta" id="ub-stand"></div></div></div><div class="ub-grid">'+
@@ -3983,13 +3984,28 @@ UEBERSICHT.setze=function(key, farbe, html, ts, alt){ var el=document.getElement
   el.style.borderLeftColor = veraltet ? "var(--muted)" : (farbe||"var(--line)");
   i.innerHTML=html+(veraltet ? '<div class="ub-z" style="color:var(--amber)">keine aktuellen Daten</div>' : "");
   if(t){ if(ts) standZeit(t, ts); else { t.removeAttribute("data-ts"); t.textContent=""; } t.style.display=ts?"":"none"; } };   // ohne Zeit keine leere Marke
+// Wohin geht der Solarstrom heute (wie FLUSS im Tab PV): PV-Teil von Boiler und Auto aus den Minutenwerten des Tages
+FLUSS.heuteTeile=function(){ var heute=ymdLocal(new Date()), letzt=function(t){ return t.length ? t[t.length-1].w : null; };
+  return Promise.all([BOILERPV.tageHolen(heute, heute), LADEN.tage(heute, heute)]).then(function(r){ var b=letzt(r[0]), l=letzt(r[1]);
+    return {ymd:heute, boPv:b?b.pv||0:0, bo:b?b.kwh||0:0, auPv:l?l.pv||0:0, au:l?l.kwh||0:0}; }); };
+// PV-Kachel: Leistung, Energie heute und darunter der Energiefluss als schmaler Balken (Boiler, Auto, Haus & Netz)
+UEBERSICHT.pvZeichnen=function(){ var U=UEBERSICHT, d=U._pv; if(!d) return;
+  var fl=U._fl && U._fl.ymd===ymdLocal(new Date()) ? U._fl : null, e=d.e, h="";
+  if(fl && e!==null && e>=0.05){ var bo=Math.min(fl.boPv, e), au=Math.min(fl.auPv, Math.max(0, e-bo)), rest=Math.max(0, e-bo-au), teil=function(v){ return (v/e*100).toFixed(1)+"%"; }, kw=function(v){ return fmt(v, v<10?1:0); };
+    h='<div class="ub-fluss" title="Wohin geht der Solarstrom heute? PV-Teil von Boiler und Auto wie im Tab PV">'+
+      (bo>0?'<span style="width:'+teil(bo)+';background:var(--blue)"></span>':'')+(au>0?'<span style="width:'+teil(au)+';background:var(--green)"></span>':'')+(rest>0?'<span style="width:'+teil(rest)+';background:var(--muted)"></span>':'')+'</div>'+
+      '<div class="ub-z">💧 <b>'+kw(bo)+'</b> · 🚗 <b>'+kw(au)+'</b> · 🏠 Haus & Netz <b>'+kw(rest)+'</b> kWh</div>'; }
+  U.setze("pv", d.kw===null?"":d.kw>=1?"var(--green)":d.kw>0.05?"var(--amber)":"var(--muted)",
+    '<div class="ub-gross">'+fmt(d.kw,1)+' <small>kW jetzt</small></div><div class="ub-z">heute <b>'+fmt(e,1)+' kWh</b></div>'+h, d.ts, 45); };
 UEBERSICHT.letzter=function(f, feld, ok){ for(var i=f.length-1;i>=0;i--){ var v=num(f[i][feld]); if(v!==null && (!ok||ok(v))) return v; } return null; };
 UEBERSICHT.load=function(){ var U=UEBERSICHT, L=U.letzter, tok=ladeToken(), echt=function(){ return ladeToken()===tok; };
   var zeitVon=function(f){ return f.length ? new Date(f[f.length-1].created_at) : null; }, feeds=function(d){ return (d&&d.feeds)||[]; };
   // PV
-  j(api(172430,"/feeds.json?results=5",true)).then(function(d){ if(!echt()) return; var f=feeds(d), p=L(f,"field1"), e=L(f,"field2"), kw=p===null?null:p/1000;
-    U.setze("pv", kw===null?"":kw>=1?"var(--green)":kw>0.05?"var(--amber)":"var(--muted)",
-      '<div class="ub-gross">'+fmt(kw,1)+' <small>kW jetzt</small></div><div class="ub-z">heute <b>'+fmt(e,1)+' kWh</b></div>', zeitVon(f), 45); }).catch(function(){});
+  j(api(172430,"/feeds.json?results=5",true)).then(function(d){ if(!echt()) return; var f=feeds(d), p=L(f,"field1");
+    U._pv={kw:p===null?null:p/1000, e:L(f,"field2"), ts:zeitVon(f)}; U.pvZeichnen(); }).catch(function(){});
+  // Energiefluss heute (Minutenwerte von Boiler, PV, Wallbox - nur alle 10 Minuten)
+  if(Date.now()-U._ft>=600000){ U._ft=Date.now();
+    FLUSS.heuteTeile().then(function(fl){ U._fl=fl; if(echt()) U.pvZeichnen(); }).catch(function(){ U._ft=0; }); }
   // Auto & Wallbox
   Promise.all([j(api(172228,"/feeds.json?results=5")).catch(function(){ return null; }), j(api(3514838,"/feeds.json?results=5")).catch(function(){ return null; })]).then(function(r){ if(!echt()) return;
     var w=feeds(r[0]), a=feeds(r[1]), st=Math.round(L(w,"field8")||0), c=L(w,"field4"), soc=L(a,"field1"), km=L(a,"field2");
