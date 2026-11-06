@@ -164,6 +164,9 @@
   .ub-gross{font-size:1.9rem; font-weight:700; line-height:1.1;} .ub-gross small{font-size:.9rem; font-weight:600; color:var(--muted);}
   .ub-z{font-size:.9rem; color:var(--muted); margin-top:4px;} .ub-z b{color:var(--ink);}
   .ub-zwei{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .ub-geraete{display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:6px;} .ub-geraete span{white-space:nowrap;}
+  .ub-sonne{font-size:1rem; white-space:nowrap;}
+  .ub-dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:3px; vertical-align:middle;}
   .ub-fluss{display:flex; height:10px; border-radius:5px; overflow:hidden; background:var(--bg); margin-top:10px; gap:2px;} .ub-fluss span{display:block; height:100%;}
   .ld-sel{padding:4px 10px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:13px;}   /* wie die Jahr-Auswahl der PV-Energie */
   .seg button{cursor:pointer; border:0; background:transparent; color:var(--muted); font-family:inherit; font-size:.76rem; font-weight:600; padding:4px 10px; border-radius:6px;}
@@ -3773,7 +3776,7 @@ PLANNER.load=function(){
     var wd=["So","Mo","Di","Mi","Do","Fr","Sa"], zjDraw=zurichZeit(), today=zjDraw.ymd;
     var nowH=zjDraw.h;
     var col={green:"var(--green)",orange:"var(--amber)",red:"var(--red)"};
-    var det={};   // Daten je Tag fuer die Detail-Grafiken (Knopf "Details")
+    var det={}, karten=[];   // det: Daten je Tag fuer die Detail-Grafiken (Knopf "Details"); karten: Kurzfassung je Tag fuer die Uebersicht
     var cards=order.map(function(d,idx){ var o=days[d];
       var isToday=(d===today);
       // --- Nowcast HEUTE: aktuelle/heutige Ist-Produktion einbeziehen -----------
@@ -3904,6 +3907,9 @@ PLANNER.load=function(){
       // Stundenwerte dieses Tages (PV und Ueberschuss in kW) fuer die Detail-Grafiken
       var hourly=[]; o.win.forEach(function(w){ hourly[w.h]={pv:effKw(w), sur:effSur(w)}; });
       det[d]={date:o.date, isToday:isToday, hourly:hourly, dateTxt:dateTxt};
+      karten.push({d:d, isToday:isToday, date:o.date, kwh:kwh, sur:sur, sun:sun, winTxt:winTxt, offen:lo!==null, peak:peak, nNow:nNow, nDev:nDev,
+        devs:PLANNER.devices.map(function(dev,i){ return {ico:dev.ico, n:dev.n, farbe:devColor(i), ok:dayC[i]==="ok", prog:(dayProg[i].n?dayProg[i].n+" ":"")+PLANNER.dauerTxt(dayProg[i].h)}; }),
+        carC:carC, carKwh:carKwh, carKm:carKm, boilerC:boilerC, boilerKwh:boilerKwh});
       return '<div class="plday" data-d="'+d+'"><div class="pd-date">'+dateTxt+'</div><div class="pd-kwh">'+kwh+kwhLbl+'</div>'+
         liveRow+
         '<div class="pd-sun">'+sun+' <span style="font-size:.8rem;color:var(--muted);font-weight:600">Überschuss ~'+sur+' kWh</span></div>'+
@@ -3911,7 +3917,7 @@ PLANNER.load=function(){
         devRows+carRow+boilerRow+
         '<button class="pd-btn" data-d="'+d+'" title="Wann am Tag laufen die Geräte? (Überschuss, Startfenster)">Details ▾</button></div>';
     }).join("");
-    PLANNER._det=det;
+    PLANNER._det=det; PLANNER._karten=karten;
     if(g("pl-days")) g("pl-days").innerHTML='<div class="pldays">'+cards+'</div><div class="pd-detail" id="pl-detail" hidden></div>';
     PLANNER.zeigeDetail();   // gewaehlter Tag bleibt beim Aktualisieren offen
     // Wochen-Tipp: Tag mit groesstem Ueberschuss fuers Auto
@@ -3919,13 +3925,13 @@ PLANNER.load=function(){
     var bo=days[best]; if(g("pl-meta")) g("pl-meta").textContent="Bester Ladetag: "+wd[bo.date.getDay()]+" "+bo.date.getDate()+"."+(bo.date.getMonth()+1)+". (~"+Math.round(bo.surplus)+" kWh Überschuss)";
     if(g("pl-err")) g("pl-err").textContent="";
   };
-  var afterPnow=function(){
-    PLANNER.ensureForecast().then(draw).catch(function(){ if(g("pl-err")) g("pl-err").textContent="Prognosedaten konnten nicht geladen werden."; });
+  var afterPnow=function(){   // Promise: die Uebersicht wartet darauf und liest danach PLANNER._karten
+    return PLANNER.ensureForecast().then(draw).catch(function(){ if(g("pl-err")) g("pl-err").textContent="Prognosedaten konnten nicht geladen werden."; });
   };
   // aktuelle PV-Leistung + heutige Ist-Kurve jedes Mal frisch holen
   // (Nowcast der Heute-Ampel, ~alle 60 s). _pNow = Momentanleistung (kW),
   // _todayActual = {stunde:kW} der bereits vergangenen Stunden heute.
-  Promise.all([
+  return Promise.all([
     j(api(PLANNER.CH,"/feeds.json?results=1",true)),
     j(api(PLANNER.CH,"/feeds.json?days=1&average=60&timezone=Europe/Zurich",true)),
     j(api(502977,"/feeds.json?results=1")).catch(function(){return null;}),   // Boiler aktuell (oeffentlich)
@@ -3960,20 +3966,20 @@ PLANNER.load=function(){
     // geglaettete Lade-Vorgabe der Wallbox (kW, field7 in W) – letzter vorhandener Wert, ebenfalls hoechstens 10 min alt
     PLANNER._carVorgabe=null;
     for(var wi=wfs.length-1;wi>=0;wi--){ var vg=num(wfs[wi].field7); if(vg!==null){ if(!wfAlt(wfs[wi])) PLANNER._carVorgabe=Math.max(0,vg/1000); break; } }
-    afterPnow();
-  }).catch(function(){ afterPnow(); });
+    return afterPnow();
+  }).catch(function(){ return afterPnow(); });
 };
 
 /* ================= Uebersicht: Heute auf einen Blick =================
    Startseite: je Bereich eine Kachel mit den wichtigsten Werten und einer Ampel (farbiger Rand), Tippen oeffnet den Tab.
    Jede Minute die neuesten Meldungen der Kanaele; Aschebox und Bunker (ASCHE/SCHNITZEL.berechnen) alle 10 Minuten.
    Ampel: gruen = gut/laeuft, orange = beachten, rot = handeln, grau = keine aktuellen Daten oder ruht. */
-var UEBERSICHT={ _t:0, _hz:null, _ft:0, _fl:null, _pv:null };
-UEBERSICHT.KACHELN=[["pv","☀️ PV-Anlage"],["wallbox","🚗 Auto & Wallbox"],["boiler","💧 Boiler"],["heizung","🔥 Heizung"],["asche","🪣 Aschebox & 🪵 Bunker"],["pumpe","🚰 Pumpwerk"]];
+var UEBERSICHT={ _t:0, _hz:null, _ft:0, _fl:null, _pv:null, _pt:0 };
+UEBERSICHT.KACHELN=[["pv","☀️ PV-Anlage"],["planer","🗓️ Nutzung"],["wallbox","🚗 Auto & Wallbox"],["boiler","💧 Boiler"],["heizung","🔥 Heizung"],["asche","🪣 Aschebox & 🪵 Bunker"],["pumpe","🚰 Pumpwerk"]];
 UEBERSICHT.render=function(main){
   main.innerHTML='<div class="wrap wide"><div class="view-head"><h1>🏠 Heute auf einen Blick</h1><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><div class="meta" id="ub-stand"></div></div></div><div class="ub-grid">'+
     UEBERSICHT.KACHELN.map(function(k){ return '<div class="panel ub-k" id="ub-'+k[0]+'" data-ziel="'+(k[0]==="asche"?"heizung":k[0])+'" role="link" tabindex="0">'+
-      '<h2>'+k[1]+'<span class="tag" id="ub-'+k[0]+'-t"></span></h2><div id="ub-'+k[0]+'-i"><div class="ub-z">wird geladen…</div></div></div>'; }).join("")+
+      '<h2>'+k[1]+'<span class="tag" id="ub-'+k[0]+'-t" style="display:none"></span></h2><div id="ub-'+k[0]+'-i"><div class="ub-z">wird geladen…</div></div></div>'; }).join("")+
     '</div><footer>Tippen öffnet den Bereich · Aktualisierung jede Minute</footer></div>';
   [].forEach.call(main.querySelectorAll(".ub-k"), function(el){ var go=function(){ switchView(el.getAttribute("data-ziel")); };
     el.addEventListener("click", go); el.addEventListener("keydown", function(e){ if(e.key==="Enter") go(); }); });
@@ -3997,12 +4003,31 @@ UEBERSICHT.pvZeichnen=function(){ var U=UEBERSICHT, d=U._pv; if(!d) return;
       '<div class="ub-z">💧 <b>'+kw(bo)+'</b> · 🚗 <b>'+kw(au)+'</b> · 🏠 Haus & Netz <b>'+kw(rest)+'</b> kWh</div>'; }
   U.setze("pv", d.kw===null?"":d.kw>=1?"var(--green)":d.kw>0.05?"var(--amber)":"var(--muted)",
     '<div class="ub-gross">'+fmt(d.kw,1)+' <small>kW jetzt</small></div><div class="ub-z">heute <b>'+fmt(e,1)+' kWh</b></div>'+h, d.ts, 45); };
+// Nutzung (Solarprognose): die wichtigsten Angaben der Tageskarten - heute (solange das Solarfenster noch kommt) und morgen,
+// am Abend morgen und uebermorgen. Gleiche Rechnung wie im Tab Nutzung (PLANNER.load fuellt PLANNER._karten).
+UEBERSICHT.planerZeichnen=function(){ var K=PLANNER._karten; if(!K || !K.length) return;
+  var ab=(K[0].isToday && !K[0].offen) ? 1 : 0, zwei=K.slice(ab, ab+2), wd=["So","Mo","Di","Mi","Do","Fr","Sa"], morgen=ymdLocal(new Date(Date.now()+864e5));
+  var F={green:"var(--green)", orange:"var(--amber)", red:"var(--red)"};
+  var punkt=function(f){ return '<span class="ub-dot" style="background:'+f+'"></span>'; };
+  var tag=function(k){ var name=(k.isToday?"Heute":k.d===morgen?"Morgen":wd[k.date.getDay()])+" "+k.date.getDate()+"."+(k.date.getMonth()+1)+".";
+    return '<div><div class="ub-z">'+name+'</div><div class="ub-gross">'+k.kwh+' <small>kWh'+(k.isToday?" ab jetzt":"")+'</small> <span class="ub-sonne">'+k.sun+'</span></div>'+
+      '<div class="ub-z">Überschuss <b>~'+k.sur+'&nbsp;kWh</b></div><div class="ub-z">'+(k.offen?k.winTxt:"kaum Ertrag")+'</div>'+
+      '<div class="ub-z ub-geraete">'+k.devs.map(function(v){ return '<span title="'+v.n+' ('+v.prog+')">'+punkt(v.farbe)+v.ico+'</span>'; }).join("")+
+        '<span title="Auto">'+punkt(F[k.carC])+'🚗</span><span title="Boiler ~'+k.boilerKwh+' kWh">'+punkt(F[k.boilerC])+'💧</span></div>'+
+      (k.carC!=="red" ? '<div class="ub-z">🚗 ~'+k.carKwh+'&nbsp;kWh · '+k.carKm+'&nbsp;km</div>' : '')+'</div>'; };
+  var erster=zwei[0], ok=erster.devs.filter(function(v){ return v.ok; }).length;
+  UEBERSICHT.setze("planer", ok===erster.devs.length && erster.sur>=15 ? "var(--green)" : ok>0 ? "var(--amber)" : "var(--muted)",
+    '<div class="ub-zwei">'+zwei.map(tag).join("")+'</div>', null); };
 UEBERSICHT.letzter=function(f, feld, ok){ for(var i=f.length-1;i>=0;i--){ var v=num(f[i][feld]); if(v!==null && (!ok||ok(v))) return v; } return null; };
 UEBERSICHT.load=function(){ var U=UEBERSICHT, L=U.letzter, tok=ladeToken(), echt=function(){ return ladeToken()===tok; };
   var zeitVon=function(f){ return f.length ? new Date(f[f.length-1].created_at) : null; }, feeds=function(d){ return (d&&d.feeds)||[]; };
   // PV
   j(api(172430,"/feeds.json?results=5",true)).then(function(d){ if(!echt()) return; var f=feeds(d), p=L(f,"field1");
     U._pv={kw:p===null?null:p/1000, e:L(f,"field2"), ts:zeitVon(f)}; U.pvZeichnen(); }).catch(function(){});
+  // Nutzung: Solarprognose mit Nowcast wie im Tab Nutzung (alle 5 Minuten; die Prognose selbst holt PLANNER hoechstens alle 30 min)
+  if(PLANNER._karten) U.planerZeichnen();
+  if(Date.now()-U._pt>=300000){ U._pt=Date.now();
+    PLANNER.load().then(function(){ if(!echt()) return; if(PLANNER._karten) U.planerZeichnen(); else { U._pt=0; U.setze("planer", "var(--muted)", '<div class="ub-z">Prognose zurzeit nicht verfügbar</div>', null); } }).catch(function(){ U._pt=0; }); }
   // Energiefluss heute (Minutenwerte von Boiler, PV, Wallbox - nur alle 10 Minuten)
   if(Date.now()-U._ft>=600000){ U._ft=Date.now();
     FLUSS.heuteTeile().then(function(fl){ U._fl=fl; if(echt()) U.pvZeichnen(); }).catch(function(){ U._ft=0; }); }
