@@ -17,6 +17,7 @@
 //  - ist die Aschebox in den naechsten ASCHE_VORLAUF Tagen voll? Gleiche Rechnung wie im Dashboard (Heizung -> Aschebox):
 //    Leerungen aus dem Blob "asche_leerungen" (heizung.ts), Brennzeit je Tag (Brennphasen aus Abgas/Kessel) aus Kanal 172428,
 //    im Blob "asche_tage" gemerkt. Nur in der Heizsaison. Nach dem Eintragen der Leerung kommt die Entwarnung.
+//    Das Ergebnis steht zusaetzlich im Blob "asche_prognose" (heizung.ts liefert es per GET, fuer HausBroker/MQTT).
 //  - Pumpwerk, Leck-Verdacht: lief die Pumpe letzte Nacht (0-5 Uhr) viel oefter oder laenger als in den Naechten davor
 //    (mindestens PW.FAKTOR-mal der Median der letzten PW.NAECHTE Naechte)? Hinweis ab 05:00 fuer den Tag. Naechte im Blob
 //    "pumpe_naechte". Dazu als Stoerung: Dauerlauf - die Pumpe laeuft seit PW.DAUER_MIN Minuten ohne Pause.
@@ -47,6 +48,7 @@ const SZ_TAGE_KEY = "schnitzel_tage", SZ_MAX_TAGE = 150, SZ_MAX_ABRUFE = 25;   /
 // Aschebox (wie ASCHE im Dashboard)
 const ASCHE_VORLAUF = 2;   // Tage: so frueh vor "Box voll" kommt die Mail
 const AS_TAGE_VERSION = 1, AS_TAGE_KEY = "asche_tage", AS_MAX_TAGE = 150, AS_MAX_ABRUFE = 15;   // mit den Schnitzel-Abrufen je Lauf hoechstens ~40 Tage
+const AS_PROGNOSE_KEY = "asche_prognose";   // letzte Prognose { prozent, tageBisVoll (999 = ueber 120 Tage), erstellt }, liefert heizung.ts per GET
 const GLUT_SPRUNG_K = 30, GLUT_ABKLING_K = 15, GLUT_MAX_MIN = 5;   // Glutstoss ueber den Abgas-Sprung (wie im Dashboard)
 // Hinweise sind keine Stoerungen der Anlage: eigener Betreff, eigene Liste in der Mail
 const HINWEISE: Record<string, string> = { asche: "🪣 Aschebox leeren", schnitzel: "🪵 Schnitzel-Bunker auffüllen", pumpeLeck: "💧 Pumpwerk prüfen (Leck-Verdacht)" };
@@ -318,6 +320,9 @@ async function aschePruefen(heute: string): Promise<string | null | undefined> {
     const fern = zuk.length ? zuk.reduce((s, v) => s + v, 0) / zuk.length : mittelTag;
     for (let n = 1; n <= 120 && rest > 0; n++) { const y = plusTage(heute, n); rest -= temps[y] != null ? pred(y) : fern; if (rest <= 0) { tageBis = n; break; } } }
   const quelle = `${kaps.length} Leerung${kaps.length === 1 ? "" : "en"}`;
+  // Prognose fuer die Austragungssteuerung (HausBroker holt sie per GET von heizung.ts und stellt sie per MQTT bereit)
+  await blob.setJSON(AS_PROGNOSE_KEY, { prozent: Math.round(pct), tageBisVoll: tageBis ?? 999, kapazitaetH: Math.round(kap / 60),
+    erstellt: new Date().toISOString(), quelle: "waechter" }).catch((e) => console.log(`Asche-Prognose nicht gespeichert (${e})`));
   console.log(`Asche: ${pct.toFixed(0)} % (${(seit / 60).toFixed(1)} h von ${(kap / 60).toFixed(0)} h Brennzeit, ${quelle}), voll in ${tageBis ?? ">120"} Tagen`);
   if (tageBis === null || tageBis > ASCHE_VORLAUF) return null;
   const wann = tageBis === 1 ? "morgen" : `in ${tageBis} Tagen`;

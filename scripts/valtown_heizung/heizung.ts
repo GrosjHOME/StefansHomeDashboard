@@ -8,7 +8,10 @@
 //
 // Speicher: Blob "asche_leerungen" = { leerungen: ["2026-10-17T10:00:00.000Z", ...],   (UTC, aufsteigend)
 //                                       anteile:   { "2026-10-17T10:00:00.000Z": 90 } }   (Fuellstand beim Leeren in %)
-// GET                           -> { leerungen: [...], anteile: {...} }   (oeffentlich, nur Lesen)
+// GET                           -> { leerungen: [...], anteile: {...}, prognose: {...} }   (oeffentlich, nur Lesen)
+//   prognose = Blob "asche_prognose" vom Waechter: { prozent, tageBisVoll (999 = ueber 120 Tage), kapazitaetH, erstellt, quelle }
+//   oder null. Nach einer Leerung (POST) sofort { prozent: 0, tageBisVoll: 999, quelle: "leerung" }, bis der Waechter neu rechnet.
+//   Wird vom HausBroker (Raspberry Pi) abgefragt und per MQTT an die Austragungssteuerung weitergegeben.
 // POST   { zeit?: ISO, pct?: n } -> Leerung eintragen (Standard: jetzt, 100 %); pct 10-100        } Header X-Asche-Token
 // DELETE { zeit: ISO }          -> diese Leerung entfernen (Rueckgaengig)                          } = Umgebungsvariable ASCHE_TOKEN
 // Fehlt ein Anteil (alte Eintraege), gilt 100 %.
@@ -25,6 +28,7 @@ import { blob } from "https://esm.town/v/std/blob/main.ts";
 
 const KEY = "asche_leerungen";
 const KEY_SCHNITZEL = "schnitzel_daten";
+const KEY_PROGNOSE = "asche_prognose";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
@@ -55,7 +59,8 @@ export default async function (req: Request): Promise<Response> {
     new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json; charset=utf-8" } });
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   try {
-    if (req.method === "GET") return antwort(200, { ...(await lesen()), schnitzel: await lesenSchnitzel() });
+    if (req.method === "GET") return antwort(200, { ...(await lesen()), schnitzel: await lesenSchnitzel(),
+      prognose: await blob.getJSON(KEY_PROGNOSE).catch(() => null) ?? null });
     if (req.method !== "POST" && req.method !== "DELETE") return antwort(405, { fehler: "Methode nicht erlaubt" });
     const token = Deno.env.get("ASCHE_TOKEN");
     if (!token) return antwort(500, { fehler: "Umgebungsvariable ASCHE_TOKEN fehlt im Val" });
@@ -94,6 +99,10 @@ export default async function (req: Request): Promise<Response> {
     }
     d.leerungen.sort();
     await blob.setJSON(KEY, d);
+    // Neue Leerung von jetzt: Box ist leer, bis der Waechter (alle 30 min) neu rechnet - die Steuerung soll das sofort sehen
+    if (req.method === "POST" && Date.now() - ms < 3600_000) {
+      await blob.setJSON(KEY_PROGNOSE, { prozent: 0, tageBisVoll: 999, kapazitaetH: null, erstellt: new Date().toISOString(), quelle: "leerung" });
+    }
     console.log(`${req.method} ${zeit}${req.method === "POST" ? " " + d.anteile[zeit] + " %" : ""} -> ${d.leerungen.length} Leerungen`);
     return antwort(200, { ...d, schnitzel: await lesenSchnitzel() });
   } catch (e) {

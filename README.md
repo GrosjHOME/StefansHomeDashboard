@@ -439,6 +439,15 @@ Lesen ist öffentlich (Leerungen mit Füllständen, Auffüllungen und Lager-Eint
 Solange `ASCHE.URL` leer ist, werden Leerungen nur im jeweiligen Browser
 gespeichert und sind auf anderen Geräten nicht sichtbar.
 
+**Prognose für die Austragungssteuerung (MQTT):** Der Wächter legt bei jedem
+Lauf in der Heizsaison das Ergebnis im Blob `asche_prognose` ab
+(`{ prozent, tageBisVoll, kapazitaetH, erstellt, quelle }`, `tageBisVoll`
+999 = über 120 Tage). `heizung.ts` liefert es beim GET unter `prognose` mit;
+nach **Asche geleert** steht dort sofort 0 %, bis der Wächter neu rechnet.
+Der HausBroker auf dem Raspberry Pi (Repo `HausBroker`) holt es alle 5 min und
+stellt es per MQTT auf `haus/heizung/asche` bereit, die Austragungssteuerung
+zeigt es auf dem LCD und an der Störlampe an.
+
 </details>
 
 ## Schnitzel-Prognose (Val Town)
