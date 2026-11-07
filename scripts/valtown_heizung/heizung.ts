@@ -17,6 +17,10 @@
 //   { auffuellungen: [ISO, ...], rest: { ISO: Rest im 20-m3-Bunker vor dem Auffuellen in %, danach voll },
 //     lager: [ISO, ...], bestand: { ISO: Bestand im 80-m3-Lager nach dem Fuellen in m3 } }
 // GET liefert sie unter "schnitzel" mit (fehlt das Feld, laeuft noch die alte asche.ts ohne Schnitzel).
+//
+// Prognose der Aschebox (schreibt der Waechter, Blob "asche_prognose"): GET liefert sie unter "prognose" mit, fuer den HausBroker
+//   { erstellt: ISO, prozent: 0-999, tageBisVoll: 0-999 (0 = jetzt/heute, 999 = ueber 120 Tage), quelle: "n Leerungen" }
+// Ausserhalb der Heizsaison oder ohne Leerung in dieser Saison ist "prognose" null.
 // POST   { art: "schnitzel", zeit?: ISO, rest: 0-90 }   -> Auffuellen des Bunkers eintragen
 // POST   { art: "lager",     zeit?: ISO, m3: 1-200 }    -> Lager gefuellt (Bestand danach)
 // DELETE { art: "schnitzel" | "lager", zeit: ISO }      -> diesen Eintrag entfernen
@@ -25,6 +29,7 @@ import { blob } from "https://esm.town/v/std/blob/main.ts";
 
 const KEY = "asche_leerungen";
 const KEY_SCHNITZEL = "schnitzel_daten";
+const KEY_PROGNOSE = "asche_prognose";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
@@ -55,7 +60,10 @@ export default async function (req: Request): Promise<Response> {
     new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json; charset=utf-8" } });
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   try {
-    if (req.method === "GET") return antwort(200, { ...(await lesen()), schnitzel: await lesenSchnitzel() });
+    if (req.method === "GET") {
+      const prognose = (await blob.getJSON(KEY_PROGNOSE).catch(() => null)) ?? null;
+      return antwort(200, { ...(await lesen()), schnitzel: await lesenSchnitzel(), prognose });
+    }
     if (req.method !== "POST" && req.method !== "DELETE") return antwort(405, { fehler: "Methode nicht erlaubt" });
     const token = Deno.env.get("ASCHE_TOKEN");
     if (!token) return antwort(500, { fehler: "Umgebungsvariable ASCHE_TOKEN fehlt im Val" });

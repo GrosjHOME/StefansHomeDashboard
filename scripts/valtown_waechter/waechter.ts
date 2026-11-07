@@ -17,6 +17,8 @@
 //  - ist die Aschebox in den naechsten ASCHE_VORLAUF Tagen voll? Gleiche Rechnung wie im Dashboard (Heizung -> Aschebox):
 //    Leerungen aus dem Blob "asche_leerungen" (heizung.ts), Brennzeit je Tag (Brennphasen aus Abgas/Kessel) aus Kanal 172428,
 //    im Blob "asche_tage" gemerkt. Nur in der Heizsaison. Nach dem Eintragen der Leerung kommt die Entwarnung.
+//    Die Prognose (Prozent, Tage bis voll) steht bei jedem Lauf im Blob "asche_prognose"; heizung.ts liefert sie im GET als "prognose"
+//    (HausBroker holt sie von dort und gibt sie per MQTT an die Austragungssteuerung). Ohne Saison oder ohne Leerung wird sie geloescht.
 //  - Pumpwerk, Leck-Verdacht: lief die Pumpe letzte Nacht (0-5 Uhr) viel oefter oder laenger als in den Naechten davor
 //    (mindestens PW.FAKTOR-mal der Median der letzten PW.NAECHTE Naechte)? Hinweis ab 05:00 fuer den Tag. Naechte im Blob
 //    "pumpe_naechte". Dazu als Stoerung: Dauerlauf - die Pumpe laeuft seit PW.DAUER_MIN Minuten ohne Pause.
@@ -46,6 +48,7 @@ const SZ_TAGE_KEY = "schnitzel_tage", SZ_MAX_TAGE = 150, SZ_MAX_ABRUFE = 25;   /
 
 // Aschebox (wie ASCHE im Dashboard)
 const ASCHE_VORLAUF = 2;   // Tage: so frueh vor "Box voll" kommt die Mail
+const AS_PROGNOSE_KEY = "asche_prognose";   // fuer den HausBroker (Raspberry Pi): heizung.ts liefert sie im GET als "prognose"
 const AS_TAGE_VERSION = 1, AS_TAGE_KEY = "asche_tage", AS_MAX_TAGE = 150, AS_MAX_ABRUFE = 15;   // mit den Schnitzel-Abrufen je Lauf hoechstens ~40 Tage
 const GLUT_SPRUNG_K = 30, GLUT_ABKLING_K = 15, GLUT_MAX_MIN = 5;   // Glutstoss ueber den Abgas-Sprung (wie im Dashboard)
 // Hinweise sind keine Stoerungen der Anlage: eigener Betreff, eigene Liste in der Mail
@@ -282,7 +285,7 @@ async function aschePruefen(heute: string): Promise<string | null | undefined> {
   if (saison && !fehlt && !cache.saison[jahr]) cache.saison[jahr] = saison;
   await blob.setJSON(AS_TAGE_KEY, cache);
   if (fehlt) { console.log(`Asche: ${abrufe} Tage nachgeholt, Rest beim naechsten Lauf`); return undefined; }
-  if (!saison) return null;   // Saison hat noch nicht begonnen
+  if (!saison) { await blob.delete(AS_PROGNOSE_KEY).catch(() => {}); return null; }   // Saison hat noch nicht begonnen (keine Prognose fuer den HausBroker)
   const voll = (a: string, incl: boolean, b: string | null) => { let s = 0;
     for (const [y, m] of Object.entries(tage)) if ((incl ? y >= a : y > a) && (b === null || y < b)) s += m; return s; };
   const vor = (L: { ymd: string; ts: number }) => teile[L.ts]?.vb ?? tage[L.ymd] ?? 0;
@@ -299,7 +302,7 @@ async function aschePruefen(heute: string): Promise<string | null | undefined> {
     prev = L;
   }
   const kap = median(kaps);
-  if (!kap) return null;   // noch keine Leerung in dieser Saison
+  if (!kap) { await blob.delete(AS_PROGNOSE_KEY).catch(() => {}); return null; }   // noch keine Leerung in dieser Saison
   const X = lt.length ? lt[lt.length - 1] : null;
   const seit = X ? voll(X.ymd, false, null) + nach(X) : voll(saison, true, null), pct = (seit / kap) * 100;
   // Prognose: Brennzeit je Heizgradtag der letzten 14 abgeschlossenen Tage x Heizgradtage der 7-Tage-Prognose, danach deren Mittel
@@ -319,6 +322,8 @@ async function aschePruefen(heute: string): Promise<string | null | undefined> {
     for (let n = 1; n <= 120 && rest > 0; n++) { const y = plusTage(heute, n); rest -= temps[y] != null ? pred(y) : fern; if (rest <= 0) { tageBis = n; break; } } }
   const quelle = `${kaps.length} Leerung${kaps.length === 1 ? "" : "en"}`;
   console.log(`Asche: ${pct.toFixed(0)} % (${(seit / 60).toFixed(1)} h von ${(kap / 60).toFixed(0)} h Brennzeit, ${quelle}), voll in ${tageBis ?? ">120"} Tagen`);
+  // Prognose fuer den HausBroker (MQTT haus/heizung/asche): Prozent 0..999, Tage bis voll (0 = jetzt/heute, 999 = ueber 120 Tage)
+  await blob.setJSON(AS_PROGNOSE_KEY, { erstellt: new Date().toISOString(), prozent: Math.min(999, Math.round(pct)), tageBisVoll: tageBis ?? 999, quelle });
   if (tageBis === null || tageBis > ASCHE_VORLAUF) return null;
   const wann = tageBis === 1 ? "morgen" : `in ${tageBis} Tagen`;
   return `Aschebox: ca. ${Math.min(999, pct).toFixed(0)} % – ${tageBis === 0 ? (jetzt ? "jetzt leeren" : "voll heute") : "voll " + wann} (Brennzeit pro Leerung ${(kap / 60).toFixed(0)} h aus ${quelle})`;
