@@ -21,6 +21,9 @@
 // Prognose der Aschebox (schreibt der Waechter, Blob "asche_prognose"): GET liefert sie unter "prognose" mit, fuer den HausBroker
 //   { erstellt: ISO, prozent: 0-999, tageBisVoll: 0-999 (0 = jetzt/heute, 999 = ueber 120 Tage), quelle: "n Leerungen" }
 // Ausserhalb der Heizsaison oder ohne Leerung in dieser Saison ist "prognose" null.
+// Sofort-Anzeige: Wird eine Leerung eingetragen (POST, Zeit juenger als 1 h), setzt heizung.ts die Prognose gleich auf
+//   { prozent: 0, tageBisVoll: 999, quelle: "leerung" }, damit die Steuerung nicht bis zum naechsten Waechter-Lauf
+//   (30 min) noch "Aschebox voll" zeigt. Rueckgaengig (DELETE) entfernt diesen Sofortwert wieder; der Waechter rechnet neu.
 // POST   { art: "schnitzel", zeit?: ISO, rest: 0-90 }   -> Auffuellen des Bunkers eintragen
 // POST   { art: "lager",     zeit?: ISO, m3: 1-200 }    -> Lager gefuellt (Bestand danach)
 // DELETE { art: "schnitzel" | "lager", zeit: ISO }      -> diesen Eintrag entfernen
@@ -30,6 +33,7 @@ import { blob } from "https://esm.town/v/std/blob/main.ts";
 const KEY = "asche_leerungen";
 const KEY_SCHNITZEL = "schnitzel_daten";
 const KEY_PROGNOSE = "asche_prognose";
+const SOFORT_MAX_ALTER_MS = 3600_000;  // nur frische Leerungen setzen die Prognose sofort auf 0 %
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
@@ -102,6 +106,14 @@ export default async function (req: Request): Promise<Response> {
     }
     d.leerungen.sort();
     await blob.setJSON(KEY, d);
+    if (req.method === "POST" && Date.now() - ms < SOFORT_MAX_ALTER_MS) {
+      // frisch geleert = 0 %, bis der Waechter neu rechnet
+      await blob.setJSON(KEY_PROGNOSE, { erstellt: new Date().toISOString(), prozent: 0, tageBisVoll: 999, quelle: "leerung" });
+    } else if (req.method === "DELETE") {
+      // Rueckgaengig: ein Sofortwert "leerung" stimmt nicht mehr -> weg, der Waechter rechnet beim naechsten Lauf neu
+      const p = (await blob.getJSON(KEY_PROGNOSE).catch(() => null)) as { quelle?: string } | null;
+      if (p?.quelle === "leerung") await blob.delete(KEY_PROGNOSE).catch(() => {});
+    }
     console.log(`${req.method} ${zeit}${req.method === "POST" ? " " + d.anteile[zeit] + " %" : ""} -> ${d.leerungen.length} Leerungen`);
     return antwort(200, { ...d, schnitzel: await lesenSchnitzel() });
   } catch (e) {
