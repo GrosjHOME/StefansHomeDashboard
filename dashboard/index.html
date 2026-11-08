@@ -224,8 +224,11 @@
   @media (min-width:1100px){
     .wrap.wide{max-width:2400px; padding-left:24px; padding-right:24px;}
     .pv-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:16px; align-items:start;
-      grid-template-areas:"hero kpi" "leist energ" "jahr strom" "jahr spann" "dc verl" "lf lf" "fluss fluss";}
+      grid-template-areas:"hero kpi" "leist energ" "jahr strom" "jahr spann" "dc verl" "lf fluss";}
     .pv-grid .a-lf{grid-area:lf;} .pv-grid .a-fluss{grid-area:fluss;}
+    /* Leistungsfaktor | Wohin geht der Solarstrom: gleich hohe Kacheln nebeneinander, die Erklaerung steht jeweils unten */
+    .pv-grid .a-lf, .pv-grid .a-fluss{align-self:stretch; display:flex; flex-direction:column;}
+    .pv-grid .a-lf .note, .pv-grid .a-fluss .note{margin-top:auto; padding-top:10px;}
     .pv-grid .a-hero{grid-area:hero; align-self:stretch; display:flex; flex-direction:column; justify-content:center;}
     .pv-grid .a-kpi{grid-area:kpi; grid-template-columns:repeat(4,minmax(0,1fr));}
     .pv-grid .a-leist{grid-area:leist;} .pv-grid .a-energ{grid-area:energ;}
