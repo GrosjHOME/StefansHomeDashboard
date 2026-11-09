@@ -45,6 +45,19 @@ Val Town Blob-Speicher <──────────────────�
 (Morgenprognose, Einträge der Heizung, Wächter-Status, Geräte-Zähler)
 ```
 
+Zusätzlich gibt es einen **lokalen Weg** für das Pumpwerk (und weitere Steuerungen) ohne ThingSpeak:
+
+```text
+Pumpwerk-Logger ──MQTT──> HausBroker (Raspberry Pi) ──Bridge, HTTPS──> Val Town (pumpwerk.ts, SQLite) ──> Dashboard
+(misst jede Pause           Mosquitto im Heimnetz                       eine Zeile je Ein-/Ausschalten
+ auf die Millisekunde)
+```
+
+Der Logger meldet jedes Ein- und Ausschalten mit der exakt gemessenen Pause bzw. Laufzeit an den HausBroker (Repo
+[HausBroker](https://github.com/GrosjHOME/HausBroker)); dessen Bridge gibt die Ereignisse gebündelt an `pumpwerk.ts` weiter, das
+sie in SQLite speichert. Das Dashboard liest sie von dort (Kachel «Kürzeste Pause» im Pumpwerk-Tab). ThingSpeak läuft
+unverändert weiter; fehlt der exakte Wert, zeigt das Dashboard die bisherige Schätzung.
+
 Der Pfeil zum **Blob-Speicher** gilt in beide Richtungen: Das Dashboard liest von dort
 die PV-Morgenprognose sowie die Einträge der Heizung (Asche-Leerungen, Auffüllen des Schnitzel-Bunkers, Lager) und
 schreibt neue Einträge zurück (mit Token). Der Wächter im Val liest ThingSpeak und die Einträge der Heizung und
@@ -80,7 +93,7 @@ Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
 | `geraete.ts` | Blob `geraete` (öffentlich nur Zahlen, Einzelheiten mit Token) | Blob `geraete` (Meldung eines Geräts per POST; Entfernen nur mit Token) |
 | `pumpwerk.ts` | SQLite-Tabelle `pumpwerk_ereignis` (öffentlich lesbar: Ereignisse und kürzeste Pause im Zeitraum) | SQLite-Tabelle `pumpwerk_ereignis` (POST der HausBroker-Bridge, nur mit Token `PUMPWERK_TOKEN`; doppelte Ereignisse werden ignoriert, Ereignisse über 400 Tage gelöscht) |
 
-Das Dashboard selbst liest ThingSpeak und Open-Meteo direkt und ruft nur `prognose.ts`, `heizung.ts`, `geraete.ts` und (künftig) `pumpwerk.ts` auf.
+Das Dashboard selbst liest ThingSpeak und Open-Meteo direkt und ruft nur `prognose.ts`, `heizung.ts`, `geraete.ts` und `pumpwerk.ts` auf.
 Geschrieben wird vom Dashboard nur in `heizung.ts` (mit Token) und `geraete.ts` (Meldung des Geräts).
 Das Repo ist die Vorlage: Änderungen hier machen und dann in den Val kopieren.
 Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
