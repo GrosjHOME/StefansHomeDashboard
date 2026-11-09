@@ -50,7 +50,7 @@ die PV-Morgenprognose sowie die Einträge der Heizung (Asche-Leerungen, Auffüll
 schreibt neue Einträge zurück (mit Token). Der Wächter im Val liest ThingSpeak und die Einträge der Heizung und
 schickt bei Störungen eine E-Mail. Was jede Datei im Val **liest** und **schreibt**, steht in der Tabelle unten.
 
-### Val Town: ein Val, sieben Dateien
+### Val Town: ein Val, acht Dateien
 
 Alles, was auf einem Server laufen muss, steckt im Val **GrosjeansHomeDashboard**
 (val.town, Konto `steffgrosjean`). Jede Datei hat ihren eigenen Trigger. Den
@@ -65,6 +65,7 @@ Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
 | `monatsbericht.ts` | Monatsbericht per E-Mail (am 1.) | Cron täglich, z. B. 07:10 | `scripts/valtown_waechter/monatsbericht.ts` |
 | `heizung.ts` | von Hand eingetragene Werte der Heizung speichern: Asche-Leerungen, Auffüllen des Schnitzel-Bunkers, Lager (früher `asche.ts`) | HTTP | `scripts/valtown_heizung/heizung.ts` |
 | `geraete.ts` | Geräte-Zähler: wie viele verschiedene Geräte das Dashboard benutzen (Anzeige im Info-Fenster ℹ️) | HTTP | `scripts/valtown_geraete/geraete.ts` |
+| `pumpwerk.ts` | Pumpwerk-Ereignisse (Ein-/Ausschalten mit exakter Pause bzw. Laufzeit) von der Bridge auf dem Pi entgegennehmen (POST, Token `PUMPWERK_TOKEN`) und ausliefern (GET); Speicher: SQLite | HTTP | `scripts/valtown_pumpwerk/pumpwerk.ts` |
 
 **Was jede Datei liest und schreibt:**
 
@@ -77,8 +78,9 @@ Blob-Speicher teilen sie sich, mit getrennten Schlüsseln.
 | `monatsbericht.ts` | ThingSpeak (PV, Wallbox, Boiler, Heizung, Pumpwerk mit `PUMPWERK_READ_KEY`, ganzer Vormonat); Open-Meteo (Temperaturen); Blobs `asche_leerungen`, `schnitzel_daten`, `monatsbericht_gesendet`; Rechnungen aus `waechter.ts` (Import im selben Val) | Blob `monatsbericht_gesendet` (welcher Monat schon verschickt ist); **E-Mail** an das Konto |
 | `heizung.ts` | Blobs `asche_leerungen`, `schnitzel_daten` und `asche_prognose` (Lesen für jeden, auch das Dashboard und die Bridge des [HausBroker](https://github.com/GrosjHOME/HausBroker); der GET enthält das Feld `prognose`: `erstellt`, `prozent`, `tageBisVoll`, `quelle`; `null` ausserhalb der Heizsaison oder ohne Leerung; nach dem Eintragen einer neuen Leerung steht dort sofort `0 %` mit `quelle: leerung`, bis der Wächter neu rechnet) | dieselben Blobs: Leerungen, Auffüllungen, Lager eintragen oder löschen (**nur mit Token** `ASCHE_TOKEN` im Header `X-Asche-Token`) |
 | `geraete.ts` | Blob `geraete` (öffentlich nur Zahlen, Einzelheiten mit Token) | Blob `geraete` (Meldung eines Geräts per POST; Entfernen nur mit Token) |
+| `pumpwerk.ts` | SQLite-Tabelle `pumpwerk_ereignis` (öffentlich lesbar: Ereignisse und kürzeste Pause im Zeitraum) | SQLite-Tabelle `pumpwerk_ereignis` (POST der HausBroker-Bridge, nur mit Token `PUMPWERK_TOKEN`; doppelte Ereignisse werden ignoriert, Ereignisse über 400 Tage gelöscht) |
 
-Das Dashboard selbst liest ThingSpeak und Open-Meteo direkt und ruft nur `prognose.ts`, `heizung.ts` und `geraete.ts` auf.
+Das Dashboard selbst liest ThingSpeak und Open-Meteo direkt und ruft nur `prognose.ts`, `heizung.ts`, `geraete.ts` und (künftig) `pumpwerk.ts` auf.
 Geschrieben wird vom Dashboard nur in `heizung.ts` (mit Token) und `geraete.ts` (Meldung des Geräts).
 Das Repo ist die Vorlage: Änderungen hier machen und dann in den Val kopieren.
 Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
@@ -100,6 +102,7 @@ Details: [ID.3-Ladezustand](#id3-ladezustand-tibber-poller) ·
 | `scripts/valtown_waechter/` | Wächter für Val Town: E-Mail bei Störungen |
 | `scripts/valtown_heizung/` | Einträge der Heizung für Val Town (Knöpfe „Asche geleert“, „Bunker aufgefüllt“, „Lager gefüllt“) |
 | `scripts/valtown_geraete/` | Geräte-Zähler für Val Town (Meldung der Geräte, Zahlen fürs Info-Fenster) |
+| `scripts/valtown_pumpwerk/` | Pumpwerk-Ereignisse für Val Town (Annahme von der HausBroker-Bridge, Abfrage fürs Dashboard; SQLite) |
 | `scripts/tibber_token_neu.ps1` | Frischen Tibber-Refresh-Token erzeugen |
 | `scripts/id3_tibber_cloud.py` | Früherer GitHub-Actions-Poller (Reserve) |
 | `scripts/thingspeak_trigger_id3.m` | ThingSpeak-TimeControl-Auslöser (Alternative) |
