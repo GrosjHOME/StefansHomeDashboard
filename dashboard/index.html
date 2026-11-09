@@ -1747,10 +1747,14 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
     cfg.kpis.forEach(function(k){ if((k.ausFeeds||k.integrate) && k.channel) chans[String(k.channel)]=k.channel;
       if(k.pruef) chans[String(k.pruef.channel)]=k.pruef.channel; });
     var keys=Object.keys(chans), tok=ladeToken(mode);   // Tab und Zeitraum zu Beginn: eine langsame aeltere Antwort darf nichts Neueres ueberschreiben
-    Promise.all(keys.map(function(k){ var ch=chans[k];
-      return holeZeitraum(ch, mode, String(ch)==="172430").then(function(d){ return {k:k, feeds:(d&&d.feeds)?d.feeds:[]}; }); }))
+    // Optional (cfg.ereignisse): Ereignisse des Zeitraums von Val Town (z. B. exakt gemessene Pumpenpausen). Fehlt die Antwort,
+    // ist das Ergebnis null und die Kennzahl faellt auf ihre Schaetzung aus den ThingSpeak-Daten zurueck.
+    var ereignisP = cfg.ereignisse ? Promise.resolve().then(function(){ return cfg.ereignisse(zeitraumMs(mode)); }).catch(function(){ return null; }) : Promise.resolve(null);
+    Promise.all([ereignisP].concat(keys.map(function(k){ var ch=chans[k];
+      return holeZeitraum(ch, mode, String(ch)==="172430").then(function(d){ return {k:k, feeds:(d&&d.feeds)?d.feeds:[]}; }); })))
     .then(function(results){
       if(ladeToken(mode)!==tok) return;   // inzwischen umgeschaltet (Zeitraum oder Tab)
+      var ereignisse=results.shift();     // erstes Ergebnis = Ereignisse (oder null), der Rest = Feeds je Kanal
       var byChan={}; results.forEach(function(r){ byChan[r.k]=r.feeds; });
       var f=byChan[String(cfg.channel)]||[];
       // Wert eines Feldes (beliebiger Kanal) zum Zeitpunkt t: letzter Eintrag <= t (Stufe halten).
@@ -1766,11 +1770,12 @@ if(k.warnAbove!=null) el.style.color = (v!==null && v>k.warnAbove) ? "var(--red)
       // 7 Tage, die holeZeitraum vollstaendig liefert (frueher eigener Abruf in 2 Fenstern, weil days=7 nur ~5.5 Tage brachte).
       // Zeitraum fuer Rechnungen, die den Anteil an der Gesamtdauer brauchen (k.ausFeeds(feeds, {von, bis}))
       var ctx=zeitraumMs(mode);   // {von, bis} in ms - auch fuer den freien Zeitraum
+      ctx.ereignisse=ereignisse;  // Ereignisse aus Val Town (cfg.ereignisse) oder null
       cfg.kpis.forEach(function(k,ki){ if(!k.integrate && !k.ausFeeds)return; var el=g("kpi_"+ki); if(!el)return;
         var ch=k.channel||cfg.channel, dec=(k.dec!=null?k.dec:1), toKw=k.intScale;
         var wert=function(ff){ return k.ausFeeds ? k.ausFeeds(ff,ctx) : integKwh(ff,k.field,toKw); };
-        // Hauptwert: aus den Feeds des Kanals dieser Kennzahl
-        try{ el.textContent = fmt(wert(byChan[String(ch)]||[]), dec); }catch(e){ console.error(e); }   // eine fehlerhafte Kennzahl haelt die Grafiken nicht auf
+        // Hauptwert: aus den Feeds des Kanals dieser Kennzahl (k.dec darf eine Funktion des Wertes sein)
+        try{ var wv=wert(byChan[String(ch)]||[]); el.textContent = fmt(wv, typeof dec==="function" ? dec(wv) : dec); }catch(e){ console.error(e); }   // eine fehlerhafte Kennzahl haelt die Grafiken nicht auf
         // Zusatzzeile aus dem Zeitraum (k.unter.ausFeeds(feeds, ctx) -> Text), z. B. kuerzeste Pause unter "Ø Heizzyklus"
         if(k.unter && k.unter.ausFeeds){ var uz=g("kpi_"+ki+"_unter"); if(uz) try{ uz.textContent=k.unter.ausFeeds(byChan[String(ch)]||[], ctx)||""; }catch(e){ console.error(e); } }
         // Pruefwert in Klammern (k.pruef): zweite Rechnung aus einem anderen Kanal, nur zum Gegenpruefen
@@ -3352,7 +3357,7 @@ function pumpLaeufe(dp){ var runs=[], prevT=null, cr=null;
 //    60 s minus Laufzeit dieser Minute.
 //  - n Starts in einer Minute: n-1 Pausen, zusammen hoechstens 60 s minus Laufzeit -> die kuerzeste ist hoechstens der Durchschnitt.
 // Gibt es so einen Fall nicht, gilt ersatzweise der kleinste Abstand zwischen zwei Laeufen (volle Leerminuten + 30 s Mitte).
-function pumpKuerzestePause(ff){ var dp=zaehlerDeltas(ff,"field3","field2",1), best=null;
+function pumpPauseGeschaetzt(ff){ var dp=zaehlerDeltas(ff,"field3","field2",1), best=null;
   function nimm(v){ v=Math.max(1,Math.round(v)); if(best===null||v<best) best=v; }
   dp.forEach(function(o,i){ var frei=60*o.min-o.sec, vor=i>0?dp[i-1]:null, anschl=vor && Math.abs(vor.t-(o.t-o.min*60000))<1;
     if(o.n>=2) nimm(frei/(o.n-1));
@@ -3361,6 +3366,29 @@ function pumpKuerzestePause(ff){ var dp=zaehlerDeltas(ff,"field3","field2",1), b
       if(gap>=1 && (luecke===null||gap<luecke)) luecke=gap; });
     if(luecke!==null) best=Math.round(luecke*60+30); }
   return best; }
+// Exakt gemessene Pausen: Der Pumpwerk-Logger misst jede Pause zwischen zwei Einschaltungen auf die Millisekunde und meldet sie
+// ueber den HausBroker (MQTT) und dessen Bridge an Val Town (pumpwerk.ts, scripts/valtown_pumpwerk/). Gibt es im Zeitraum
+// mindestens eine gemessene Pause, ersetzt sie die Schaetzung; sonst (keine Messung, Val Town nicht erreichbar) bleibt die Schaetzung.
+// Grenze: Waehrend der Logger oder die Bridge nicht lief, fehlen Ereignisse - die kuerzeste gemessene Pause kann dann zu lang sein.
+var PUMPWERK_EREIGNISSE={ URL:"https://steffgrosjean--b64bf86edc6c11f186431607ee4eb77e.web.val.run" };
+// Ereignisse des Zeitraums {von, bis} (ms) holen -> { ereignisse:[...], zusammenfassung:{pause_min_s,...} } oder null
+// Bewusst ohne j()/Offline-Cache (jeder Zeitraum waere eine eigene Cache-Abfrage) und mit Zeitlimit: Antwortet Val Town nicht
+// innerhalb von 4 s, werden die Kacheln und Grafiken trotzdem gezeichnet (dann mit der Schaetzung).
+PUMPWERK_EREIGNISSE.hole=function(z){ if(!PUMPWERK_EREIGNISSE.URL) return Promise.resolve(null);
+  var ctl=window.AbortController ? new AbortController() : null, t=setTimeout(function(){ if(ctl) ctl.abort(); }, 4000);
+  return fetch(PUMPWERK_EREIGNISSE.URL+"?seit="+Math.floor(z.von/1000)+"&bis="+Math.ceil(z.bis/1000), {cache:"no-store", signal:ctl?ctl.signal:undefined})
+    .then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; })
+    .then(function(d){ clearTimeout(t); return d; }); };
+// Zusammenfassung mit gemessener kuerzester Pause oder null
+function pumpPauseExakt(ctx){ var e=ctx && ctx.ereignisse, z=e && e.zusammenfassung;
+  return (z && typeof z.pause_min_s==="number" && z.pause_min_s>=0) ? z : null; }
+function pumpKuerzestePause(ff,ctx){ var z=pumpPauseExakt(ctx); return z ? z.pause_min_s : pumpPauseGeschaetzt(ff); }
+// Gemessene Werte haben Nachkommastellen, die Schaetzung ist eine ganze Zahl (Sekunden)
+function pumpPauseDez(v){ return (v!==null && Math.abs(v-Math.round(v))>1e-9) ? 1 : 0; }
+// Zusatzzeile: woher der Wert kommt
+function pumpKuerzestePauseUnter(ff,ctx){ var z=pumpPauseExakt(ctx);
+  if(z) return "exakt gemessen"+(z.pause_min_t ? ", am "+new Date(z.pause_min_t*1000).toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"})+" "+hhmm(z.pause_min_t*1000) : "");
+  return pumpPauseGeschaetzt(ff)===null ? "" : "Schätzung aus den Minutenwerten (keine genaue Messung im Zeitraum)"; }
 // Ein Lauf gilt als Kurzlauf, wenn die Pumpe je Start weniger als PUMPE_KURZ_S Sekunden lief.
 var PUMPE_KURZ_S=30;
 // Kurzlaeufe: Anteil der Starts, bei denen die Pumpe insgesamt unter PUMPE_KURZ_S lief (Laufzeit je Start im Block)
@@ -3543,7 +3571,7 @@ var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk", extra:
     var z=pumpZustand(f), grn=(z==="Ein"||z==="Läuft");
     return {html:pumpeSvg(grn?"#2e9e5b":"#2b83c7"), title:"Pumpe: "+z}; },
   tabelle:{ title:"Tagesübersicht", tage:14, rechne:function(ff){ return pumpTageHtml(pumpTage(ff)); },
-    note:"Je Kalendertag aus den sekundengenauen Zählern: <b>Starts</b>, <b>Laufzeit</b>, <b>Ø/Start</b> (Laufzeit je Start), <b>Max/h</b> (die meisten Starts in einer Stunde), <b>Kurz</b> (Anteil der Starts, bei denen die Pumpe insgesamt weniger als 30 s lief; ein Lauf über eine Minutengrenze zählt als ein Lauf) und <b>Nacht</b> (Starts zwischen 0 und 5 Uhr). Orange/rot: Kurz ab 30 % bzw. 50 %, Nacht ab 10 bzw. 20 Starts – ein Hinweis auf zu wenig Vordruck im Membranbehälter bzw. eine kleine Leckage. Ausgegraut: für den Tag fehlen Messwerte. Unabhängig vom gewählten Zeitraum. <b>Kürzeste Pause</b> (Kachel oben, folgt dem Zeitraum) ist eine grobe Schätzung: Der Minutentakt zeigt Pausen nur ungenau, deshalb gilt meist eine obere Grenze (die Pause war höchstens so lang), abgeleitet aus Minuten, in denen die Pumpe nach vollem Lauf wieder startete oder mehrmals startete. Sekundengenau kann das nur der Logger am Pumpwerk messen." },
+    note:"Je Kalendertag aus den sekundengenauen Zählern: <b>Starts</b>, <b>Laufzeit</b>, <b>Ø/Start</b> (Laufzeit je Start), <b>Max/h</b> (die meisten Starts in einer Stunde), <b>Kurz</b> (Anteil der Starts, bei denen die Pumpe insgesamt weniger als 30 s lief; ein Lauf über eine Minutengrenze zählt als ein Lauf) und <b>Nacht</b> (Starts zwischen 0 und 5 Uhr). Orange/rot: Kurz ab 30 % bzw. 50 %, Nacht ab 10 bzw. 20 Starts – ein Hinweis auf zu wenig Vordruck im Membranbehälter bzw. eine kleine Leckage. Ausgegraut: für den Tag fehlen Messwerte. Unabhängig vom gewählten Zeitraum. <b>Kürzeste Pause</b> (Kachel oben, folgt dem Zeitraum): Der Logger am Pumpwerk misst jede Pause zwischen zwei Einschaltungen auf die Millisekunde und meldet sie über den HausBroker an Val Town; gibt es im Zeitraum mindestens eine gemessene Pause, zeigt die Kachel die kürzeste davon («exakt gemessen»). Fehlen Messungen (Logger oder Bridge war aus, noch nichts im Zeitraum, Val Town antwortet nicht), ist es eine grobe Schätzung aus dem Minutentakt: meist eine obere Grenze (die Pause war höchstens so lang), abgeleitet aus Minuten, in denen die Pumpe nach vollem Lauf wieder startete oder mehrmals startete. Die Zusatzzeile unter dem Wert sagt, was gilt." },
   kpis:[
     {field:"field1",label:"Pumpe",map:function(v){ return v>=0.5 ? "Läuft" : "Steht"; },
       ausLetzten:function(f){ var z=pumpZustand(f); return {text:z, color:PUMPE_ZUSTAND_FARBE[z]}; }},
@@ -3559,8 +3587,11 @@ var PUMPE=simpleView({ channel:3484334, icon:PUMPE_SVG, title:"Pumpwerk", extra:
     {label:"Max. Starts pro Stunde",unit:"×/h",dec:0,ausFeeds:pumpStartsProStunde},
     {label:"Ø Laufdauer je Start",unit:"s",dec:0,ausFeeds:pumpLaufdauerJeStart},
     {label:"Kurzläufe unter "+PUMPE_KURZ_S+" s",unit:"%",dec:0,ausFeeds:pumpKurzlaeufe},
-    {label:"Kürzeste Pause (Schätzung)",unit:"s",dec:0,ausFeeds:pumpKuerzestePause}
+    // Exakt gemessen (Logger -> HausBroker -> Val Town), sonst Schätzung aus den Minutenwerten; die Zusatzzeile sagt, was gilt
+    {label:"Kürzeste Pause",unit:"s",dec:pumpPauseDez,ausFeeds:pumpKuerzestePause,
+      unter:{ausFeeds:pumpKuerzestePauseUnter, titel:"Kürzeste Pause zwischen zwei Einschaltungen im Zeitraum. Exakt gemessen: der Logger am Pumpwerk misst jede Pause auf die Millisekunde und meldet sie über den HausBroker an Val Town. Ohne Messung im Zeitraum (oder wenn Val Town nicht antwortet) eine Schätzung aus den Minutenwerten von ThingSpeak, meist nur eine obere Grenze."}}
   ],
+  ereignisse:PUMPWERK_EREIGNISSE.hole,
   charts:[
     {title:"Laufsekunden pro Minute", unit:"s", yMin:0, yMax:60, yTicks:[{v:0},{v:15},{v:30},{v:45},{v:60}],
       note:"Aus den sekundengenauen Zählern rekonstruiert: Pro Minutenmeldung die Zunahme der „Laufzeit heute“ gegenüber der vorherigen. Jeder Balken ist ein Lauf der Pumpe (Höhe = Sekunden Laufzeit in dieser Minute, 0–60), auch wenn sie zum Meldezeitpunkt schon stand. Der orange Punkt über dem Balken zeigt, dass in dieser Minute eine Einschaltung stattfand (Grösse = Zahl der Starts). Bei langen Zeiträumen werden Minuten zusammengefasst (Ø Sekunden pro Minute).",
