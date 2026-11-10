@@ -671,7 +671,11 @@ function barChart(holder, bars, opts){
     // ueberdecken wuerde (knapp darueber), weicht sie ueber den Strich aus.
     var yLab=yTop; [b.hi,b.mark].forEach(function(lv){ if(lv==null)return; var yh=Y(lv); if(yh<=yLab && yh>yLab-26) yLab=yh; });
     if(!many) r+='<text x="'+(x+bw/2)+'" y="'+(yLab-6)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+fmt(b.show!=null?b.show:tp,opts.dec||0)+'</text>';
-    if(b.label) r+='<text x="'+(x+bw/2)+'" y="'+(H-22)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+b.label+'</text>'; });
+    if(b.label) r+='<text x="'+(x+bw/2)+'" y="'+(H-22)+'" text-anchor="middle" font-size="19" fill="var(--muted)">'+b.label+'</text>';
+    // b.marke = {f: Lage im Balken-Platz 0..1, n: Anzahl, farbe}: gestrichelte senkrechte Linie mit Raute oben (z. B. Programmversion), n > 1 als Zahl daneben
+    if(b.marke){ var mx=padL+slot*i+slot*Math.max(0.05,Math.min(0.95,b.marke.f)), mc=b.marke.farbe||"var(--muted)";
+      r+='<line x1="'+mx+'" x2="'+mx+'" y1="'+(padT-6)+'" y2="'+Y(0)+'" stroke="'+mc+'" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.8"/>'+
+        '<path d="M'+mx+' '+(padT-16)+' l7 7 l-7 7 l-7 -7 z" fill="'+mc+'"/>'+(b.marke.n>1?'<text x="'+(mx+10)+'" y="'+(padT-3)+'" font-size="16" fill="'+mc+'">'+b.marke.n+'</text>':''); } });
   if(L2){ var vMax2=niceMax(Math.max.apply(null,L2.werte.filter(function(v){ return v!=null; }))), Y2=function(v){ return padT+(H-padT-padB)*(1-v/vMax2); };
     [0,vMax2/2,vMax2].forEach(function(v){ yl+='<text x="'+(W-padR+8)+'" y="'+(Y2(v)+7)+'" text-anchor="start" font-size="21" fill="'+L2.color+'">'+String(Math.round(v*100)/100)+'</text>'; });   // z. B. 1.25 nicht zu 1.3 runden
     var d="", pen=false;
@@ -2859,6 +2863,45 @@ SAISON.panel={
      Monate/Saisons ab 10 HGT (sonst null: zu wenig Kaelte fuer eine Aussage).
    Tageswerte aus ASCHE.tage mit Glutstoss-Zaehlung (im Browser gemerkt). Die laufende Saison holt die Ansicht selbst; fruehere
    Saisons (ganze Minutenwerte, grosser Download) auf Knopfdruck - geladene Saisons stehen danach auch in der Saison-Bilanz (hz_bilanz). */
+/* Programmversionen der Heizungssteuerung (Repo HeizungTiba, "Heizung Release note.txt"; massgebend ist das Datum dort =
+   Stand auf der Steuerung). Nur Aenderungen, die das Brennverhalten betreffen koennen; reine Anzeige/Doku weggelassen.
+   Bei einer neuen Version hier nachfuehren. */
+var HEIZ_VERSIONEN=[
+  ["2017-05-02","1.0.0.24","Schnitzel- und Luftsteuerung überarbeitet, kontrolliertes Beenden"],
+  ["2017-05-06","1.0.0.25","Gluterhaltung überarbeitet (Lüfter 2 min)"],
+  ["2017-12-02","1.0.0.27","P- und I-Regelung eingebaut"],
+  ["2019-11-02","1.0.0.29","Lüfter aus über 95 °C, Parkposition 27 s"],
+  ["2019-11-03","1.0.0.30","Hand/Automatik: Heizzyklus zuerst beenden"],
+  ["2019-12-14","1.0.0.31","Erkennung «kein Feuer», kontrollierter Abbrand 120 statt 180 s"],
+  ["2020-09-27","1.0.0.32","Wackelkontakt SPS: Eingang Übertemperatur B verzögert"],
+  ["2020-10-06","1.0.0.33","Wackelkontakt SPS: Übertemperatur-Eingänge 5 s verzögert"],
+  ["2020-11-07","1.0.0.34","Wackelkontakt SPS: Schnitzelsicherheit beim Anfeuern nicht geprüft"],
+  ["2021-07-26","1.0.0.35","SPS repariert"],
+  ["2021-12-15","1.0.0.36","Brennraum kleiner: kürzere Intervallzeiten"],
+  ["2021-12-26","1.0.0.37","Anfeuern: Zusatzvorschub erst nach 5 Zustellungen, halbiert"],
+  ["2021-12-26","1.0.0.38","I-Anteil aus 7 °C vor Maximum"],
+  ["2021-12-29","1.0.0.39","Kaltstart optimiert (Abgasmessung bestanden)"],
+  ["2022-01-22","1.0.0.40","Sekundärlüfter nach Anfeuern aus, P-Vorschub später"],
+  ["2022-10-08","1.0.0.41","Kesselumwälzpumpe eingebaut, Initialwerte"],
+  ["2022-12-03","1.0.0.42","Entlastungshub (jeder 20. Vorschub rückwärts)"],
+  ["2022-12-13","1.0.0.43","P-Regler optimiert (Temperatur mit Pumpe stabiler)"],
+  ["2022-12-17","1.0.0.44","Standardwerte angepasst"],
+  ["2022-12-25","1.0.0.45","Entlastungshub einstellbar"],
+  ["2022-12-28","1.0.0.46","Ventilatorsteuerung optimiert"],
+  ["2022-12-30","1.0.0.47","Neue Vorschubberechnung mit dynamischem P- und I-Anteil"],
+  ["2023-02-24","1.0.0.49","Gluterhaltungspause 45 min einstellbar, Lüfter 60 statt 90 s"],
+  ["2023-12-27","1.0.0.52","Gluterhaltungspause 35 min, aufheizen 3 °C über Minimum"],
+  ["2025-02-05","1.0.0.53","Initialwerte, I-Anteil früher zurücknehmen"],
+  ["2026-01-31","1.0.0.54","Regelung auf Mitteltemperatur (weniger Takten)"],
+  ["2026-03-30","1.0.0.55","Bugfix: Luft schliessen bei zu hohem Kessel"]];
+HEIZ_VERSIONEN.FARBE="#7a5cc7";
+// Versionen von..bis (YYYY-MM-DD, inklusive) als Marker am Balken: f = Lage im Zeitraum, Tooltip-Zeilen (hoechstens 4, sonst "und n weitere")
+HEIZ_VERSIONEN.marke=function(b, von, bis){ var v=HEIZ_VERSIONEN.filter(function(x){ return x[0]>=von && x[0]<=bis; }); if(!v.length) return b;
+  var t0=Date.parse(von+"T00:00:00"), t1=Date.parse(bis+"T23:59:59"), f=(Date.parse(v[0][0]+"T12:00:00")-t0)/Math.max(1,t1-t0);
+  b.marke={f:f, n:v.length, farbe:HEIZ_VERSIONEN.FARBE};
+  var zeilen=v.slice(0,4).map(function(x){ return '<span style="color:'+HEIZ_VERSIONEN.FARBE+'">◆ V'+x[1]+'</span> '+(+x[0].slice(8))+"."+(+x[0].slice(5,7))+"."+x[0].slice(0,4)+": "+x[2]; });
+  if(v.length>4) zeilen.push("und "+(v.length-4)+" weitere");
+  b.tipExtra=(b.tipExtra?b.tipExtra+"<br>":"")+zeilen.join("<br>"); return b; };
 var ZYKLEN={ TAGE:30, AUTO:70, _t:0, _laeuft:false, _tage30:null, _d:{}, _temps:{}, jahr:null };   // AUTO: so viele fehlende Tage holt die Ansicht ohne Knopf
 ZYKLEN.MODI={tage:"Tage", monate:"Monate", saisons:"Saisons"};
 ZYKLEN.modus=function(){ var m=lsGet("zy_modus"); return ZYKLEN.MODI[m]?m:"tage"; };
@@ -2880,7 +2923,7 @@ ZYKLEN.summe=function(tage, temps){ var heute=ymdLocal(new Date()), s={zyk:0, gl
   s.jeHgt = s.hgt>=10 ? s.zykT/s.hgt : null; s.tMittel = s.tN ? s.tSum/s.tN : null; return s; };
 ZYKLEN.zeichnen=function(){ var el=document.getElementById("zy-chart"), nt=document.getElementById("zy-note"), mb=document.getElementById("zy-mehr"); if(!el) return;
   var heute=ymdLocal(new Date()), m=ZYKLEN.modus(), cur=SAISON.aktuell(), kurz=function(ymd){ return (+ymd.slice(8))+"."+(+ymd.slice(5,7))+"."; };
-  var LEG=[{color:"var(--amber)", label:"Heizzyklen"}, {color:"var(--amber-lt)", label:"Gluterhaltung (Glutstösse)"}, {color:"var(--blue)", label:"Heizzyklen je Heizgradtag (rechts)"}, {color:"var(--red)", dash:true, label:"Ø Aussentemperatur (°C, ganz rechts)"}];
+  var LEG=[{color:"var(--amber)", label:"Heizzyklen"}, {color:"var(--amber-lt)", label:"Gluterhaltung (Glutstösse)"}, {color:"var(--blue)", label:"Heizzyklen je Heizgradtag (rechts)"}, {color:"var(--red)", dash:true, label:"Ø Aussentemperatur (°C, ganz rechts)"}, {color:HEIZ_VERSIONEN.FARBE, dash:true, label:"◆ Programmversion"}];
   var LIN=function(w){ return {werte:w, color:"var(--blue)", unit:"je Heizgradtag", dec:2}; };
   var TMP=function(w){ return {werte:w, color:"var(--red)", unit:"°C", achse:"°", dec:1, name:"Ø aussen"}; };
   var leer=function(t){ el.innerHTML='<div class="chart-empty">'+t+'</div>'; };
@@ -2893,8 +2936,8 @@ ZYKLEN.zeichnen=function(){ var el=document.getElementById("zy-chart"), nt=docum
     var bars=D.tage.map(function(t, i){ var w=t.w||{}, z=w.zyk||0, g=w.glut||0, T=D.temps[t.ymd], h=T!=null?hgt(T):null;
       if(t.ymd<heute && w.n>0){ sz+=z; sg+=g; n++; if(T!=null){ tS+=T; tN++; } }
       lin.push(t.ymd<heute && w.n>0 && h!=null && h>=2 ? z/h : null); tmp.push(T!=null ? T : null);
-      return {v:z, v2:g, color:"var(--amber)", color2:"var(--amber-lt)", show:z+g, label:(i%5===(D.tage.length-1)%5) ? kurz(t.ymd) : "",
-        tip:ASCHE.fmtTag(t.ymd)+(t.ymd===heute?" (bis jetzt)":""), tipExtra:z+" Heizzyklen · "+g+" Gluterhaltung"+(h!=null?" · "+fmt(h,1)+" Heizgradtage":"")+(w.n>0?"":" · keine Daten")}; });
+      return HEIZ_VERSIONEN.marke({v:z, v2:g, color:"var(--amber)", color2:"var(--amber-lt)", show:z+g, label:(i%5===(D.tage.length-1)%5) ? kurz(t.ymd) : "",
+        tip:ASCHE.fmtTag(t.ymd)+(t.ymd===heute?" (bis jetzt)":""), tipExtra:z+" Heizzyklen · "+g+" Gluterhaltung"+(h!=null?" · "+fmt(h,1)+" Heizgradtage":"")+(w.n>0?"":" · keine Daten")}, t.ymd, t.ymd); });
     if(!bars.some(function(b){ return b.show>0; })) leer("keine Heizzyklen in den letzten "+ZYKLEN.TAGE+" Tagen");
     else barChart(el, bars, {unit:"×", autoW:true, legend:LEG, linie:LIN(lin), linie2:TMP(tmp)});
     if(nt) nt.textContent=n ? "Ø je Tag (ohne heute): "+fmt(sz/n,1)+" Heizzyklen und "+fmt(sg/n,1)+" Gluterhaltung"+(tN?", Ø Aussentemperatur "+fmt(tS/tN,1).replace("-","−")+" °C":"")+"." : "";
@@ -2905,17 +2948,17 @@ ZYKLEN.zeichnen=function(){ var el=document.getElementById("zy-chart"), nt=docum
     var proM={}; S.tage.forEach(function(t){ (proM[t.ymd.slice(0,7)]=proM[t.ymd.slice(0,7)]||[]).push(t); });
     var lm=[], bm=[], tm=[];
     Object.keys(proM).sort().forEach(function(mo){ var su=ZYKLEN.summe(proM[mo], S.temps); if(!su.tage) return; var mi=+mo.slice(5,7)-1;
-      bm.push(balken(su, LADEN.KURZ[mi]+" "+mo.slice(2,4), LADEN.MONAT[mi]+" "+mo.slice(0,4)+(mo===heute.slice(0,7)?" (bis gestern)":""))); lm.push(su.jeHgt); tm.push(su.tMittel); });
+      bm.push(HEIZ_VERSIONEN.marke(balken(su, LADEN.KURZ[mi]+" "+mo.slice(2,4), LADEN.MONAT[mi]+" "+mo.slice(0,4)+(mo===heute.slice(0,7)?" (bis gestern)":"")), mo+"-01", ymdLocal(new Date(+mo.slice(0,4), mi+1, 0)))); lm.push(su.jeHgt); tm.push(su.tMittel); });
     if(!bm.length) leer("keine Daten für die Saison "+SAISON.name(jahr)); else barChart(el, bm, {unit:"× je Tag", dec:1, autoW:true, legend:LEG, linie:LIN(lm), linie2:TMP(tm)});
-    if(nt) nt.textContent="Balken: Ø je Tag (nur abgeschlossene Tage mit Daten), Summen im Tooltip. Linie: Heizzyklen je Heizgradtag (ab 10 Heizgradtagen im Monat). Rot gestrichelt: Ø Aussentemperatur der gezählten Tage (Open-Meteo, Tagesmittel).";
+    if(nt) nt.textContent="Balken: Ø je Tag (nur abgeschlossene Tage mit Daten), Summen im Tooltip. Linie: Heizzyklen je Heizgradtag (ab 10 Heizgradtagen im Monat). Rot gestrichelt: Ø Aussentemperatur der gezählten Tage (Open-Meteo, Tagesmittel). Violett: Programmversion der Steuerung (Tooltip).";
     return; }
   // Saisons: die laufende und alle schon ganz geladenen
   var jahre=Object.keys(ZYKLEN._d).map(Number).sort(function(a,b){ return a-b; }), bs=[], ls=[], ts=[];
   jahre.forEach(function(y){ var su=ZYKLEN.summe(ZYKLEN._d[y].tage, ZYKLEN._d[y].temps); if(!su.tage) return;
-    bs.push(balken(su, SAISON.name(y), "Saison "+SAISON.name(y)+(y===cur?" (bis gestern)":""))); ls.push(su.jeHgt); ts.push(su.tMittel); });
+    bs.push(HEIZ_VERSIONEN.marke(balken(su, SAISON.name(y), "Saison "+SAISON.name(y)+(y===cur?" (bis gestern)":"")), y+"-06-01", (y+1)+"-05-31")); ls.push(su.jeHgt); ts.push(su.tMittel); });
   if(!bs.length) leer(ZYKLEN._laeuft?"wird geladen…":"noch keine Saison geladen"); else barChart(el, bs, {unit:"× je Tag", dec:1, autoW:true, legend:LEG, linie:LIN(ls), linie2:TMP(ts)});
   var lo=cur-1; while(ZYKLEN._d[lo]) lo--; knopf(lo>=SAISON.AB ? lo : null);
-  if(nt) nt.textContent="Saison = 1. September bis 31. Mai. Balken: Ø je Tag, Linie: Heizzyklen je Heizgradtag, rot gestrichelt: Ø Aussentemperatur. Frühere Saisons lädt der Knopf einmal von ThingSpeak (grosser Download, besser im WLAN); danach stehen sie auch in der Saison-Bilanz.";
+  if(nt) nt.textContent="Saison = 1. September bis 31. Mai. Balken: Ø je Tag, Linie: Heizzyklen je Heizgradtag, rot gestrichelt: Ø Aussentemperatur, violett: Programmversionen der Steuerung (Sommer zählt zur folgenden Saison, Details im Tooltip). Frühere Saisons lädt der Knopf einmal von ThingSpeak (grosser Download, besser im WLAN); danach stehen sie auch in der Saison-Bilanz.";
 };
 // eine Saison holen und zeichnen; fruehere werden in hz_bilanz gemerkt (auch fuer die Saison-Bilanz)
 ZYKLEN.holen=function(jahr){ var msg=document.getElementById("zy-msg"); ZYKLEN._laeuft=true; ZYKLEN.zeichnen();
