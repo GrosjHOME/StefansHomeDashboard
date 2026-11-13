@@ -2305,17 +2305,29 @@ ASCHE.austrFlags=function(ff){ var fl=[], lauf=[];
     else zu(); });
   zu(); return fl; };
 // Tageswerte aus den Minuten-Feeds eines Tages
-ASCHE.tagWerte=function(ff){ var brenn=0, zyk=0, glut=0; heizPhasen(ff).forEach(function(p){ brenn+=p.min; if(p.voll) zyk++; else glut++; });
+ASCHE.tagWerte=function(ff){ var brenn=0, zyk=0, glut=0, ph=heizPhasen(ff); ph.forEach(function(p){ brenn+=p.min; if(p.voll) zyk++; else glut++; });
   var au=0, st=0; ASCHE.austrFlags(ff).forEach(function(c){ if(c===1) au++; else if(c===2) st++; });
-  return {brenn:Math.round(brenn), austr:au, stoer:st, zyk:zyk, glut:glut, n:ff.length}; };   // glut = Glutstoesse (Gluterhaltung), seit 11/2026
+  // Abgas-Spitze je Heizzyklus (hoechster gueltiger Abgaswert im Zyklus), Median des Tages: steigt mit dem Belag im Waermetauscher (Reinigungsanzeige)
+  var pts=[], sp=[]; ff.forEach(function(x){ var a=num(x.field8), k=num(x.field1); if(a===null || k===null || a>400 || a<-100 || k<=0 || !kesselOk(k)) return; pts.push({t:Date.parse(x.created_at), a:a}); });
+  ph.forEach(function(p){ if(!p.voll) return; var mx=null; pts.forEach(function(q){ if(q.t>=p.s && q.t<=p.e && (mx===null || q.a>mx)) mx=q.a; }); if(mx!==null) sp.push(mx); });
+  sp.sort(function(a,b){ return a-b; });
+  var asp=sp.length ? (sp.length%2 ? sp[(sp.length-1)/2] : (sp[sp.length/2-1]+sp[sp.length/2])/2) : null;
+  return {brenn:Math.round(brenn), austr:au, stoer:st, zyk:zyk, glut:glut, asp:asp===null?null:Math.round(asp*10)/10, n:ff.length}; };   // glut = Glutstoesse (seit 11/2026), asp = Abgas-Spitze (seit 11/2026)
 // Tageswerte von vonYmd bis bisYmd (ohne: heute): gecachte Tage aus dem Browser, fehlende in zusammenhaengenden Bereichen holen.
 // mitGlut: gecachte Tage ohne Glutstoss-Zaehlung (glut, vor 11/2026 gemerkt) gelten als fehlend und werden einmal neu geholt -
-// nur dort, wo sie gebraucht wird (Grafik Heizzyklen/Gluterhaltung), damit nicht alle Saisons neu geladen werden
-ASCHE.tage=function(vonYmd, bisYmd, mitGlut){ var heute=ymdLocal(new Date()), vorgestern=ymdLocal(new Date(Date.now()-2*864e5)), tage=[], fehlt=[];
+// nur dort, wo sie gebraucht wird (Grafik Heizzyklen/Gluterhaltung), damit nicht alle Saisons neu geladen werden.
+// mitGlut "asp": zusaetzlich die Abgas-Spitze je Heizzyklus (asp, seit 11/2026) - nur fuer die letzten Wochen (Reinigungsanzeige, Heizzyklen-Tage).
+// Laeuft dieselbe Abfrage schon (Heizzyklen und Reinigung fragen beim Oeffnen denselben Bereich), wird sie geteilt statt doppelt geholt.
+ASCHE._lauf={};
+ASCHE.tage=function(vonYmd, bisYmd, mitGlut){ var key=vonYmd+"|"+bisYmd+"|"+mitGlut; if(ASCHE._lauf[key]) return ASCHE._lauf[key];
+  var p=ASCHE._tage(vonYmd, bisYmd, mitGlut); ASCHE._lauf[key]=p;
+  var weg=function(){ delete ASCHE._lauf[key]; }; p.then(weg, weg); return p; };
+ASCHE._tage=function(vonYmd, bisYmd, mitGlut){ var heute=ymdLocal(new Date()), vorgestern=ymdLocal(new Date(Date.now()-2*864e5)), tage=[], fehlt=[];
   var ende=(bisYmd && bisYmd<heute) ? bisYmd : heute;
   for(var k=vonYmd; k<=ende; k=ASCHE.folgetag(k)){ var c=k<heute?lsGet("hz_tag3_"+k):null, w=null;
     if(c){ try{ w=JSON.parse(c); }catch(e){ w=null; } }
     if(w && mitGlut && w.glut===undefined) w=null;
+    if(w && mitGlut==="asp" && w.asp===undefined) w=null;
     if(!w) fehlt.push(k); tage.push({ymd:k, w:w}); }
   if(!fehlt.length) return Promise.resolve(tage);
   var bereiche=[], cur=null; fehlt.forEach(function(k){ if(cur && ASCHE.folgetag(cur.bis)===k) cur.bis=k; else { cur={von:k, bis:k}; bereiche.push(cur); } });
@@ -2994,12 +3006,119 @@ ZYKLEN.panel={
     var heute=ymdLocal(new Date()), von=ymdLocal(new Date(Date.now()-(ZYKLEN.TAGE-1)*864e5)), j1=SAISON.aktuell(), j0=+von.slice(0,4)-(+von.slice(5,7)>=9?0:1);
     // laufende Saison neu (heute), dann die Ansicht vervollstaendigen
     delete ZYKLEN._d[j1];
-    Promise.all([ASCHE.tage(von, heute, true), ZYKLEN.temps(j1), j0!==j1 ? ZYKLEN.temps(j0) : Promise.resolve({})])
+    Promise.all([ASCHE.tage(von, heute, "asp"), ZYKLEN.temps(j1), j0!==j1 ? ZYKLEN.temps(j0) : Promise.resolve({})])
       .then(function(r){ var temps={}; [r[2], r[1]].forEach(function(t){ Object.keys(t||{}).forEach(function(k){ temps[k]=t[k]; }); });
         ZYKLEN._tage30={tage:r[0], temps:temps}; ZYKLEN.zeichnen(); ZYKLEN.sichern(); })
       .catch(function(e){ ZYKLEN._t=0; console.error(e); var el=document.getElementById("zy-chart"); if(el) el.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; }); }
 };
 // Zwei Zusatz-Bereiche in einer Ansicht (simpleView kennt nur ein cfg.extra): Aschebox und Schnitzel-Bunker nacheinander
+/* ================= Kessel-Reinigung (Heizung) =================
+   Belag im Waermetauscher laesst weniger Waerme ins Wasser - das Abgas wird heisser. Nach dem Reinigen faellt die Abgas-Spitze
+   deutlich (12.11.2026: von etwa 200 auf etwa 150 °C) und steigt dann mit dem Belag langsam wieder an.
+   - Kennzahl je Tag: Median der Abgas-Spitzen der Heizzyklen (asp aus ASCHE.tagWerte, Glutstoesse zaehlen nicht).
+   - Bezug = Wert nach der letzten Reinigung: Median der ersten bis zu 3 Tage danach (der Reinigungstag selbst ist gemischt und zaehlt nicht).
+   - Jetzt = Median der letzten 3 Tage mit Heizzyklen (heute bis jetzt eingeschlossen). Anstieg = Jetzt - Bezug:
+     unter WARN K gruen, bis ROT K orange, ab ROT K rot = Reinigung empfohlen. Ab 5 Tagen nach der Reinigung zusaetzlich die
+     Schaetzung, wann der Anstieg ROT K erreicht (Gerade durch die Tageswerte seit der Reinigung).
+   - Reinigungen: Val Town heizung.ts (Blob "kessel_reinigungen", Knopf "Kessel gereinigt", gleicher Token wie Asche). Liefert die
+     Val-Town-Datei das Feld "reinigungen" noch nicht (alte heizung.ts), werden sie nur in diesem Browser gefuehrt - nie an die alte
+     Datei geschickt, die sie sonst als Asche-Leerung speichern wuerde. */
+var REINIGUNG={ TAGE:30, MAX_TAGE:120, WARN:20, ROT:30, _t:0, _vt:null };
+REINIGUNG.lokal=function(){ try{ var a=JSON.parse(localStorage.getItem("kessel_reinigungen")||"[]"); return Array.isArray(a)?a:[]; }catch(e){ return []; } };
+// {l: [ISO, ...] aufsteigend, vt: true = auf Val Town gespeichert}
+REINIGUNG.liste=function(){ if(!ASCHE.URL) return Promise.resolve({l:REINIGUNG.lokal(), vt:false});
+  return j(ASCHE.URL).then(function(r){ var vt=!!(r && Array.isArray(r.reinigungen)); REINIGUNG._vt=vt; return {l:(vt?r.reinigungen:REINIGUNG.lokal()).slice().sort(), vt:vt}; }); };
+REINIGUNG.schreiben=function(method, zeit){
+  if(REINIGUNG._vt) return ASCHE.senden(method, {art:"reinigung", zeit:zeit});
+  var l=REINIGUNG.lokal(); if(method==="POST"){ if(l.indexOf(zeit)<0) l.push(zeit); } else l=l.filter(function(z){ return z!==zeit; });
+  l.sort(); try{ localStorage.setItem("kessel_reinigungen", JSON.stringify(l)); }catch(e){} return Promise.resolve({reinigungen:l}); };
+REINIGUNG.median=function(a){ if(!a.length) return null; var s=a.slice().sort(function(x,y){ return x-y; }); return s.length%2 ? s[(s.length-1)/2] : (s[s.length/2-1]+s[s.length/2])/2; };
+// Auswertung aus Tageswerten [{ymd, w}] und Reinigungen [ISO]
+REINIGUNG.rechnen=function(tage, rein){ var mit=tage.filter(function(t){ return t.w && t.w.asp!=null; }), R=REINIGUNG;
+  var jetzt=R.median(mit.slice(-3).map(function(t){ return t.w.asp; }));
+  var letzte=rein.length ? rein[rein.length-1] : null, rTag=letzte ? ymdLocal(new Date(letzte)) : null, e={jetzt:jetzt, letzte:letzte, rTag:rTag, nach:null, vor:null, anstieg:null, prog:null, nNach:0};
+  if(rTag){
+    var nach=mit.filter(function(t){ return t.ymd>rTag; }), vor=mit.filter(function(t){ return t.ymd<rTag && t.ymd>=ymdLocal(new Date(Date.parse(rTag+"T12:00:00")-10*864e5)); });
+    e.nach=R.median(nach.slice(0,3).map(function(t){ return t.w.asp; })); e.vor=R.median(vor.slice(-3).map(function(t){ return t.w.asp; })); e.nNach=nach.length;
+    if(e.nach!==null && jetzt!==null) e.anstieg=jetzt-e.nach;
+    // Trend seit der Reinigung (ab 5 Tagen): Tage bis Bezug + ROT
+    if(nach.length>=5 && e.nach!==null){ var t0=Date.parse(rTag+"T12:00:00"), xs=nach.map(function(t){ return (Date.parse(t.ymd+"T12:00:00")-t0)/864e5; }), ys=nach.map(function(t){ return t.w.asp; });
+      var mx=xs.reduce(function(a,b){ return a+b; },0)/xs.length, my=ys.reduce(function(a,b){ return a+b; },0)/ys.length, sxy=0, sxx=0;
+      xs.forEach(function(x,i){ sxy+=(x-mx)*(ys[i]-my); sxx+=(x-mx)*(x-mx); });
+      var k=sxx>0 ? sxy/sxx : 0;   // K je Tag
+      if(k>0.1){ var tag=mx+((e.nach+R.ROT)-my)/k, heuteX=(Date.parse(ymdLocal(new Date())+"T12:00:00")-t0)/864e5; e.prog={kTag:k, inTagen:Math.max(0, Math.round(tag-heuteX))}; } else e.prog={kTag:k, inTagen:null}; } }
+  e.farbe = e.anstieg===null ? "" : e.anstieg>=R.ROT ? "var(--red)" : e.anstieg>=R.WARN ? "var(--amber)" : "var(--green)";
+  return e; };
+REINIGUNG.zeichnen=function(tage, rein){ var g=function(id){ return document.getElementById(id); }, el=g("rg-chart"); if(!el) return;
+  var R=REINIGUNG, e=R.rechnen(tage, rein), set=function(id,txt,farbe){ var x=g(id); if(x){ x.innerHTML=txt; x.style.color=farbe||""; } }, grad=function(v){ return v===null?"–":fmt(v,0); };
+  set("rg-jetzt", grad(e.jetzt)); set("rg-nach", grad(e.nach)); set("rg-vor", grad(e.vor));
+  set("rg-anstieg", e.anstieg===null?"–":(e.anstieg>=0?"+":"−")+fmt(Math.abs(e.anstieg),0), e.farbe);
+  var tg=e.rTag ? Math.round((Date.parse(ymdLocal(new Date())+"T12:00:00")-Date.parse(e.rTag+"T12:00:00"))/864e5) : 0;   // Kalendertage
+  set("rg-letzte", e.letzte ? ASCHE.fmtZeit(Date.parse(e.letzte))+" · "+(tg===0?"heute":tg===1?"gestern":"vor "+tg+" Tagen") : "noch nicht eingetragen");
+  var st = !e.letzte ? "Trag die letzte Reinigung mit <b>Kessel gereinigt</b> ein, dann zeigt die Anzeige den Anstieg seither."
+    : e.nach===null ? "Noch keine Heizzyklen nach der Reinigung – der Bezugswert kommt mit dem ersten ganzen Tag."
+    : e.anstieg>=R.ROT ? "<b>Reinigung empfohlen</b> – die Abgas-Spitze liegt "+fmt(e.anstieg,0)+" K über dem Wert nach der letzten Reinigung."
+    : e.anstieg>=R.WARN ? "Belag nimmt zu – ab +"+R.ROT+" K wird die Reinigung empfohlen."
+    : "In Ordnung – ab +"+R.ROT+" K wird die Reinigung empfohlen.";
+  if(e.prog && e.anstieg!==null && e.anstieg<R.ROT) st+=e.prog.inTagen===null ? " Bisher kein Anstieg erkennbar." : " Bei gleichem Anstieg ("+fmt(e.prog.kTag,1)+" K je Tag) etwa in <b>"+e.prog.inTagen+" Tag"+(e.prog.inTagen===1?"":"en")+"</b>.";
+  set("rg-status", st, e.anstieg!==null && e.anstieg>=R.ROT ? "var(--red)" : "");
+  var t=g("rg-tag"); if(t){ t.textContent=e.anstieg===null?"":e.anstieg>=R.ROT?"reinigen":e.anstieg>=R.WARN?"beachten":"ok"; t.style.display=e.anstieg===null?"none":""; t.style.color=e.farbe; }
+  // Grafik: letzte TAGE Tage, Balken = Abgas-Spitze, Farbe nach dem Anstieg gegen den Bezug der davor liegenden Reinigung, Raute = Reinigung
+  var heute=ymdLocal(new Date()), von=ymdLocal(new Date(Date.now()-(R.TAGE-1)*864e5)), zeige=tage.filter(function(t){ return t.ymd>=von; }), kurz=function(ymd){ return (+ymd.slice(8))+"."+(+ymd.slice(5,7))+"."; };
+  var bezugVon=function(ymd){ var r=rein.filter(function(z){ return ymdLocal(new Date(z))<ymd; }); if(!r.length) return null; var rt=ymdLocal(new Date(r[r.length-1]));
+    return R.median(tage.filter(function(t){ return t.w && t.w.asp!=null && t.ymd>rt; }).slice(0,3).map(function(t){ return t.w.asp; })); };
+  var bars=zeige.map(function(t,i){ var v=t.w && t.w.asp!=null ? t.w.asp : 0, bz=bezugVon(t.ymd), d=(v && bz!==null) ? v-bz : null;
+    var b={v:v, color:d===null?"var(--muted)":d>=R.ROT?"var(--red)":d>=R.WARN?"var(--amber)":"var(--green)", label:(i%5===(zeige.length-1)%5) ? kurz(t.ymd) : "",
+      tip:ASCHE.fmtTag(t.ymd)+(t.ymd===heute?" (bis jetzt)":""), show:v||null,
+      tipExtra:v ? "Abgas-Spitze (Median von "+(t.w.zyk||0)+" Heizzyklen)"+(d!==null?"<br>"+(d>=0?"+":"−")+fmt(Math.abs(d),0)+" K gegen nach der Reinigung":"") : "keine Heizzyklen"};
+    var rt=rein.filter(function(z){ return ymdLocal(new Date(z))===t.ymd; });
+    if(rt.length){ var d0=new Date(rt[0]); b.marke={f:(d0.getHours()*60+d0.getMinutes())/1440, n:rt.length, farbe:"var(--blue)"};
+      b.tipExtra+='<br><span style="color:var(--blue)">◆ Kessel gereinigt '+("0"+d0.getHours()).slice(-2)+":"+("0"+d0.getMinutes()).slice(-2)+'</span>'; }
+    return b; });
+  if(!bars.some(function(b){ return b.v>0; })) el.innerHTML='<div class="chart-empty">keine Heizzyklen in den letzten '+R.TAGE+' Tagen</div>';
+  else barChart(el, bars, {unit:"°C", autoW:true, legend:[{color:"var(--green)", label:"Abgas-Spitze: bis +"+R.WARN+" K"}, {color:"var(--amber)", label:"bis +"+R.ROT+" K"}, {color:"var(--red)", label:"ab +"+R.ROT+" K"}, {color:"var(--muted)", label:"ohne Bezug"}, {color:"var(--blue)", dash:true, label:"◆ Kessel gereinigt"}]});
+  var m=g("rg-hinweis"); if(m) m.innerHTML=(ASCHE.URL && REINIGUNG._vt===false) ? '<span style="color:var(--amber)">Reinigungen werden zurzeit nur in diesem Browser gespeichert: in Val Town die neue <code>heizung.ts</code> hineinkopieren (README, Kessel-Reinigung).</span>' : ""; };
+REINIGUNG.panel={
+  reset:function(){ REINIGUNG._t=0; },
+  html:function(){ return ""; },
+  htmlTab:function(){ var heute=ymdLocal(new Date()), wert=function(k,id,unit,cls){ return '<div'+(cls?' class="'+cls+'"':'')+'><dt>'+k+'</dt><dd><span id="'+id+'">–</span>'+(unit?' <small>'+unit+'</small>':'')+'</dd></div>'; };
+    return '<div class="panel"><h2>🧹 Kessel-Reinigung <span class="tag" id="rg-tag" style="display:none"></span></h2>'+
+      '<dl class="as-werte">'+wert("Abgas-Spitze jetzt (Ø 3 Tage)","rg-jetzt","°C","as-l")+wert("Anstieg seit Reinigung","rg-anstieg","K","as-l")+wert("Letzte Reinigung","rg-letzte","","as-l")+
+        wert("Nach der Reinigung","rg-nach","°C","as-r")+wert("Vor der Reinigung","rg-vor","°C","as-r")+'</dl>'+
+      '<div class="note" id="rg-status" style="margin:8px 0">wird geladen…</div>'+
+      '<div id="rg-chart"><div class="chart-empty">wird geladen…</div></div>'+
+      '<div class="frei" style="margin:8px 0 0;padding:0;background:transparent;box-shadow:none">'+
+        '<label>Gereinigt am<input type="date" id="rg-d" value="'+heute+'" max="'+heute+'"></label>'+
+        '<label>Uhrzeit<input type="time" id="rg-t" value="'+ASCHE.jetztHm()+'"></label>'+
+        '<button class="btn" id="rg-ok">Kessel gereinigt</button><button class="btn" id="rg-undo">Letzte Reinigung löschen</button><span class="frei-msg" id="rg-msg"></span></div>'+
+      '<div class="note" id="rg-hinweis"></div>'+
+      '<details class="note as-info"><summary>So wird gerechnet</summary>Belag im Wärmetauscher lässt weniger Wärme ins Wasser, das Abgas wird heisser. Gemessen wird je Tag die <b>Abgas-Spitze</b> der Heizzyklen (Median, Glutstösse zählen nicht). '+
+        '<b>Nach der Reinigung</b> = Median der ersten bis zu 3 Tage nach dem Reinigungstag (der Tag selbst ist gemischt), <b>Vor der Reinigung</b> = die 3 Tage davor, <b>jetzt</b> = die letzten 3 Tage mit Heizzyklen. '+
+        '<b>Anstieg</b> = jetzt − nach der Reinigung: bis +'+REINIGUNG.WARN+' K grün, bis +'+REINIGUNG.ROT+' K orange, ab +'+REINIGUNG.ROT+' K rot = Reinigung empfohlen. Ab 5 Tagen nach der Reinigung schätzt eine Gerade durch die Tageswerte, wann +'+REINIGUNG.ROT+' K erreicht sind. '+
+        'Auch andere Schnitzel (Feuchte) oder Luft verschieben die Abgastemperatur – die Anzeige ist ein Hinweis, kein Messgerät. <b>Kessel gereinigt</b> trägt die Reinigung ein (gespeichert auf Val Town wie die Asche-Leerungen, gleicher Token).</details></div>'; },
+  bind:function(){ var g=function(id){ return document.getElementById(id); };
+    function sag(t,farbe){ var m=g("rg-msg"); if(m){ m.textContent=t; m.style.color=farbe||"var(--red)"; } }
+    function neu(){ REINIGUNG._t=0; REINIGUNG.panel.load(); }
+    if(g("rg-ok")) g("rg-ok").addEventListener("click",function(){ var d=g("rg-d").value, hm=g("rg-t").value||"12:00", ts=new Date(d+"T"+hm+":00").getTime();
+      if(!d || isNaN(ts)){ sag("Bitte Datum und Uhrzeit prüfen."); return; }
+      if(ts>Date.now()+60000){ sag("Die Reinigung liegt in der Zukunft – bitte die Uhrzeit prüfen."); return; }
+      if(!confirm("Kessel-Reinigung am "+ASCHE.fmtTag(d)+" um "+hm+" Uhr eintragen?")) return;
+      (REINIGUNG._vt===null ? REINIGUNG.liste() : Promise.resolve()).then(function(){ return REINIGUNG.schreiben("POST", new Date(ts).toISOString()); })
+        .then(function(){ sag("Reinigung eingetragen.","var(--green)"); neu(); }).catch(function(e){ sag("Nicht gespeichert: "+e.message); }); });
+    if(g("rg-undo")) g("rg-undo").addEventListener("click",function(){ REINIGUNG.liste().then(function(d){ if(!d.l.length){ sag("Keine Reinigung vorhanden."); return; }
+      var z=d.l[d.l.length-1]; if(!confirm("Letzte Reinigung ("+ASCHE.fmtZeit(Date.parse(z))+") löschen?")) return;
+      return REINIGUNG.schreiben("DELETE", z).then(function(){ sag("Reinigung gelöscht.","var(--green)"); neu(); }); }).catch(function(e){ sag("Nicht gelöscht: "+e.message); }); }); },
+  load:function(){ if(Date.now()-REINIGUNG._t<600000) return; REINIGUNG._t=Date.now(); var R=REINIGUNG;
+    var heute=ymdLocal(new Date()), von=ymdLocal(new Date(Date.now()-(ZYKLEN.TAGE-1)*864e5));   // gleicher Bereich wie die Heizzyklen: die Abfrage wird geteilt
+    R.liste().catch(function(){ R._vt=null; return {l:R.lokal(), vt:false}; }).then(function(rd){
+      // fuer Bezug und Vergleich auch die Tage um die letzte Reinigung, falls sie vor dem Bereich liegt (hoechstens MAX_TAGE zurueck)
+      var rTag=rd.l.length ? ymdLocal(new Date(rd.l[rd.l.length-1])) : null, frueh=rTag ? ymdLocal(new Date(Date.parse(rTag+"T12:00:00")-10*864e5)) : null, grenze=ymdLocal(new Date(Date.now()-R.MAX_TAGE*864e5));
+      if(frueh && frueh<grenze) frueh=grenze;
+      return ASCHE.tage(von, heute, "asp").then(function(t){ if(!frueh || frueh>=von) return t;
+        return ASCHE.tage(frueh, ymdLocal(new Date(Date.parse(von+"T12:00:00")-864e5)), "asp").then(function(t0){ return t0.concat(t); }); })
+        .then(function(t){ REINIGUNG.zeichnen(t, rd.l); }); })
+      .catch(function(e){ R._t=0; console.error(e); var el=document.getElementById("rg-chart"); if(el) el.innerHTML='<div class="chart-empty">Daten konnten nicht geladen werden.</div>'; }); }
+};
 function extraKombi(teile){ return {
   reset:function(){ teile.forEach(function(x){ if(x.reset) x.reset(); }); },
   html:function(){ return teile.map(function(x){ return x.html(); }).join(""); },
@@ -3007,7 +3126,7 @@ function extraKombi(teile){ return {
   bind:function(){ teile.forEach(function(x){ if(x.bind) x.bind(); }); },
   load:function(){ teile.forEach(function(x){ x.load(); }); } }; }
 
-var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung", extra:extraKombi([ASCHE.panel, SCHNITZEL.panel, SAISON.panel, ZYKLEN.panel]),
+var HEIZUNG=simpleView({ channel:172428, icon:"🔥", title:"Heizung", extra:extraKombi([ASCHE.panel, SCHNITZEL.panel, SAISON.panel, ZYKLEN.panel, REINIGUNG.panel]),
   // Links aktuelle Werte des Heizungs-Loggers (Kanal 172428, laeuft nur in der Heizsaison),
   // rechts Werte ueber den gewaehlten Zeitraum - inkl. Ø Auslastung aus dem Wallbox-Kanal 172228.
   sections:[

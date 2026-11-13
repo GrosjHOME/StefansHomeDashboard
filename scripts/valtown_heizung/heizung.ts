@@ -27,12 +27,19 @@
 // POST   { art: "schnitzel", zeit?: ISO, rest: 0-90 }   -> Auffuellen des Bunkers eintragen
 // POST   { art: "lager",     zeit?: ISO, m3: 1-200 }    -> Lager gefuellt (Bestand danach)
 // DELETE { art: "schnitzel" | "lager", zeit: ISO }      -> diesen Eintrag entfernen
+//
+// Kessel-Reinigung (gleicher Token, Blob "kessel_reinigungen" = { reinigungen: [ISO, ...] }, aufsteigend):
+//   GET liefert sie unter "reinigungen" mit (fehlt das Feld, laeuft noch eine aeltere heizung.ts - das Dashboard schickt dann
+//   nichts, damit eine Reinigung nicht als Asche-Leerung gespeichert wird).
+// POST   { art: "reinigung", zeit?: ISO }  -> Reinigung eintragen (Standard: jetzt)
+// DELETE { art: "reinigung", zeit: ISO }   -> diese Reinigung entfernen
 
 import { blob } from "https://esm.town/v/std/blob/main.ts";
 
 const KEY = "asche_leerungen";
 const KEY_SCHNITZEL = "schnitzel_daten";
 const KEY_PROGNOSE = "asche_prognose";
+const KEY_REINIGUNG = "kessel_reinigungen";
 const SOFORT_MAX_ALTER_MS = 3600_000;  // nur frische Leerungen setzen die Prognose sofort auf 0 %
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -51,6 +58,11 @@ async function lesenSchnitzel(): Promise<Schnitzel> {
   return { auffuellungen: liste(d?.auffuellungen), rest: obj(d?.rest), lager: liste(d?.lager), bestand: obj(d?.bestand) };
 }
 
+async function lesenReinigungen(): Promise<string[]> {
+  const d = (await blob.getJSON(KEY_REINIGUNG).catch(() => null)) as { reinigungen?: unknown } | null;
+  return Array.isArray(d?.reinigungen) ? (d!.reinigungen as string[]) : [];
+}
+
 async function lesen(): Promise<Daten> {
   const d = (await blob.getJSON(KEY).catch(() => null)) as Partial<Daten> | null;
   return {
@@ -66,7 +78,7 @@ export default async function (req: Request): Promise<Response> {
   try {
     if (req.method === "GET") {
       const prognose = (await blob.getJSON(KEY_PROGNOSE).catch(() => null)) ?? null;
-      return antwort(200, { ...(await lesen()), schnitzel: await lesenSchnitzel(), prognose });
+      return antwort(200, { ...(await lesen()), schnitzel: await lesenSchnitzel(), prognose, reinigungen: await lesenReinigungen() });
     }
     if (req.method !== "POST" && req.method !== "DELETE") return antwort(405, { fehler: "Methode nicht erlaubt" });
     const token = Deno.env.get("ASCHE_TOKEN");
@@ -76,6 +88,14 @@ export default async function (req: Request): Promise<Response> {
     const ms = typeof body.zeit === "string" ? Date.parse(body.zeit) : Date.now();
     if (isNaN(ms) || ms > Date.now() + 60_000) return antwort(400, { fehler: "zeit ungültig (ISO-Zeit, nicht in der Zukunft)" });
     const zeit = new Date(ms).toISOString();
+    if (body.art === "reinigung") {
+      let r = await lesenReinigungen();
+      if (req.method === "POST") { if (!r.includes(zeit)) r.push(zeit); } else r = r.filter((z) => z !== zeit);
+      r.sort();
+      await blob.setJSON(KEY_REINIGUNG, { reinigungen: r });
+      console.log(`${req.method} reinigung ${zeit} -> ${r.length} Reinigungen`);
+      return antwort(200, { ...(await lesen()), schnitzel: await lesenSchnitzel(), reinigungen: r });
+    }
     if (body.art === "schnitzel" || body.art === "lager") {
       const s = await lesenSchnitzel(), bunker = body.art === "schnitzel";
       const liste = bunker ? s.auffuellungen : s.lager, werte = bunker ? s.rest : s.bestand;
