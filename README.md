@@ -467,8 +467,10 @@ daran zeigt der Bereich **🧹 Kessel-Reinigung** im Tab Heizung, wann es wieder
   mit den anderen Tageswerten im Browser (`hz_tag3_…`, Feld `asp`); ältere Einträge ohne sie werden für die letzten 30 Tage einmal
   neu geholt (dieselbe Abfrage wie die Grafik Heizzyklen, sie wird geteilt).
 - **Nach der Reinigung** = Median der ersten bis zu 3 Tage nach dem Reinigungstag (der Tag selbst ist gemischt), **Vor der Reinigung**
-  = die 3 Tage davor, **jetzt** = die letzten 3 Tage mit Heizzyklen (heute bis jetzt eingeschlossen).
-- **Anstieg** = jetzt − nach der Reinigung: bis +20 K grün, bis +30 K orange, ab +30 K rot = **Reinigung empfohlen**
+  = die 3 Tage davor, **jetzt** = die letzten bis zu 3 Tage mit Heizzyklen (heute bis jetzt eingeschlossen). Nach einer Reinigung
+  zählen dafür **nur Tage nach dem Reinigungstag**, sonst flösse der alte Belag ein (Fehlalarm am Tag nach der Reinigung).
+- **Anstieg** = jetzt − nach der Reinigung, beurteilt erst ab dem 3. Tag nach der Reinigung (`REINIGUNG.MIN_TAGE`; vorher steht der Bezug
+  noch nicht fest und die Anzeige sagt das): bis +20 K grün, bis +30 K orange, ab +30 K rot = **Reinigung empfohlen**
   (`REINIGUNG.WARN` / `REINIGUNG.ROT` in `dashboard/index.html`). Ab 5 Tagen nach der Reinigung schätzt eine Gerade durch die
   Tageswerte, in wie vielen Tagen +30 K erreicht sind.
 - Die Balken der letzten 30 Tage sind nach demselben Anstieg eingefärbt (grau = noch keine Reinigung davor), die Raute markiert den

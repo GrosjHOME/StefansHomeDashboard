@@ -3017,13 +3017,15 @@ ZYKLEN.panel={
    deutlich (12.11.2026: von etwa 200 auf etwa 150 °C) und steigt dann mit dem Belag langsam wieder an.
    - Kennzahl je Tag: Median der Abgas-Spitzen der Heizzyklen (asp aus ASCHE.tagWerte, Glutstoesse zaehlen nicht).
    - Bezug = Wert nach der letzten Reinigung: Median der ersten bis zu 3 Tage danach (der Reinigungstag selbst ist gemischt und zaehlt nicht).
-   - Jetzt = Median der letzten 3 Tage mit Heizzyklen (heute bis jetzt eingeschlossen). Anstieg = Jetzt - Bezug:
-     unter WARN K gruen, bis ROT K orange, ab ROT K rot = Reinigung empfohlen. Ab 5 Tagen nach der Reinigung zusaetzlich die
+   - Jetzt = Median der letzten bis zu 3 Tage mit Heizzyklen (heute bis jetzt eingeschlossen). Nach einer Reinigung zaehlen dafuer NUR
+     Tage nach dem Reinigungstag - sonst fliesst der Belag von vorher ein und die frisch gereinigte Anlage sieht "zu heiss" aus
+     (Fehlalarm am Tag nach der Reinigung, 13.11.2026). Anstieg = Jetzt - Bezug, beurteilt erst, wenn der Bezug feststeht
+     (MIN_TAGE = 3 Tage nach der Reinigung): unter WARN K gruen, bis ROT K orange, ab ROT K rot = Reinigung empfohlen. Ab 5 Tagen nach der Reinigung zusaetzlich die
      Schaetzung, wann der Anstieg ROT K erreicht (Gerade durch die Tageswerte seit der Reinigung).
    - Reinigungen: Val Town heizung.ts (Blob "kessel_reinigungen", Knopf "Kessel gereinigt", gleicher Token wie Asche). Liefert die
      Val-Town-Datei das Feld "reinigungen" noch nicht (alte heizung.ts), werden sie nur in diesem Browser gefuehrt - nie an die alte
      Datei geschickt, die sie sonst als Asche-Leerung speichern wuerde. */
-var REINIGUNG={ TAGE:30, MAX_TAGE:120, WARN:20, ROT:30, _t:0, _vt:null };
+var REINIGUNG={ TAGE:30, MAX_TAGE:120, WARN:20, ROT:30, MIN_TAGE:3, _t:0, _vt:null };
 REINIGUNG.lokal=function(){ try{ var a=JSON.parse(localStorage.getItem("kessel_reinigungen")||"[]"); return Array.isArray(a)?a:[]; }catch(e){ return []; } };
 // {l: [ISO, ...] aufsteigend, vt: true = auf Val Town gespeichert}
 REINIGUNG.liste=function(){ if(!ASCHE.URL) return Promise.resolve({l:REINIGUNG.lokal(), vt:false});
@@ -3035,12 +3037,17 @@ REINIGUNG.schreiben=function(method, zeit){
 REINIGUNG.median=function(a){ if(!a.length) return null; var s=a.slice().sort(function(x,y){ return x-y; }); return s.length%2 ? s[(s.length-1)/2] : (s[s.length/2-1]+s[s.length/2])/2; };
 // Auswertung aus Tageswerten [{ymd, w}] und Reinigungen [ISO]
 REINIGUNG.rechnen=function(tage, rein){ var mit=tage.filter(function(t){ return t.w && t.w.asp!=null; }), R=REINIGUNG;
-  var jetzt=R.median(mit.slice(-3).map(function(t){ return t.w.asp; }));
-  var letzte=rein.length ? rein[rein.length-1] : null, rTag=letzte ? ymdLocal(new Date(letzte)) : null, e={jetzt:jetzt, letzte:letzte, rTag:rTag, nach:null, vor:null, anstieg:null, prog:null, nNach:0};
+  var letzte=rein.length ? rein[rein.length-1] : null, rTag=letzte ? ymdLocal(new Date(letzte)) : null;
+  // Jetzt: ohne Reinigung die letzten 3 Tage; nach einer Reinigung NUR Tage nach dem Reinigungstag (der Tag selbst ist gemischt,
+  // die Tage davor haben den alten Belag) - sonst waere "jetzt" kurz nach dem Reinigen fast der Wert von vorher
+  var nach=rTag ? mit.filter(function(t){ return t.ymd>rTag; }) : [];
+  var jetzt=R.median((rTag ? nach : mit).slice(-3).map(function(t){ return t.w.asp; }));
+  var e={jetzt:jetzt, letzte:letzte, rTag:rTag, nach:null, vor:null, anstieg:null, prog:null, nNach:0};
   if(rTag){
-    var nach=mit.filter(function(t){ return t.ymd>rTag; }), vor=mit.filter(function(t){ return t.ymd<rTag && t.ymd>=ymdLocal(new Date(Date.parse(rTag+"T12:00:00")-10*864e5)); });
+    var vor=mit.filter(function(t){ return t.ymd<rTag && t.ymd>=ymdLocal(new Date(Date.parse(rTag+"T12:00:00")-10*864e5)); });
     e.nach=R.median(nach.slice(0,3).map(function(t){ return t.w.asp; })); e.vor=R.median(vor.slice(-3).map(function(t){ return t.w.asp; })); e.nNach=nach.length;
-    if(e.nach!==null && jetzt!==null) e.anstieg=jetzt-e.nach;
+    // Der Bezug (Median der ersten 3 Tage) steht erst nach MIN_TAGE Tagen fest; vorher gibt es keinen Anstieg
+    if(e.nach!==null && jetzt!==null && nach.length>=R.MIN_TAGE) e.anstieg=jetzt-e.nach;
     // Trend seit der Reinigung (ab 5 Tagen): Tage bis Bezug + ROT
     if(nach.length>=5 && e.nach!==null){ var t0=Date.parse(rTag+"T12:00:00"), xs=nach.map(function(t){ return (Date.parse(t.ymd+"T12:00:00")-t0)/864e5; }), ys=nach.map(function(t){ return t.w.asp; });
       var mx=xs.reduce(function(a,b){ return a+b; },0)/xs.length, my=ys.reduce(function(a,b){ return a+b; },0)/ys.length, sxy=0, sxx=0;
@@ -3057,6 +3064,7 @@ REINIGUNG.zeichnen=function(tage, rein){ var g=function(id){ return document.get
   set("rg-letzte", e.letzte ? ASCHE.fmtZeit(Date.parse(e.letzte))+" · "+(tg===0?"heute":tg===1?"gestern":"vor "+tg+" Tagen") : "noch nicht eingetragen");
   var st = !e.letzte ? "Trag die letzte Reinigung mit <b>Kessel gereinigt</b> ein, dann zeigt die Anzeige den Anstieg seither."
     : e.nach===null ? "Noch keine Heizzyklen nach der Reinigung – der Bezugswert kommt mit dem ersten ganzen Tag."
+    : e.anstieg===null ? "Erst "+e.nNach+" Tag"+(e.nNach===1?"":"e")+" nach der Reinigung – der Bezugswert (Median der ersten "+R.MIN_TAGE+" Tage) steht noch nicht fest, der Anstieg wird ab dem "+R.MIN_TAGE+". Tag beurteilt."
     : e.anstieg>=R.ROT ? "<b>Reinigung empfohlen</b> – die Abgas-Spitze liegt "+fmt(e.anstieg,0)+" K über dem Wert nach der letzten Reinigung."
     : e.anstieg>=R.WARN ? "Belag nimmt zu – ab +"+R.ROT+" K wird die Reinigung empfohlen."
     : "In Ordnung – ab +"+R.ROT+" K wird die Reinigung empfohlen.";
@@ -3083,7 +3091,7 @@ REINIGUNG.panel={
   html:function(){ return ""; },
   htmlTab:function(){ var heute=ymdLocal(new Date()), wert=function(k,id,unit,cls){ return '<div'+(cls?' class="'+cls+'"':'')+'><dt>'+k+'</dt><dd><span id="'+id+'">–</span>'+(unit?' <small>'+unit+'</small>':'')+'</dd></div>'; };
     return '<div class="panel"><h2>🧹 Kessel-Reinigung <span class="tag" id="rg-tag" style="display:none"></span></h2>'+
-      '<dl class="as-werte">'+wert("Abgas-Spitze jetzt (Ø 3 Tage)","rg-jetzt","°C","as-l")+wert("Anstieg seit Reinigung","rg-anstieg","K","as-l")+wert("Letzte Reinigung","rg-letzte","","as-l")+
+      '<dl class="as-werte">'+wert("Abgas-Spitze jetzt (Median bis 3 Tage)","rg-jetzt","°C","as-l")+wert("Anstieg seit Reinigung","rg-anstieg","K","as-l")+wert("Letzte Reinigung","rg-letzte","","as-l")+
         wert("Nach der Reinigung","rg-nach","°C","as-r")+wert("Vor der Reinigung","rg-vor","°C","as-r")+'</dl>'+
       '<div class="note" id="rg-status" style="margin:8px 0">wird geladen…</div>'+
       '<div id="rg-chart"><div class="chart-empty">wird geladen…</div></div>'+
@@ -3093,8 +3101,8 @@ REINIGUNG.panel={
         '<button class="btn" id="rg-ok">Kessel gereinigt</button><button class="btn" id="rg-undo">Letzte Reinigung löschen</button><span class="frei-msg" id="rg-msg"></span></div>'+
       '<div class="note" id="rg-hinweis"></div>'+
       '<details class="note as-info"><summary>So wird gerechnet</summary>Belag im Wärmetauscher lässt weniger Wärme ins Wasser, das Abgas wird heisser. Gemessen wird je Tag die <b>Abgas-Spitze</b> der Heizzyklen (Median, Glutstösse zählen nicht). '+
-        '<b>Nach der Reinigung</b> = Median der ersten bis zu 3 Tage nach dem Reinigungstag (der Tag selbst ist gemischt), <b>Vor der Reinigung</b> = die 3 Tage davor, <b>jetzt</b> = die letzten 3 Tage mit Heizzyklen. '+
-        '<b>Anstieg</b> = jetzt − nach der Reinigung: bis +'+REINIGUNG.WARN+' K grün, bis +'+REINIGUNG.ROT+' K orange, ab +'+REINIGUNG.ROT+' K rot = Reinigung empfohlen. Ab 5 Tagen nach der Reinigung schätzt eine Gerade durch die Tageswerte, wann +'+REINIGUNG.ROT+' K erreicht sind. '+
+        '<b>Nach der Reinigung</b> = Median der ersten bis zu 3 Tage nach dem Reinigungstag (der Tag selbst ist gemischt), <b>Vor der Reinigung</b> = die 3 Tage davor, <b>jetzt</b> = die letzten bis zu 3 Tage mit Heizzyklen, nach einer Reinigung nur Tage <b>nach</b> dem Reinigungstag (sonst fliesst der alte Belag ein). '+
+        '<b>Anstieg</b> = jetzt − nach der Reinigung, beurteilt erst ab dem '+REINIGUNG.MIN_TAGE+'. Tag nach der Reinigung (vorher steht der Bezug noch nicht fest): bis +'+REINIGUNG.WARN+' K grün, bis +'+REINIGUNG.ROT+' K orange, ab +'+REINIGUNG.ROT+' K rot = Reinigung empfohlen. Ab 5 Tagen nach der Reinigung schätzt eine Gerade durch die Tageswerte, wann +'+REINIGUNG.ROT+' K erreicht sind. '+
         'Auch andere Schnitzel (Feuchte) oder Luft verschieben die Abgastemperatur – die Anzeige ist ein Hinweis, kein Messgerät. <b>Kessel gereinigt</b> trägt die Reinigung ein (gespeichert auf Val Town wie die Asche-Leerungen, gleicher Token).</details></div>'; },
   bind:function(){ var g=function(id){ return document.getElementById(id); };
     function sag(t,farbe){ var m=g("rg-msg"); if(m){ m.textContent=t; m.style.color=farbe||"var(--red)"; } }
